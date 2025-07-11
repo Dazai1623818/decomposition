@@ -1,0 +1,30 @@
+plugins {
+    id 'application'
+}
+
+repositories {
+    mavenCentral()  // No need for mavenLocal unless you're testing local builds
+}
+
+dependencies {
+    implementation 'dev.roanh.gmark:gmark:2.1'  // ✅ Official released version
+
+    implementation libs.guava
+
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+application {
+    mainClass = 'decomposition.App'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)  
+    }
+}
