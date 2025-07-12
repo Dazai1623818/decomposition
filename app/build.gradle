@@ -3,16 +3,17 @@ plugins {
 }
 
 repositories {
-    mavenCentral()  // No need for mavenLocal unless you're testing local builds
+    mavenCentral()
 }
 
 dependencies {
-    implementation 'dev.roanh.gmark:gmark:2.1'  // ✅ Official released version
-
+    implementation 'dev.roanh.gmark:gmark:2.1'
+    implementation 'com.google.code.gson:gson:2.10.1'
     implementation libs.guava
 
     testImplementation libs.junit.jupiter
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    
 }
 
 application {
