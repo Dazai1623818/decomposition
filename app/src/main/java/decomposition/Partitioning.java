@@ -1,6 +1,7 @@
 package decomposition;
 
 import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.lang.cq.CQ;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -108,7 +109,8 @@ public class Partitioning {
         }
     }
 
-    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(List<Edge> edges) {
+    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
+        List<Edge> edges = QueryUtils.extractEdgesFromCQ(cq);
         List<List<List<Edge>>> result = new ArrayList<>();
         findPartitions(edges, new ArrayList<>(), new HashSet<>(), result);
         return result;

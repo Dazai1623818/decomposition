@@ -7,6 +7,9 @@ import dev.roanh.gmark.type.schema.Predicate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import decomposition.Partitioning.Edge;
+import decomposition.QueryUtils.ComponentInfo;
+
 import static decomposition.QueryUtils.*;
 
 public class App {
@@ -22,14 +25,13 @@ public class App {
         cq.addAtom(b, new Predicate(2, "r2"), c);
         cq.addAtom(c, new Predicate(3, "r3"), d);
         cq.addAtom(d, new Predicate(4, "r4"), a);
-
+        // cq.addAtom(a, new Predicate(5, "r5"), d);
         return cq;
     }
 
     public static void processPartitions(CQ cq) {
         Set<String> freeVariables = cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
-        List<Partitioning.Edge> inputEdges = extractEdgesFromCQ(cq);
-        List<List<List<Partitioning.Edge>>> partitions = Partitioning.enumerateConnectedEdgePartitions(inputEdges);
+        List<List<List<Edge>>> partitions = Partitioning.enumerateConnectedEdgePartitions(cq);
         System.out.println("Total partitions: " + partitions.size());
 
         List<List<List<Partitioning.Edge>>> filteredPartitions =
