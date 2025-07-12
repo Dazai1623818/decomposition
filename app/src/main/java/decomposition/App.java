@@ -35,11 +35,11 @@ public class App {
         System.out.println("Total partitions: " + partitions.size());
 
         List<List<List<Partitioning.Edge>>> filteredPartitions =
-                Partitioning.filterPartitionsByJoinConstraint(partitions, 2, freeVariables);
+        Partitioning.filterPartitionsByJoinConstraint(partitions, 2, freeVariables);
         System.out.println("Total filtered partitions: " + filteredPartitions.size());
 
-        filteredPartitions.sort(Comparator.comparing(App::computeKey,
-                Comparator.comparingInt((int[] k) -> k[0]).thenComparingInt(k -> k[1])));
+        // filteredPartitions.sort(Comparator.comparing(App::computeKey,
+        //         Comparator.comparingInt((int[] k) -> k[0]).thenComparingInt(k -> k[1])));
 
         Map<List<Partitioning.Edge>, ComponentInfo> componentMap = new HashMap<>();
 
@@ -122,19 +122,19 @@ public class App {
         }
     }
 
-    public static int[] computeKey(List<List<Partitioning.Edge>> partition) {
-        int maxSize = 0, maxCount = 0;
-        for (List<Partitioning.Edge> comp : partition) {
-            int size = comp.size();
-            if (size > maxSize) {
-                maxSize = size;
-                maxCount = 1;
-            } else if (size == maxSize) {
-                maxCount++;
-            }
-        }
-        return new int[]{maxSize, maxCount};
-    }
+    // public static int[] computeKey(List<List<Partitioning.Edge>> partition) {
+    //     int maxSize = 0, maxCount = 0;
+    //     for (List<Partitioning.Edge> comp : partition) {
+    //         int size = comp.size();
+    //         if (size > maxSize) {
+    //             maxSize = size;
+    //             maxCount = 1;
+    //         } else if (size == maxSize) {
+    //             maxCount++;
+    //         }
+    //     }
+    //     return new int[]{maxSize, maxCount};
+    // }
 
     public static void main(String[] args) {
         CQ cq = initializeExampleCQ();

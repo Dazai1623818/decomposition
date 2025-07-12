@@ -109,20 +109,6 @@ public class Partitioning {
         }
     }
 
-    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
-        List<Edge> edges = QueryUtils.extractEdgesFromCQ(cq);
-        List<List<List<Edge>>> result = new ArrayList<>();
-        findPartitions(edges, new ArrayList<>(), new HashSet<>(), result);
-        return result;
-    }
-
-    public static Comparator<List<List<Edge>>> partitionOrderComparator() {
-        return Comparator.comparing((List<List<Edge>> p) ->
-                        p.stream().mapToInt(List::size).max().orElse(0))
-                .thenComparing(p -> Collections.frequency(
-                        p.stream().map(List::size).toList(),
-                        p.stream().mapToInt(List::size).max().orElse(0)));
-    }
 
     public static Set<String> getVertices(List<Edge> edges) {
         return edges.stream()
@@ -158,4 +144,22 @@ public class Partitioning {
                         .allMatch(jn -> jn.size() <= maxJoinNodesPerComponent))
                 .collect(Collectors.toList());
     }
+    public static Comparator<List<List<Edge>>> partitionOrderComparator() {
+    return Comparator
+            .comparing((List<List<Edge>> p) ->
+                    p.stream().mapToInt(List::size).max().orElse(0)) // max component size
+            .thenComparing(p ->
+                    Collections.frequency(
+                            p.stream().map(List::size).toList(),
+                            p.stream().mapToInt(List::size).max().orElse(0))) // freq of max
+            .thenComparing(Partitioning::canonicalPartition); // tiebreaker
+    }
+
+    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
+        List<Edge> edges = QueryUtils.extractEdgesFromCQ(cq);
+        List<List<List<Edge>>> result = new ArrayList<>();
+        findPartitions(edges, new ArrayList<>(), new HashSet<>(), result);
+        result.sort(partitionOrderComparator()); // sort here
+    return result;
+}
 }
