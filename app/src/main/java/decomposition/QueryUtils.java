@@ -125,7 +125,7 @@ public class QueryUtils {
         return c1.toQueryGraph().toUniqueGraph().equals(c2.toQueryGraph().toUniqueGraph());
     }
 
-    private static Set<String> extractFreeVariableNames(CQ cq) {
+    public static Set<String> extractFreeVariableNames(CQ cq) {
         return cq.getFreeVariables().stream()
                 .map(VarCQ::getName)
                 .collect(Collectors.toSet());
