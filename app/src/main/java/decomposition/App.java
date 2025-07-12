@@ -77,7 +77,27 @@ public class App {
         List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
         unfiltered.removeAll(filtered);
 
-        // Export separately
+        // Step: Identify CPQ-valid partitions
+        List<List<List<Edge>>> cpqValidPartitions = new ArrayList<>();
+
+        for (List<List<Edge>> partition : filtered) {
+            Map<List<Edge>, ComponentInfo> componentMap = new HashMap<>();
+
+            // This processes each component and attempts to mark it as known
+            processPartition(partition, componentMap);
+
+            boolean allComponentsKnown = partition.stream()
+                .allMatch(component -> {
+                    ComponentInfo info = componentMap.get(component);
+                    return info != null && info.isKnown;
+                });
+
+            if (allComponentsKnown) {
+                cpqValidPartitions.add(partition);
+            }
+        }
+
+        // Export all sets
         exportAllPartitionsToJson(filtered, "filtered");
         exportAllPartitionsToJson(unfiltered, "unfiltered");
 
