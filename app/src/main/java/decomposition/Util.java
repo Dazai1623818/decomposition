@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.google.gson.Gson;
 
@@ -27,7 +28,7 @@ public class Util {
             try {
                 exportPartitionToJson(partitionIndex + 1, partition);
             } catch (IOException e) {
-                System.err.println("❌ Failed to export partition " + (partitionIndex + 1) + ": " + e.getMessage());
+                System.err.println("Failed to export partition " + (partitionIndex + 1) + ": " + e.getMessage());
             }
         }
     }
@@ -65,10 +66,20 @@ public class Util {
         if (!dir.exists()) {
             boolean created = dir.mkdirs();
             if (created) {
-                System.out.println("📁 Created output directory: " + OUTPUT_DIR);
+                System.out.println("Created output directory: " + OUTPUT_DIR);
             } else {
-                System.err.println("⚠️ Failed to create output directory: " + OUTPUT_DIR);
+                System.err.println("Failed to create output directory: " + OUTPUT_DIR);
             }
+        }
+    }
+
+    public static void exportFreeVarsToJson(Set<String> freeVars) {
+        String fileName = OUTPUT_DIR + "/free_vars.json";
+        try (FileWriter writer = new FileWriter(fileName)) {
+            writer.write(new Gson().toJson(freeVars));
+            System.out.println("Exported free variables to " + fileName);
+        } catch (IOException e) {
+            System.err.println("Failed to export free variables: " + e.getMessage());
         }
     }
 }
