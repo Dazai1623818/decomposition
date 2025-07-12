@@ -1,16 +1,27 @@
 package decomposition;
 
-import dev.roanh.gmark.lang.cq.*;
-import dev.roanh.gmark.lang.cpq.*;
-import dev.roanh.gmark.type.schema.Predicate;
-
-import java.util.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import decomposition.Partitioning.Edge;
 import decomposition.QueryUtils.ComponentInfo;
-
-import static decomposition.QueryUtils.*;
+import static decomposition.QueryUtils.buildCQFromEdges;
+import static decomposition.QueryUtils.constructCPQFromEdges;
+import static decomposition.QueryUtils.getVarsFromEdges;
+import static decomposition.QueryUtils.isEquivalent;
+import static decomposition.QueryUtils.printCQAtoms;
+import static decomposition.Util.exportAllPartitionsToJson;
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.ConcatCPQ;
+import dev.roanh.gmark.lang.cpq.EdgeCPQ;
+import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
+import dev.roanh.gmark.type.schema.Predicate;
 
 public class App {
 
@@ -30,33 +41,43 @@ public class App {
     }
 
     public static void processPartitions(CQ cq) {
-        Set<String> freeVariables = cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
-        List<List<List<Edge>>> partitions = Partitioning.enumerateConnectedEdgePartitions(cq);
-        System.out.println("Total partitions: " + partitions.size());
+        // Extract free variables from the query
+        Set<String> freeVariables = cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
 
-        List<List<List<Partitioning.Edge>>> filteredPartitions =
-        Partitioning.filterPartitionsByJoinConstraint(partitions, 2, freeVariables);
-        System.out.println("Total filtered partitions: " + filteredPartitions.size());
+        // Enumerate and filter connected edge partitions
+        List<List<List<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
+        System.out.println("Total partitions found: " + allPartitions.size());
 
-        // filteredPartitions.sort(Comparator.comparing(App::computeKey,
-        //         Comparator.comparingInt((int[] k) -> k[0]).thenComparingInt(k -> k[1])));
+        List<List<List<Edge>>> filteredPartitions = Partitioning.filterPartitionsByJoinConstraint(
+                allPartitions, 2, freeVariables);
+        System.out.println("Filtered partitions (≤2 join nodes/component): " + filteredPartitions.size());
 
-        Map<List<Partitioning.Edge>, ComponentInfo> componentMap = new HashMap<>();
+        // Initialize known components map from the first partition
+        Map<List<Edge>, ComponentInfo> knownComponents = new HashMap<>();
+        List<List<Edge>> initialPartition = allPartitions.get(0);
 
-        for (List<Partitioning.Edge> component : partitions.get(0)) {
+        for (List<Edge> component : initialPartition) {
             CPQ cpq = new EdgeCPQ(component.get(0).getPredicate());
             CQ subCq = buildCQFromEdges(component);
             Set<String> vars = getVarsFromEdges(component);
-            componentMap.put(component, new ComponentInfo(subCq, cpq, vars, true));
+            knownComponents.put(component, new ComponentInfo(subCq, cpq, vars, true));
+
             System.out.println("Initial known CPQ: " + component.get(0).getPredicate().getAlias());
         }
 
-        for (int i = 0; i < filteredPartitions.size(); i++) {
-            List<List<Partitioning.Edge>> partition = filteredPartitions.get(i);
-            System.out.println("\n========= Partition #" + (i + 1) + " =========");
-            processPartition(partition, componentMap);
+        // Export filtered partitions for visualization
+        exportAllPartitionsToJson(filteredPartitions);
+
+        // Process each filtered partition
+        for (int partitionIndex = 0; partitionIndex < filteredPartitions.size(); partitionIndex++) {
+            List<List<Edge>> partition = filteredPartitions.get(partitionIndex);
+            System.out.println("\n========= Partition #" + (partitionIndex + 1) + " =========");
+            processPartition(partition, knownComponents);
         }
     }
+
 
     public static void processPartition(List<List<Partitioning.Edge>> partition,
                                         Map<List<Partitioning.Edge>, ComponentInfo> componentMap) {
