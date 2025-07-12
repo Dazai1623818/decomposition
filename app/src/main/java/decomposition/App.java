@@ -127,21 +127,36 @@ public class App {
 
                 Set<Edge> combined = new HashSet<>(kc1);
                 combined.addAll(kc2);
+
                 if (!combined.equals(targetEdges)) continue;
 
                 Set<String> sharedVars = new HashSet<>(componentMap.get(kc1).variables);
                 sharedVars.retainAll(componentMap.get(kc2).variables);
 
-                CPQ candidate = null;
-                if (sharedVars.size() == 1) {
-                    candidate = new ConcatCPQ(List.of(componentMap.get(kc1).cpq, componentMap.get(kc2).cpq));
-                } else if (sharedVars.size() == 2) {
-                    candidate = new IntersectionCPQ(List.of(componentMap.get(kc1).cpq, componentMap.get(kc2).cpq));
-                }
+                CPQ cpq1 = componentMap.get(kc1).cpq;
+                CPQ cpq2 = componentMap.get(kc2).cpq;
+                CPQ target = componentMap.get(component).cpq;
 
-                if (candidate != null && isEquivalent(candidate, componentMap.get(component).cpq)) {
-                    System.out.println("  >> Match successful with " +
-                            (sharedVars.size() == 1 ? "concatenation" : "conjunction"));
+                if (sharedVars.size() == 1) {
+                    CPQ concat1 = new ConcatCPQ(List.of(cpq1, cpq2));
+                    CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
+
+                    if (isEquivalent(concat1, target)) {
+                        System.out.println("Match found by concatenation (cpq1 followed by cpq2)");
+                        componentMap.put(component, componentMap.get(component).markKnown());
+                        return;
+                    }
+                    if (isEquivalent(concat2, target)) {
+                        System.out.println("Match found by concatenation (cpq2 followed by cpq1)");
+                        componentMap.put(component, componentMap.get(component).markKnown());
+                        return;
+                    }
+
+                } else if (sharedVars.size() == 2) {
+                    CPQ intersection = new IntersectionCPQ(List.of(cpq1, cpq2));
+
+                    if (isEquivalent(intersection, target)) {
+                        System.out.println("Match found by conjunction (intersection of cpq1 and cpq2)");
                     componentMap.put(component, componentMap.get(component).markKnown());
                     return;
                 }
