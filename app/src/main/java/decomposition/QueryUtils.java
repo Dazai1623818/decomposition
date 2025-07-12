@@ -1,12 +1,21 @@
 package decomposition;
 
-import dev.roanh.gmark.lang.cq.*;
-import dev.roanh.gmark.lang.cpq.*;
-import dev.roanh.gmark.type.schema.Predicate;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.ConcatCPQ;
+import dev.roanh.gmark.lang.cpq.EdgeCPQ;
+import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
+import dev.roanh.gmark.type.schema.Predicate;
 
 public class QueryUtils {
 
@@ -114,5 +123,11 @@ public class QueryUtils {
 
     public static boolean isEquivalent(CPQ c1, CPQ c2) {
         return c1.toQueryGraph().toUniqueGraph().equals(c2.toQueryGraph().toUniqueGraph());
+    }
+
+    private static Set<String> extractFreeVariableNames(CQ cq) {
+        return cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
     }
 }
