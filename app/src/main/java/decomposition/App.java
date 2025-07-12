@@ -56,10 +56,19 @@ public class App {
         List<List<List<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
         System.out.println("Total partitions found: " + allPartitions.size());
 
+        exportFreeVarsToJson(freeVars);
+
         List<List<List<Edge>>> filtered = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
         System.out.println("Filtered partitions (≤2 join nodes/component): " + filtered.size());
 
-        exportAllPartitionsToJson(filtered);
+        // Compute unfiltered by removing filtered from all
+        List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
+        unfiltered.removeAll(filtered);
+
+        // Export separately
+        exportAllPartitionsToJson(filtered, "filtered");
+        exportAllPartitionsToJson(unfiltered, "unfiltered");
+
         return filtered;
     }
 
