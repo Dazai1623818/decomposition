@@ -122,7 +122,8 @@ public class QueryUtils {
 
 
     public static boolean isEquivalent(CPQ c1, CPQ c2) {
-        return c1.toQueryGraph().toUniqueGraph().equals(c2.toQueryGraph().toUniqueGraph());
+        boolean equivalent = c1.toString().equals(c2.toString());
+        return equivalent;
     }
 
     public static Set<String> extractFreeVariableNames(CQ cq) {
