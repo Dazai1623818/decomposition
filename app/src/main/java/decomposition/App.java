@@ -1,7 +1,6 @@
 package decomposition;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -13,13 +12,13 @@ import static decomposition.QueryUtils.buildCQFromEdges;
 import static decomposition.QueryUtils.constructCPQFromEdges;
 import static decomposition.QueryUtils.extractFreeVariableNames;
 import static decomposition.QueryUtils.getVarsFromEdges;
+import static decomposition.QueryUtils.initializeKnownComponents;
 import static decomposition.QueryUtils.isEquivalent;
 import static decomposition.QueryUtils.printCQAtoms;
 import static decomposition.Util.exportAllPartitionsToJson;
 import static decomposition.Util.exportFreeVarsToJson;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.ConcatCPQ;
-import dev.roanh.gmark.lang.cpq.EdgeCPQ;
 import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -84,8 +83,6 @@ public class App {
 
         return filtered;
     }
-
-
 
     public static void processPartition(List<List<Edge>> partition, Map<List<Edge>, ComponentInfo> componentMap) {
         for (List<Edge> component : partition) {
@@ -160,25 +157,4 @@ public class App {
         }
     }
 
-
-
-
-
-
-    private static Map<List<Edge>, ComponentInfo> initializeKnownComponents(List<List<List<Edge>>> filteredPartitions) {
-        Map<List<Edge>, ComponentInfo> known = new HashMap<>();
-        if (filteredPartitions.isEmpty()) return known;
-
-        List<List<Edge>> firstPartition = filteredPartitions.get(0);
-        for (List<Edge> component : firstPartition) {
-            Predicate p = component.get(0).getPredicate();
-            CPQ cpq = new EdgeCPQ(p);
-            CQ subCq = buildCQFromEdges(component);
-            Set<String> vars = getVarsFromEdges(component);
-            known.put(component, new ComponentInfo(subCq, cpq, vars, true));
-
-            System.out.println("Initial known CPQ: " + p.getAlias());
-        }
-        return known;
-    }
 }

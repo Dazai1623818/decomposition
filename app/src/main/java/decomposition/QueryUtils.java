@@ -131,4 +131,22 @@ public class QueryUtils {
                 .map(VarCQ::getName)
                 .collect(Collectors.toSet());
     }
+
+    public static Map<List<Partitioning.Edge>, ComponentInfo> initializeKnownComponents(List<List<List<Partitioning.Edge>>> filteredPartitions) {
+        Map<List<Partitioning.Edge>, ComponentInfo> known = new HashMap<>();
+        if (filteredPartitions.isEmpty()) return known;
+
+        List<List<Partitioning.Edge>> firstPartition = filteredPartitions.get(0);
+        for (List<Partitioning.Edge> component : firstPartition) {
+            Predicate p = component.get(0).getPredicate();
+            CPQ cpq = new EdgeCPQ(p);
+            CQ subCq = buildCQFromEdges(component);
+            Set<String> vars = getVarsFromEdges(component);
+            known.put(component, new ComponentInfo(subCq, cpq, vars, true));
+
+            System.out.println("Initial known CPQ: " + p.getAlias());
+        }
+        return known;
+    }
+
 }
