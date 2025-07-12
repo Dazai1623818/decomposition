@@ -84,4 +84,19 @@ public class Util {
             System.err.println("Failed to export free variables: " + e.getMessage());
         }
     }
+
+    public static void clearTempFolder(String folderPath) {
+        File folder = new File(folderPath);
+        if (!folder.exists()) return;
+
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    clearTempFolder(file.getAbsolutePath()); // Recursive deletion
+                }
+                file.delete();
+            }
+        }
+    }
 }

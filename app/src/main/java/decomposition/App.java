@@ -1,6 +1,7 @@
 package decomposition;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,7 @@ import static decomposition.QueryUtils.getVarsFromEdges;
 import static decomposition.QueryUtils.initializeKnownComponents;
 import static decomposition.QueryUtils.isEquivalent;
 import static decomposition.QueryUtils.printCQAtoms;
+import static decomposition.Util.clearTempFolder;
 import static decomposition.Util.exportAllPartitionsToJson;
 import static decomposition.Util.exportFreeVarsToJson;
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -27,6 +29,7 @@ import dev.roanh.gmark.type.schema.Predicate;
 public class App {
 
     public static void main(String[] args) {
+        clearTempFolder("app/temp");
         CQ cq = initializeExampleCQ();
         processQuery(cq);
     }
@@ -71,9 +74,8 @@ public class App {
         exportFreeVarsToJson(freeVars);
 
         List<List<List<Edge>>> filtered = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
-        System.out.println("Filtered partitions (≤2 join nodes/component): " + filtered.size());
+        System.out.println("Filtered partitions (at most 2 join nodes/component): " + filtered.size());
 
-        // Compute unfiltered by removing filtered from all
         List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
         unfiltered.removeAll(filtered);
 
@@ -100,9 +102,11 @@ public class App {
         // Export all sets
         exportAllPartitionsToJson(filtered, "filtered");
         exportAllPartitionsToJson(unfiltered, "unfiltered");
+        exportAllPartitionsToJson(cpqValidPartitions, "cpq");
 
-        return filtered;
+        return filtered; // Or cpqValidPartitions depending on downstream needs
     }
+
 
     public static void processPartition(List<List<Edge>> partition, Map<List<Edge>, ComponentInfo> componentMap) {
         for (List<Edge> component : partition) {
