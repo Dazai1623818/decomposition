@@ -87,24 +87,30 @@ public class QueryUtils {
             nodes.add(edge.target);
         }
 
+        // If there's a valid start node (path-like), build ConcatCPQ
         String start = nodes.stream().filter(n -> !inMap.containsKey(n)).findFirst().orElse(null);
         if (start != null) {
             List<CPQ> sequence = new ArrayList<>();
             String curr = start;
-            while (outMap.containsKey(curr)) {
+            Set<String> visited = new HashSet<>();
+
+            while (outMap.containsKey(curr) && !visited.contains(curr)) {
+                visited.add(curr);
                 Partitioning.Edge e = outMap.get(curr);
                 sequence.add(new EdgeCPQ(e.getPredicate()));
                 curr = e.target;
             }
-            if (sequence.size() == edges.size()) {
-                return new ConcatCPQ(sequence);
-            }
+
+            // Only use ConcatCPQ if full coverage and no cycle
+            if (sequence.size() == edges.size()) return new ConcatCPQ(sequence);
         }
 
+        // Fallback: Intersection over all edges
         return new IntersectionCPQ(edges.stream()
                 .map(e -> new EdgeCPQ(e.getPredicate()))
                 .collect(Collectors.toList()));
     }
+
 
     public static boolean isEquivalent(CPQ c1, CPQ c2) {
         return c1.toQueryGraph().toUniqueGraph().equals(c2.toQueryGraph().toUniqueGraph());
