@@ -9,13 +9,18 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import decomposition.Partitioning.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.ConcatCPQ;
 import dev.roanh.gmark.lang.cpq.EdgeCPQ;
 import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
+import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
+
 
 public class QueryUtils {
 
@@ -39,6 +44,10 @@ public class QueryUtils {
         public ComponentInfo markKnown() {
             return new ComponentInfo(cq, cpq, variables, true);
         }
+        public ComponentInfo markKnownWithCPQ(CPQ newCpq) {
+            return new ComponentInfo(cq, newCpq, variables, true);
+        }
+
     }
 
     // ---------------------------
@@ -148,5 +157,83 @@ public class QueryUtils {
         }
         return known;
     }
+
+    public static void printEdgesFromCPQ(CPQ cpq) {
+        // Convert CPQ to CQ
+        CQ cq = cpq.toCQ();
+
+        // Convert CQ to QueryGraph
+        UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+
+        // Extract and print edges
+        List<GraphEdge<VarCQ, AtomCQ>> edges = graph.getEdges();
+        System.out.println("    Edges:");
+        for (GraphEdge<VarCQ, AtomCQ> edge : edges) {
+            System.out.println("      " + edge.getSource() + " --" + edge.getData().getLabel().getAlias() + "--> " + edge.getTarget());
+        }
+    }
+
+    public static boolean Matches(CPQ cpq, List<Edge> componentEdges) {
+        boolean result = isInjectiveHomomorphic(cpq, componentEdges);
+
+        System.out.println("Matching CPQ against component:");
+        printEdgesFromCPQ(cpq);
+        componentEdges.forEach(edge -> System.out.println("  Component Edge: " + edge));
+        System.out.println("  Match result: " + result);
+
+        return result;
+    }
+
+
+
+    public static boolean isInjectiveHomomorphic(CPQ cpq, List<Edge> componentEdges) {
+        // Convert CPQ to graph of atoms
+        UniqueGraph<VarCQ, AtomCQ> graph = cpq.toCQ().toQueryGraph().toUniqueGraph();
+        List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
+
+        Map<String, String> varToNodeMap = new HashMap<>(); // CPQ var name → component node name
+        Map<String, String> assignedNodeToVar = new HashMap<>(); // Enforce injectivity
+
+        for (GraphEdge<VarCQ, AtomCQ> cpqEdge : cpqEdges) {
+            String cpqSrc = cpqEdge.getSource().getName();
+            String cpqTrg = cpqEdge.getTarget().getName();
+            String label = cpqEdge.getData().getLabel().getAlias();
+
+            boolean foundMatch = false;
+
+            for (Edge compEdge : componentEdges) {
+                if (!compEdge.label().equals(label)) continue;
+
+                String compSrc = compEdge.source;
+                String compTrg = compEdge.target;
+
+                // Check existing variable bindings
+                if (varToNodeMap.containsKey(cpqSrc) && !varToNodeMap.get(cpqSrc).equals(compSrc)) continue;
+                if (varToNodeMap.containsKey(cpqTrg) && !varToNodeMap.get(cpqTrg).equals(compTrg)) continue;
+
+                // Enforce injectivity: no two vars map to same node
+                if (!varToNodeMap.containsKey(cpqSrc) && assignedNodeToVar.containsKey(compSrc)) continue;
+                if (!varToNodeMap.containsKey(cpqTrg) && assignedNodeToVar.containsKey(compTrg)) continue;
+
+                // Assign new bindings
+                varToNodeMap.put(cpqSrc, compSrc);
+                assignedNodeToVar.put(compSrc, cpqSrc);
+
+                varToNodeMap.put(cpqTrg, compTrg);
+                assignedNodeToVar.put(compTrg, cpqTrg);
+
+                foundMatch = true;
+                break;
+            }
+
+            if (!foundMatch) {
+                return false; // Failed to match this CPQ edge
+            }
+        }
+
+        return true;
+    }
+
+    
 
 }
