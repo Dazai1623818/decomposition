@@ -53,18 +53,30 @@ public class App {
     public static void processQuery(CQ cq) {
         Set<String> freeVars = extractFreeVariableNames(cq);
 
-        // Get and export filtered partitions
-        List<List<List<Edge>>> filteredPartitions = preparePartitions(cq, freeVars);
+        PartitionSets partitionSets = preparePartitions(cq, freeVars);
+        List<List<List<Edge>>> filteredPartitions = partitionSets.filtered;
 
-        // Initialize known components from first partition
         Map<List<Edge>, ComponentInfo> knownComponents = initializeKnownComponents(filteredPartitions);
 
-        // Process each partition
+        List<List<List<Edge>>> cpqValidPartitions = new ArrayList<>();
+
         for (int i = 0; i < filteredPartitions.size(); i++) {
             List<List<Edge>> partition = filteredPartitions.get(i);
             System.out.println("\n========= Partition #" + (i + 1) + " =========");
             processPartition(partition, knownComponents);
+
+            boolean allKnown = partition.stream()
+                    .allMatch(comp -> {
+                        ComponentInfo info = knownComponents.get(comp);
+                        return info != null && info.isKnown;
+                    });
+
+            if (allKnown) {
+                cpqValidPartitions.add(partition);
+            }
         }
+
+        exportAllPartitionsToJson(cpqValidPartitions, "cpq");
     }
 
     private static List<List<List<Edge>>> preparePartitions(CQ cq, Set<String> freeVars) {
@@ -181,4 +193,14 @@ public class App {
         }
     }
 
+
+    private static class PartitionSets {
+        final List<List<List<Edge>>> filtered;
+        final List<List<List<Edge>>> unfiltered;
+
+        PartitionSets(List<List<List<Edge>>> filtered, List<List<List<Edge>>> unfiltered) {
+            this.filtered = filtered;
+            this.unfiltered = unfiltered;
+        }
+    }
 }
