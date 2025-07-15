@@ -1,6 +1,7 @@
 package decomposition;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import static decomposition.QueryUtils.printEdgesFromCPQ;
 import static decomposition.Util.clearTempFolder;
 import static decomposition.Util.exportAllPartitionsToJson;
 import static decomposition.Util.exportFreeVarsToJson;
+import static decomposition.Util.printKnownComponents;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.ConcatCPQ;
 import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
@@ -27,7 +29,7 @@ import dev.roanh.gmark.type.schema.Predicate;
 public class App {
 
     public static void main(String[] args) {
-        clearTempFolder("app/temp");
+        clearTempFolder("temp");
         CQ cq = initializeExampleCQ();
         processQuery(cq);
     }
@@ -51,86 +53,78 @@ public class App {
     public static void processQuery(CQ cq) {
         Set<String> freeVars = extractFreeVariableNames(cq);
 
-        PartitionSets partitionSets = preparePartitions(cq, freeVars);
-        List<List<List<Edge>>> filteredPartitions = partitionSets.filtered;
+        // enumerate and filter partitions
+        List<List<List<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
+        System.out.println("Total partitions found: " + allPartitions.size());
+        exportFreeVarsToJson(freeVars);
 
-        Map<List<Edge>, ComponentInfo> knownComponents = initializeKnownComponents(filteredPartitions, freeVars);
+        List<List<List<Edge>>> filteredPartitions = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
+        System.out.println("Filtered partitions (≤ 2 join nodes/component): " + filteredPartitions.size());
 
+        List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
+        unfiltered.removeAll(filteredPartitions);
+        exportAllPartitionsToJson(filteredPartitions, "filtered");
+        exportAllPartitionsToJson(unfiltered, "unfiltered");
+
+        //Initialize known components
+        Map<Set<Edge>, ComponentInfo> knownComponents = initializeKnownComponents(filteredPartitions, freeVars);
         List<List<List<Edge>>> cpqValidPartitions = new ArrayList<>();
 
         for (int i = 0; i < filteredPartitions.size(); i++) {
             List<List<Edge>> partition = filteredPartitions.get(i);
             System.out.println("\n========= Partition #" + (i + 1) + " =========");
-            processPartition(partition, knownComponents, freeVars);
 
-            boolean allKnown = partition.stream()
-                    .allMatch(comp -> {
-                        ComponentInfo info = knownComponents.get(comp);
-                        return info != null && info.isKnown;
+            List<Set<String>> joinNodesPerComponent = Partitioning.getJoinNodesPerComponent(partition, freeVars);
+
+            for (int j = 0; j < partition.size(); j++) {
+                List<Edge> component = partition.get(j);
+                Set<Edge> componentKey = new HashSet<>(component);
+                ComponentInfo info = knownComponents.get(componentKey);
+
+                if (info != null && info.isKnown) continue;
+
+                CQ subCq = buildCQFromEdges(component);
+                Set<String> vars = getVarsFromEdges(component);
+                Set<String> joinNodes = joinNodesPerComponent.get(j);
+
+                knownComponents.put(componentKey, new ComponentInfo(subCq, new ArrayList<>(), vars, joinNodes, false));
+
+                System.out.println("Processing Unknown Component:");
+                component.forEach(e -> System.out.println("  " + e));
+
+                tryMatchWithKnownComponents(component, knownComponents);
+            }
+
+            boolean allHaveCPQs = partition.stream()
+                    .map(HashSet::new)
+                    .allMatch(compSet -> {
+                        ComponentInfo info = knownComponents.get(compSet);
+                        return info != null && info.isKnown && !info.cpqs.isEmpty();
                     });
 
-            if (allKnown) {
-                cpqValidPartitions.add(partition);
-            }
+            if (allHaveCPQs) cpqValidPartitions.add(partition);
         }
 
+        printKnownComponents(knownComponents);
         exportAllPartitionsToJson(cpqValidPartitions, "cpq");
     }
 
-    private static PartitionSets preparePartitions(CQ cq, Set<String> freeVars) {
-        List<List<List<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
-        System.out.println("Total partitions found: " + allPartitions.size());
+    public static void tryMatchWithKnownComponents(List<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
+        Set<Edge> componentKey = new HashSet<>(component);  // normalize component for map access
+        Set<Edge> targetEdges = componentKey;
 
-        exportFreeVarsToJson(freeVars);
-
-        List<List<List<Edge>>> filtered = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
-        System.out.println("Filtered partitions (at most 2 join nodes/component): " + filtered.size());
-
-        List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
-        unfiltered.removeAll(filtered);
-
-        exportAllPartitionsToJson(filtered, "filtered");
-        exportAllPartitionsToJson(unfiltered, "unfiltered");
-
-        return new PartitionSets(filtered, unfiltered);
-    }
-
-    public static void processPartition(List<List<Edge>> partition,
-                                        Map<List<Edge>, ComponentInfo> componentMap,
-                                        Set<String> freeVars) {
-
-        List<Set<String>> joinNodesPerComponent = Partitioning.getJoinNodesPerComponent(partition, freeVars);
-
-        for (int i = 0; i < partition.size(); i++) {
-            List<Edge> component = partition.get(i);
-            ComponentInfo info = componentMap.get(component);
-            if (info != null && info.isKnown) continue;
-
-            CQ subCq = buildCQFromEdges(component);
-            Set<String> vars = getVarsFromEdges(component);
-            Set<String> joinNodes = joinNodesPerComponent.get(i); // join nodes from entire partition
-
-            componentMap.put(component, new ComponentInfo(subCq, null, vars, joinNodes, false));
-
-            System.out.println("Processing Unknown Component:");
-            component.forEach(e -> System.out.println("  " + e));
-
-            tryMatchWithKnownComponents(component, componentMap);
-        }
-    }
-
-
-    public static void tryMatchWithKnownComponents(List<Edge> component, Map<List<Edge>, ComponentInfo> componentMap) {
-        Set<Edge> targetEdges = new HashSet<>(component);
-        List<List<Edge>> knownComponents = componentMap.entrySet().stream()
+        // Get known components from the map
+        List<Set<Edge>> knownComponents = componentMap.entrySet().stream()
                 .filter(e -> e.getValue().isKnown)
                 .map(Map.Entry::getKey)
                 .toList();
 
         for (int i = 0; i < knownComponents.size(); i++) {
-            for (int j = i + 1; j < knownComponents.size(); j++) {
-                List<Edge> kc1 = knownComponents.get(i);
-                List<Edge> kc2 = knownComponents.get(j);
+            for (int j = 0; j < knownComponents.size(); j++) {
+                if (i == j) continue;
+
+                Set<Edge> kc1 = knownComponents.get(i);
+                Set<Edge> kc2 = knownComponents.get(j);
 
                 Set<Edge> intersection = new HashSet<>(kc1);
                 intersection.retainAll(kc2);
@@ -143,61 +137,69 @@ public class App {
                 Set<String> sharedVars = new HashSet<>(componentMap.get(kc1).variables);
                 sharedVars.retainAll(componentMap.get(kc2).variables);
 
-                CPQ cpq1 = componentMap.get(kc1).cpq;
-                CPQ cpq2 = componentMap.get(kc2).cpq;
+                for (CPQ cpq1 : componentMap.get(kc1).cpqs) {
+                    for (CPQ cpq2 : componentMap.get(kc2).cpqs) {
 
-                System.out.println("TargetEdges match found:");
-                System.out.println("  Known component 1:");
-                kc1.forEach(e -> System.out.println("    " + e));
-                System.out.println("    CPQ1: " + cpq1);
-                System.out.println("  Known component 2:");
-                kc2.forEach(e -> System.out.println("    " + e));
-                System.out.println("    CPQ2: " + cpq2);
+                        if (sharedVars.size() == 1) {
+                            CPQ concat1 = new ConcatCPQ(List.of(cpq1, cpq2));
+                            CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
 
-                if (sharedVars.size() == 1) {
-                    CPQ concat1 = new ConcatCPQ(List.of(cpq1, cpq2));
-                    CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
+                            if (QueryUtils.isInjectiveHomomorphic(concat1, component, componentMap.get(componentKey).joinNodes)) {
+                                System.out.println("Match found by concat (cpq1 + cpq2)");
+                                System.out.println("CPQ1:");
+                                printEdgesFromCPQ(cpq1);
+                                System.out.println("CPQ2:");
+                                printEdgesFromCPQ(cpq2);
+                                System.out.println("Resulting Edges:");
+                                printEdgesFromCPQ(concat1);
+                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(concat1);
+                                componentMap.put(componentKey, updated);
+                                return;
+                            }
 
-                    if (QueryUtils.isInjectiveHomomorphic(concat1, component, componentMap.get(component).joinNodes)) {
-                        System.out.println("Match found by concat (cpq1 + cpq2)");
-                        componentMap.put(component, componentMap.get(component).markKnownWithCPQ(concat1));
-                        printEdgesFromCPQ(concat1);
-                        return;
-                    }
+                            if (QueryUtils.isInjectiveHomomorphic(concat2, component, componentMap.get(componentKey).joinNodes)) {
+                                System.out.println("Match found by concat (cpq2 + cpq1)");
+                                System.out.println("CPQ1:");
+                                printEdgesFromCPQ(cpq2);
+                                System.out.println("CPQ2:");
+                                printEdgesFromCPQ(cpq1);
+                                System.out.println("Resulting Edges:");
+                                printEdgesFromCPQ(concat2);
+                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(concat2);
+                                componentMap.put(componentKey, updated);
+                                return;
+                            }
 
-                    if (QueryUtils.isInjectiveHomomorphic(concat2, component, componentMap.get(component).joinNodes)) {
-                        System.out.println("Match found by concat (cpq2 + cpq1)");
-                        componentMap.put(component, componentMap.get(component).markKnownWithCPQ(concat2));
-                        printEdgesFromCPQ(concat2);
-                        return;
-                    }
+                        } else if (sharedVars.size() == 2) {
+                            CPQ intersectionCPQ = new IntersectionCPQ(List.of(cpq1, cpq2));
+                            if (QueryUtils.isInjectiveHomomorphic(intersectionCPQ, component, componentMap.get(componentKey).joinNodes)) {
+                                System.out.println("Match found by structural intersection (cpq1 ∩ cpq2)");
+                                System.out.println("CPQ1:");
+                                printEdgesFromCPQ(cpq1);
+                                System.out.println("CPQ2:");
+                                printEdgesFromCPQ(cpq2);
+                                System.out.println("Resulting Edges:");
+                                printEdgesFromCPQ(intersectionCPQ);
+                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(intersectionCPQ);
+                                componentMap.put(componentKey, updated);
+                                return;
+                            }
 
-                } else if (sharedVars.size() == 2) {
-                    System.out.println("Trying direct intersection:");
-                    CPQ intersectionCPQ = new IntersectionCPQ(List.of(cpq1, cpq2));
-
-                    System.out.println("  constructed intersection: " + intersectionCPQ);
-                    printEdgesFromCPQ(intersectionCPQ);
-
-                    if (QueryUtils.isInjectiveHomomorphic(intersectionCPQ, component, componentMap.get(component).joinNodes)) {
-                        System.out.println("Match found by structural intersection (cpq1 ∩ cpq2)");
-                        componentMap.put(component, componentMap.get(component).markKnownWithCPQ(intersectionCPQ));
-                        return;
-                    }
-
-                    System.out.println("No match: trying intersection via (cpq1 ◦ cpq2) ∩ id");
-                    CPQ concat = new ConcatCPQ(List.of(cpq1, cpq2));
-                    CPQ loopIntersection = new IntersectionCPQ(List.of(concat, CPQ.id()));
-
-                    System.out.println("  constructed loop intersection: " + loopIntersection);
-                    printEdgesFromCPQ(loopIntersection);
-
-                    if (QueryUtils.isInjectiveHomomorphic(loopIntersection, component, componentMap.get(component).joinNodes)) {
-                        System.out.println("Match found by loop intersection ((cpq1 ◦ cpq2) ∩ id)");
-                        componentMap.put(component, componentMap.get(component).markKnownWithCPQ(loopIntersection));
-                        return;
-                    } else {
-                        System.out.println("No match: loop intersection is not structurally equal.");
+                            CPQ concat = new ConcatCPQ(List.of(cpq1, cpq2));
+                            CPQ loopIntersection = new IntersectionCPQ(List.of(concat, CPQ.id()));
+                            if (QueryUtils.isInjectiveHomomorphic(loopIntersection, component, componentMap.get(componentKey).joinNodes)) {
+                                System.out.println("Match found by loop intersection ((cpq1 ∘ cpq2) ∩ id)");
+                                System.out.println("CPQ1:");
+                                printEdgesFromCPQ(cpq1);
+                                System.out.println("CPQ2:");
+                                printEdgesFromCPQ(cpq2);
+                                System.out.println("Resulting Edges:");
+                                printEdgesFromCPQ(loopIntersection);
+                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(loopIntersection);
+                                componentMap.put(componentKey, updated);
+                                return;
+                            }
+                        }
                     }
                 }
             }
