@@ -29,8 +29,18 @@ public class Partitioning {
         }
 
         @Override
-        public String toString() {
-            return source + " --" + predicate.getAlias() + "--> " + target;
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Edge edge = (Edge) o;
+            return source.equals(edge.source) &&
+                target.equals(edge.target) &&
+                predicate.equals(edge.predicate);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(source, target, predicate);
         }
     }
 
