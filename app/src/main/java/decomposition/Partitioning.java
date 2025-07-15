@@ -42,6 +42,11 @@ public class Partitioning {
         public int hashCode() {
             return Objects.hash(source, target, predicate);
         }
+
+        @Override
+        public String toString() {
+            return String.format("%s --%s--> %s", source, predicate.getAlias(), target);
+        }
     }
 
     public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
