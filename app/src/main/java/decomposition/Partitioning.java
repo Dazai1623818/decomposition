@@ -44,6 +44,45 @@ public class Partitioning {
         }
     }
 
+    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
+        List<Edge> edges = QueryUtils.extractEdgesFromCQ(cq);
+        List<List<List<Edge>>> result = new ArrayList<>();
+        findPartitions(edges, new ArrayList<>(), new HashSet<>(), result);
+        result.sort(partitionOrderComparator()); // sort here
+        return result;
+    }
+
+    private static void findPartitions(List<Edge> remaining, List<List<Edge>> current, Set<String> memo, List<List<List<Edge>>> result) {
+        if (remaining.isEmpty()) {
+            String key = canonicalPartition(current);
+            if (memo.add(key)) result.add(new ArrayList<>(current));
+            return;
+        }
+
+        for (List<Edge> subset : generateConnectedSubsets(remaining)) {
+            List<Edge> nextRemaining = listSubtract(remaining, subset);
+            current.add(subset);
+            findPartitions(nextRemaining, current, memo, result);
+            current.remove(current.size() - 1);
+        }
+    }
+
+    public static List<List<Edge>> generateConnectedSubsets(List<Edge> edges) {
+        List<List<Edge>> subsets = new ArrayList<>();
+        int n = edges.size();
+
+        for (int i = 1; i < (1 << n); i++) {
+            List<Edge> subset = new ArrayList<>();
+            for (int j = 0; j < n; j++) {
+                if ((i & (1 << j)) != 0) {
+                    subset.add(edges.get(j));
+                }
+            }
+            if (isConnected(subset)) subsets.add(subset);
+        }
+        return subsets;
+    }
+
     public static boolean isConnected(List<Edge> edges) {
         if (edges.isEmpty()) return false;
 
@@ -72,21 +111,7 @@ public class Partitioning {
         return visited.equals(allNodes);
     }
 
-    public static List<List<Edge>> generateConnectedSubsets(List<Edge> edges) {
-        List<List<Edge>> subsets = new ArrayList<>();
-        int n = edges.size();
 
-        for (int i = 1; i < (1 << n); i++) {
-            List<Edge> subset = new ArrayList<>();
-            for (int j = 0; j < n; j++) {
-                if ((i & (1 << j)) != 0) {
-                    subset.add(edges.get(j));
-                }
-            }
-            if (isConnected(subset)) subsets.add(subset);
-        }
-        return subsets;
-    }
 
     public static List<Edge> listSubtract(List<Edge> a, List<Edge> b) {
         List<Edge> result = new ArrayList<>(a);
@@ -103,22 +128,6 @@ public class Partitioning {
                 .sorted()
                 .collect(Collectors.joining("|"));
     }
-
-    private static void findPartitions(List<Edge> remaining, List<List<Edge>> current, Set<String> memo, List<List<List<Edge>>> result) {
-        if (remaining.isEmpty()) {
-            String key = canonicalPartition(current);
-            if (memo.add(key)) result.add(new ArrayList<>(current));
-            return;
-        }
-
-        for (List<Edge> subset : generateConnectedSubsets(remaining)) {
-            List<Edge> nextRemaining = listSubtract(remaining, subset);
-            current.add(subset);
-            findPartitions(nextRemaining, current, memo, result);
-            current.remove(current.size() - 1);
-        }
-    }
-
 
     public static Set<String> getVertices(List<Edge> edges) {
         return edges.stream()
@@ -165,11 +174,5 @@ public class Partitioning {
             .thenComparing(Partitioning::canonicalPartition); // tiebreaker
     }
 
-    public static List<List<List<Edge>>> enumerateConnectedEdgePartitions(CQ cq) {
-        List<Edge> edges = QueryUtils.extractEdgesFromCQ(cq);
-        List<List<List<Edge>>> result = new ArrayList<>();
-        findPartitions(edges, new ArrayList<>(), new HashSet<>(), result);
-        result.sort(partitionOrderComparator()); // sort here
-    return result;
-}
+
 }
