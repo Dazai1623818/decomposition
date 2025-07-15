@@ -12,32 +12,25 @@ import java.util.Set;
 import com.google.gson.Gson;
 
 import decomposition.Partitioning.Edge;
+import decomposition.QueryUtils.ComponentInfo;
 
 public class Util {
 
     private static final String OUTPUT_DIR = "temp";
 
-    /**
-     * Saves all given partitions to separate JSON files inside the `temp/` directory.
-     */
     public static void exportAllPartitionsToJson(List<List<List<Edge>>> allPartitions, String subdir) {
         ensureTempDirectoryExists(subdir);
 
         for (int partitionIndex = 0; partitionIndex < allPartitions.size(); partitionIndex++) {
             List<List<Edge>> partition = allPartitions.get(partitionIndex);
             try {
-                exportPartitionToJson(partitionIndex + 1, partition, subdir);  // number still starts from 1
+                exportPartitionToJson(partitionIndex + 1, partition, subdir);
             } catch (IOException e) {
                 System.err.println("Failed to export partition " + (partitionIndex + 1) + ": " + e.getMessage());
             }
         }
     }
 
-
-    /**
-     * Saves a single partition (composed of multiple connected components) to a JSON file.
-     * Each edge is annotated with the component index it belongs to.
-     */
     public static void exportPartitionToJson(int partitionId, List<List<Edge>> partition, String subdir) throws IOException {
         String fileName = OUTPUT_DIR + File.separator + subdir + File.separator + "partition_" + partitionId + ".json";
         List<Map<String, String>> edgeEntries = new ArrayList<>();
@@ -59,9 +52,6 @@ public class Util {
         }
     }
 
-    /**
-     * Creates the temp output directory if it does not exist.
-     */
     private static void ensureTempDirectoryExists(String subdir) {
         File dir = new File(OUTPUT_DIR + File.separator + subdir);
         if (!dir.exists()) {
@@ -73,7 +63,6 @@ public class Util {
             }
         }
     }
-
 
     public static void exportFreeVarsToJson(Set<String> freeVars) {
         String fileName = OUTPUT_DIR + "/free_vars.json";
@@ -87,15 +76,45 @@ public class Util {
 
     public static void clearTempFolder(String folderPath) {
         File folder = new File(folderPath);
-        if (!folder.exists()) return;
+        if (!folder.exists()) {
+            System.out.println("Folder does not exist: " + folderPath);
+            return;
+        }
 
         File[] files = folder.listFiles();
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
-                    clearTempFolder(file.getAbsolutePath()); // Recursive deletion
+                    clearTempFolder(file.getAbsolutePath()); // recursive
                 }
-                file.delete();
+                if (!file.delete()) {
+                    System.err.println("Failed to delete: " + file.getAbsolutePath());
+                }
+            }
+        }
+    }
+
+
+
+    public static void printKnownComponents(Map<List<Edge>, ComponentInfo> knownComponents) {
+        System.out.println("Known components so far:");
+        int idx = 1;
+        for (Map.Entry<List<Edge>, ComponentInfo> entry : knownComponents.entrySet()) {
+            List<Edge> component = entry.getKey();
+            ComponentInfo info = entry.getValue();
+
+            System.out.println("  Component #" + idx++);
+            for (Edge edge : component) {
+                System.out.println("    " + edge);
+            }
+
+            System.out.println("    Known: " + info.isKnown);
+            if (info.cpqs != null && !info.cpqs.isEmpty()) {
+                for (int i = 0; i < info.cpqs.size(); i++) {
+                    System.out.println("    CPQ[" + i + "]: " + info.cpqs.get(i));
+                }
+            } else {
+                System.out.println("    CPQ: null");
             }
         }
     }
