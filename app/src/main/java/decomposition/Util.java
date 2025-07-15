@@ -13,6 +13,7 @@ import com.google.gson.Gson;
 
 import decomposition.Partitioning.Edge;
 import decomposition.QueryUtils.ComponentInfo;
+import static decomposition.QueryUtils.printEdgesFromCPQ;
 
 public class Util {
 
@@ -96,11 +97,12 @@ public class Util {
 
 
 
-    public static void printKnownComponents(Map<List<Edge>, ComponentInfo> knownComponents) {
+    public static void printKnownComponents(Map<Set<Edge>, ComponentInfo> knownComponents) {
         System.out.println("Known components so far:");
         int idx = 1;
-        for (Map.Entry<List<Edge>, ComponentInfo> entry : knownComponents.entrySet()) {
-            List<Edge> component = entry.getKey();
+
+        for (Map.Entry<Set<Edge>, ComponentInfo> entry : knownComponents.entrySet()) {
+            Set<Edge> component = entry.getKey();
             ComponentInfo info = entry.getValue();
 
             System.out.println("  Component #" + idx++);
@@ -111,11 +113,14 @@ public class Util {
             System.out.println("    Known: " + info.isKnown);
             if (info.cpqs != null && !info.cpqs.isEmpty()) {
                 for (int i = 0; i < info.cpqs.size(); i++) {
-                    System.out.println("    CPQ[" + i + "]: " + info.cpqs.get(i));
+                    System.out.println("    CPQ[" + i + "]:");
+                    printEdgesFromCPQ(info.cpqs.get(i));
                 }
             } else {
-                System.out.println("    CPQ: null");
+                System.out.println("    CPQ: null or empty");
             }
         }
     }
+
+
 }
