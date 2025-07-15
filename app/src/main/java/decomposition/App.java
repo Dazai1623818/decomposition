@@ -73,14 +73,16 @@ public class App {
         for (int i = 0; i < filteredPartitions.size(); i++) {
             List<List<Edge>> partition = filteredPartitions.get(i);
             System.out.println("\n========= Partition #" + (i + 1) + " =========");
-
+            // if (i +1  == 10){
+                // printKnownComponents(knownComponents);
+                
+            // }
             List<Set<String>> joinNodesPerComponent = Partitioning.getJoinNodesPerComponent(partition, freeVars);
 
             for (int j = 0; j < partition.size(); j++) {
                 List<Edge> component = partition.get(j);
                 Set<Edge> componentKey = new HashSet<>(component);
                 ComponentInfo info = knownComponents.get(componentKey);
-
                 if (info != null && info.isKnown) continue;
 
                 CQ subCq = buildCQFromEdges(component);
@@ -105,19 +107,22 @@ public class App {
             if (allHaveCPQs) cpqValidPartitions.add(partition);
         }
 
-        printKnownComponents(knownComponents);
+        // printKnownComponents(knownComponents);
         exportAllPartitionsToJson(cpqValidPartitions, "cpq");
     }
 
     public static void tryMatchWithKnownComponents(List<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
-        Set<Edge> componentKey = new HashSet<>(component);  // normalize component for map access
+        Set<Edge> componentKey = new HashSet<>(component);
         Set<Edge> targetEdges = componentKey;
 
-        // Get known components from the map
         List<Set<Edge>> knownComponents = componentMap.entrySet().stream()
                 .filter(e -> e.getValue().isKnown)
                 .map(Map.Entry::getKey)
                 .toList();
+
+        ComponentInfo currentInfo = componentMap.get(componentKey);
+        List<CPQ> updatedCPQs = new ArrayList<>(currentInfo.cpqs);  // existing CPQs
+        boolean foundNewMatch = false;
 
         for (int i = 0; i < knownComponents.size(); i++) {
             for (int j = 0; j < knownComponents.size(); j++) {
@@ -142,66 +147,67 @@ public class App {
 
                         if (sharedVars.size() == 1) {
                             CPQ concat1 = new ConcatCPQ(List.of(cpq1, cpq2));
-                            CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
 
-                            if (QueryUtils.isInjectiveHomomorphic(concat1, component, componentMap.get(componentKey).joinNodes)) {
-                                System.out.println("Match found by concat (cpq1 + cpq2)");
-                                System.out.println("CPQ1:");
-                                printEdgesFromCPQ(cpq1);
-                                System.out.println("CPQ2:");
-                                printEdgesFromCPQ(cpq2);
-                                System.out.println("Resulting Edges:");
-                                printEdgesFromCPQ(concat1);
-                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(concat1);
-                                componentMap.put(componentKey, updated);
-                                return;
+                            if (QueryUtils.isInjectiveHomomorphic(concat1, component, currentInfo.joinNodes)) {
+                                if (!updatedCPQs.contains(concat1)) {
+                                    updatedCPQs.add(concat1);
+                                    foundNewMatch = true;
+                                    System.out.println("Match found by concat (cpq1 + cpq2)");
+                                    printEdgesFromCPQ(concat1);
+                                }
                             }
 
-                            if (QueryUtils.isInjectiveHomomorphic(concat2, component, componentMap.get(componentKey).joinNodes)) {
-                                System.out.println("Match found by concat (cpq2 + cpq1)");
-                                System.out.println("CPQ1:");
-                                printEdgesFromCPQ(cpq2);
-                                System.out.println("CPQ2:");
-                                printEdgesFromCPQ(cpq1);
-                                System.out.println("Resulting Edges:");
-                                printEdgesFromCPQ(concat2);
-                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(concat2);
-                                componentMap.put(componentKey, updated);
-                                return;
+                            CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
+                            if (QueryUtils.isInjectiveHomomorphic(concat2, component, currentInfo.joinNodes)) {
+                                if (!updatedCPQs.contains(concat2)) {
+                                    updatedCPQs.add(concat2);
+                                    foundNewMatch = true;
+                                    System.out.println("Match found by concat (cpq2 + cpq1)");
+                                    printEdgesFromCPQ(concat2);
+                                }
                             }
 
                         } else if (sharedVars.size() == 2) {
                             CPQ intersectionCPQ = new IntersectionCPQ(List.of(cpq1, cpq2));
-                            if (QueryUtils.isInjectiveHomomorphic(intersectionCPQ, component, componentMap.get(componentKey).joinNodes)) {
-                                System.out.println("Match found by structural intersection (cpq1 ∩ cpq2)");
-                                System.out.println("CPQ1:");
-                                printEdgesFromCPQ(cpq1);
-                                System.out.println("CPQ2:");
-                                printEdgesFromCPQ(cpq2);
-                                System.out.println("Resulting Edges:");
-                                printEdgesFromCPQ(intersectionCPQ);
-                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(intersectionCPQ);
-                                componentMap.put(componentKey, updated);
-                                return;
+                            if (QueryUtils.isInjectiveHomomorphic(intersectionCPQ, component, currentInfo.joinNodes)) {
+                                if (!updatedCPQs.contains(intersectionCPQ)) {
+                                    updatedCPQs.add(intersectionCPQ);
+                                    foundNewMatch = true;
+                                    System.out.println("Match found by structural intersection (cpq1 ∩ cpq2)");
+                                    printEdgesFromCPQ(intersectionCPQ);
+                                }
                             }
 
                             CPQ concat = new ConcatCPQ(List.of(cpq1, cpq2));
                             CPQ loopIntersection = new IntersectionCPQ(List.of(concat, CPQ.id()));
-                            if (QueryUtils.isInjectiveHomomorphic(loopIntersection, component, componentMap.get(componentKey).joinNodes)) {
-                                System.out.println("Match found by loop intersection ((cpq1 ∘ cpq2) ∩ id)");
-                                System.out.println("CPQ1:");
-                                printEdgesFromCPQ(cpq1);
-                                System.out.println("CPQ2:");
-                                printEdgesFromCPQ(cpq2);
-                                System.out.println("Resulting Edges:");
-                                printEdgesFromCPQ(loopIntersection);
-                                ComponentInfo updated = componentMap.get(componentKey).markKnownWithCPQ(loopIntersection);
-                                componentMap.put(componentKey, updated);
-                                return;
+                            if (QueryUtils.isInjectiveHomomorphic(loopIntersection, component, currentInfo.joinNodes)) {
+                                if (!updatedCPQs.contains(loopIntersection)) {
+                                    updatedCPQs.add(loopIntersection);
+                                    foundNewMatch = true;
+                                    System.out.println("Match found by loop intersection ((cpq1 ∘ cpq2) ∩ id)");
+                                    printEdgesFromCPQ(loopIntersection);
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+
+        if (foundNewMatch) {
+            ComponentInfo updated = new ComponentInfo(
+                    currentInfo.cq,
+                    updatedCPQs,
+                    currentInfo.variables,
+                    currentInfo.joinNodes,
+                    true
+            );
+            componentMap.put(componentKey, updated);
+
+            // Print all updated CPQs
+            System.out.println("Updated CPQs for matched component:");
+            for (CPQ cpq : updatedCPQs) {
+                System.out.println("  CPQ: " + cpq.toString());
             }
         }
     }
