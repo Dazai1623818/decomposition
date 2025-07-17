@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.Iterator;
 
 import decomposition.Partitioning.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -136,27 +137,34 @@ public class QueryUtils {
         List<List<Partitioning.Edge>> firstPartition = filteredPartitions.get(0);
 
         for (List<Partitioning.Edge> component : firstPartition) {
-            // Forward direction
             Set<Partitioning.Edge> componentSet = new HashSet<>(component);
-            Predicate p = component.get(0).getPredicate();
-            CPQ cpq = new EdgeCPQ(p);
-            CQ subCq = cpq.toCQ();
+            Partitioning.Edge edge = component.get(0);
+            Predicate p = edge.getPredicate();
+            Predicate pInv = p.getInverse();
+
+            // CPQ for forward edge
+            CPQ forward = CPQ.label(p);
+            // CPQ for inverse edge
+            CPQ inverse = CPQ.label(pInv);
+
+            List<CPQ> cpqs = new ArrayList<>();
+            
+            // Check for loop edge
+            if (edge.source.equals(edge.target)) {
+                // For loops, intersect with identity
+                cpqs.add(CPQ.intersect(forward, CPQ.id()));
+                cpqs.add(CPQ.intersect(inverse, CPQ.id()));
+            } else {
+                cpqs.add(forward);
+                cpqs.add(inverse);
+            }
+
+            // Convert first CPQ (forward) to CQ just for variable and atom extraction
+            CQ subCq = cpqs.get(0).toCQ();  // Any one is fine for structure
             Set<String> vars = getVarsFromEdges(component);
             Set<String> joinNodes = Partitioning.getJoinNodesPerComponent(List.of(component), freeVars).get(0);
 
-            known.put(componentSet, new ComponentInfo(subCq, List.of(cpq), vars, joinNodes, true));
-
-            // Inverse direction
-            Predicate pInv = p.getInverse();
-            Partitioning.Edge edge = component.get(0);
-            Partitioning.Edge inverseEdge = new Partitioning.Edge(edge.target, edge.source, pInv);
-            List<Partitioning.Edge> inverseComponent = List.of(inverseEdge);
-            Set<Partitioning.Edge> inverseSet = Set.of(inverseEdge);
-
-            CPQ cpqInv = new EdgeCPQ(pInv);
-            CQ subCqInv = cpqInv.toCQ();
-
-            known.put(inverseSet, new ComponentInfo(subCqInv, List.of(cpqInv), vars, joinNodes, true));
+            known.put(componentSet, new ComponentInfo(subCq, cpqs, vars, joinNodes, true));
         }
 
         return known;
@@ -165,107 +173,105 @@ public class QueryUtils {
 
 
     public static void printEdgesFromCPQ(CPQ cpq) {
+        System.out.println("    CPQ Expression: " + cpq);
+
         CQ cq = cpq.toCQ();
         UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
         List<GraphEdge<VarCQ, AtomCQ>> edges = graph.getEdges();
-        System.out.println("    Edges:");
+
         for (GraphEdge<VarCQ, AtomCQ> edge : edges) {
-            System.out.println("      " + edge.getSource() + " --" + edge.getData().getLabel().getAlias() + "--> " + edge.getTarget());
+            String src = edge.getSource().getName();
+            String trg = edge.getTarget().getName();
+            Predicate labelPred = edge.getData().getLabel();
+
+            String label = labelPred.getAlias();
+            if (labelPred.isInverse() && !label.endsWith("⁻")) {
+                label += "⁻";
+            }
+            System.out.printf("      %s --%s--> %s\n", src, label, trg);
         }
     }
 
-    public static boolean Matches(CPQ cpq, List<Edge> componentEdges, Set<String> allowedJoinNodes) {
-        boolean result = isInjectiveHomomorphic(cpq, componentEdges, allowedJoinNodes);
 
-        System.out.println("Matching CPQ against component:");
-        printEdgesFromCPQ(cpq);
-        componentEdges.forEach(edge -> System.out.println("  Component Edge: " + edge));
-        System.out.println("  Match result: " + result);
 
-        return result;
-    }
+
 
     public static boolean isInjectiveHomomorphic(CPQ cpq, List<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
         UniqueGraph<VarCQ, AtomCQ> graph = cpq.toCQ().toQueryGraph().toUniqueGraph();
         List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
 
-        Map<String, String> varToNodeMap = new HashMap<>();
-        Map<String, String> assignedNodeToVar = new HashMap<>();
+        Map<String, String> varToNode = new HashMap<>();
+        Set<String> usedComponentNodes = new HashSet<>();
+        List<Partitioning.Edge> unmatchedEdges = new ArrayList<>(componentEdges);
 
         for (GraphEdge<VarCQ, AtomCQ> cpqEdge : cpqEdges) {
             String cpqSrc = cpqEdge.getSource().getName();
             String cpqTrg = cpqEdge.getTarget().getName();
-            String label = cpqEdge.getData().getLabel().getAlias();
+            String cpqLabel = cpqEdge.getData().getLabel().getAlias();
 
-            boolean foundMatch = false;
+            boolean matched = false;
 
-            for (Partitioning.Edge compEdge : componentEdges) {
-                String compSrc = compEdge.source;
-                String compTrg = compEdge.target;
-                String compLabel = compEdge.label();
+            for (Partitioning.Edge componentEdge : new ArrayList<>(unmatchedEdges)) {
+                String edgeSrc = componentEdge.source;
+                String edgeTrg = componentEdge.target;
+                String edgeLabel = componentEdge.predicate.getAlias();
 
-                boolean forwardMatch = label.equals(compLabel);
-                boolean reverseMatch = label.equals(compLabel) && tryMatch(cpqSrc, cpqTrg, compSrc, compTrg, varToNodeMap, assignedNodeToVar);
-                boolean inverseMatch = label.equals(compLabel) && tryMatch(cpqSrc, cpqTrg, compTrg, compSrc, varToNodeMap, assignedNodeToVar);
+                if (!cpqLabel.equals(edgeLabel)) continue;
 
-                if (forwardMatch && reverseMatch) {
-                    foundMatch = true;
-                    break;
-                } else if (forwardMatch && inverseMatch) {
-                    foundMatch = true;
+                // Check for consistency
+                String mappedSrc = varToNode.get(cpqSrc);
+                String mappedTrg = varToNode.get(cpqTrg);
+
+                boolean srcCompatible = (mappedSrc == null || mappedSrc.equals(edgeSrc));
+                boolean trgCompatible = (mappedTrg == null || mappedTrg.equals(edgeTrg));
+
+                // Check injectivity
+                boolean srcInjective = (mappedSrc != null && mappedSrc.equals(edgeSrc)) || !usedComponentNodes.contains(edgeSrc);
+                boolean trgInjective = (mappedTrg != null && mappedTrg.equals(edgeTrg)) || !usedComponentNodes.contains(edgeTrg);
+
+                if (srcCompatible && trgCompatible && srcInjective && trgInjective) {
+                    varToNode.put(cpqSrc, edgeSrc);
+                    varToNode.put(cpqTrg, edgeTrg);
+                    usedComponentNodes.add(edgeSrc);
+                    usedComponentNodes.add(edgeTrg);
+                    unmatchedEdges.remove(componentEdge);
+                    matched = true;
                     break;
                 }
             }
 
-            if (!foundMatch) return false;
+            if (!matched) return false;
         }
 
-        List<GraphEdge<VarCQ, AtomCQ>> edges = graph.getEdges();
-        if (edges.isEmpty()) return false;
-
-        Set<VarCQ> allSources = edges.stream().map(GraphEdge::getSource).collect(Collectors.toSet());
-        Set<VarCQ> allTargets = edges.stream().map(GraphEdge::getTarget).collect(Collectors.toSet());
-
-        VarCQ startVar = allSources.stream().filter(v -> !allTargets.contains(v)).findFirst().orElse(edges.get(0).getSource());
-        VarCQ endVar = allTargets.stream().filter(v -> !allSources.contains(v)).findFirst().orElse(edges.get(edges.size() - 1).getTarget());
-
-        String srcVar = startVar.getName();
-        String trgVar = endVar.getName();
-
-        String mappedSrc = varToNodeMap.get(srcVar);
-        String mappedTrg = varToNodeMap.get(trgVar);
-
-        System.out.println("  Variable-to-node map: " + varToNodeMap);
-        System.out.println("  Inferred CPQ srcVar: " + srcVar + " → " + mappedSrc);
-        System.out.println("  Inferred CPQ trgVar: " + trgVar + " → " + mappedTrg);
-        System.out.println("  Allowed join nodes: " + allowedJoinNodes);
-
-        if (!allowedJoinNodes.contains(mappedSrc) || !allowedJoinNodes.contains(mappedTrg)) {
-            System.out.printf("Rejected match: src='%s', trg='%s' not in join nodes: %s%n", mappedSrc, mappedTrg, allowedJoinNodes);
-            return false;
+        // Check if the "src,trg" variable maps to the single allowed join node
+        if (allowedJoinNodes.size() == 1) {
+            String allowedNode = allowedJoinNodes.iterator().next();
+            String mappedNode = varToNode.get("src,trg");
+            if (mappedNode == null || !mappedNode.equals(allowedNode)) {
+                return false; // Return false if "src,trg" does not map to the allowed join node
+            }
         }
+
+        // System.out.println("Final variable-to-node mapping:");
+        // for (Map.Entry<String, String> entry : varToNode.entrySet()) {
+        //     if (entry.getKey().equals("src,trg") && allowedJoinNodes.size() == 1 && entry.getValue().equals(allowedJoinNodes.iterator().next())) {
+        //         System.out.println("  " + entry.getKey() + " -> " + entry.getValue());
+        //     }
+        // }
 
         return true;
     }
 
-    private static boolean tryMatch(
-            String cpqSrc, String cpqTrg,
-            String compSrc, String compTrg,
-            Map<String, String> varToNodeMap,
-            Map<String, String> assignedNodeToVar) {
 
-        if (varToNodeMap.containsKey(cpqSrc) && !varToNodeMap.get(cpqSrc).equals(compSrc)) return false;
-        if (varToNodeMap.containsKey(cpqTrg) && !varToNodeMap.get(cpqTrg).equals(compTrg)) return false;
 
-        if (!varToNodeMap.containsKey(cpqSrc) && assignedNodeToVar.containsKey(compSrc)) return false;
-        if (!varToNodeMap.containsKey(cpqTrg) && assignedNodeToVar.containsKey(compTrg)) return false;
-
-        varToNodeMap.put(cpqSrc, compSrc);
-        assignedNodeToVar.put(compSrc, cpqSrc);
-
-        varToNodeMap.put(cpqTrg, compTrg);
-        assignedNodeToVar.put(compTrg, cpqTrg);
-
-        return true;
+    public static Set<String> getNodesFromEdges(List<Edge> edges) {
+        Set<String> nodes = new HashSet<>();
+        for (Edge edge : edges) {
+            nodes.add(edge.source);
+            nodes.add(edge.target);
+        }
+        return nodes;
     }
+
+
 }
