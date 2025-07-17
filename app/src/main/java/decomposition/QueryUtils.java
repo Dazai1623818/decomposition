@@ -243,18 +243,36 @@ public class QueryUtils {
             if (!matched) return false;
         }
 
-        // Check if the "src,trg" variable maps to the single allowed join node
+        // Check allowedJoinNodes constraints
         if (allowedJoinNodes.size() == 1) {
             String allowedNode = allowedJoinNodes.iterator().next();
             String mappedNode = varToNode.get("src,trg");
             if (mappedNode == null || !mappedNode.equals(allowedNode)) {
-                return false; // Return false if "src,trg" does not map to the allowed join node
+                return false; // Return false if "src,trg" does not map to the single allowed join node
+            }
+        } else if (allowedJoinNodes.size() == 2) {
+            Iterator<String> iterator = allowedJoinNodes.iterator();
+            String node1 = iterator.next();
+            String node2 = iterator.next();
+            String srcMapped = varToNode.get("src");
+            String trgMapped = varToNode.get("trg");
+
+            // Check if src and trg map to the two distinct allowed nodes
+            if (srcMapped == null || trgMapped == null) {
+                return false; // Return false if either src or trg is not mapped
+            }
+            if (!((srcMapped.equals(node1) && trgMapped.equals(node2)) || 
+                (srcMapped.equals(node2) && trgMapped.equals(node1)))) {
+                return false; // Return false if src and trg don't map to the two nodes distinctly
             }
         }
 
         // System.out.println("Final variable-to-node mapping:");
         // for (Map.Entry<String, String> entry : varToNode.entrySet()) {
-        //     if (entry.getKey().equals("src,trg") && allowedJoinNodes.size() == 1 && entry.getValue().equals(allowedJoinNodes.iterator().next())) {
+        //     if (entry.getKey().equals("src,trg") && allowedJoinNodes.size() == 1 && 
+        //         entry.getValue().equals(allowedJoinNodes.iterator().next())) {
+        //         System.out.println("  " + entry.getKey() + " -> " + entry.getValue());
+        //     } else if (entry.getKey().equals("src") || entry.getKey().equals("trg")) {
         //         System.out.println("  " + entry.getKey() + " -> " + entry.getValue());
         //     }
         // }
