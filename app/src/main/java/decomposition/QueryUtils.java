@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.Iterator;
 
+import dev.roanh.gmark.util.graph.GraphPanel;
 import decomposition.Partitioning.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.ConcatCPQ;
@@ -158,6 +159,12 @@ public class QueryUtils {
                 cpqs.add(forward);
                 cpqs.add(inverse);
             }
+
+            // backtrack edge
+            cpqs.add(CPQ.intersect(CPQ.concat(forward, inverse), CPQ.id()));
+            cpqs.add(CPQ.intersect(CPQ.concat(inverse, forward), CPQ.id()));
+            // GraphPanel.show(CPQ.intersect(CPQ.concat(forward, inverse), CPQ.id()));
+            // GraphPanel.show(CPQ.intersect(CPQ.concat(inverse, forward), CPQ.id()));
 
             // Convert first CPQ (forward) to CQ just for variable and atom extraction
             CQ subCq = cpqs.get(0).toCQ();  // Any one is fine for structure
