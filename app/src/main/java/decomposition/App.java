@@ -78,7 +78,7 @@ public class App {
 
                 System.out.println("Processing Unknown Component:");
                 component.forEach(e -> System.out.println("  " + e));
-                tryMatchWithKnownComponents(component, knownComponents);
+                match(component, knownComponents);
             }
 
             boolean allHaveCPQs = partition.stream()
@@ -95,7 +95,7 @@ public class App {
         check(knownComponents);
     }
 
-    public static void tryMatchWithKnownComponents(List<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
+    public static void match(List<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
         Set<Edge> componentKey = new HashSet<>(component);
         Set<Edge> targetEdges = componentKey;
 
@@ -134,7 +134,7 @@ public class App {
                             // System.out.println(concat1);
 
 
-                            if (QueryUtils.isInjectiveHomomorphic(concat1, component, currentInfo.joinNodes)) {
+                            if (QueryUtils.isIsomorphic(concat1, component, currentInfo.joinNodes)) {
                                 if (!updatedCPQs.contains(concat1)) {
                                     updatedCPQs.add(concat1);
                                     foundNewMatch = true;
@@ -151,7 +151,7 @@ public class App {
                                 // System.out.println(currentInfo.joinNodes);
                                 CPQ concat = new ConcatCPQ(List.of(cpq1, cpq2));
                                 CPQ loopIntersection = new IntersectionCPQ(List.of(concat, CPQ.id()));
-                                if (QueryUtils.isInjectiveHomomorphic(loopIntersection, component, currentInfo.joinNodes)) {
+                                if (QueryUtils.isIsomorphic(loopIntersection, component, currentInfo.joinNodes)) {
 
 
                                     if (!updatedCPQs.contains(loopIntersection)) {
@@ -163,7 +163,7 @@ public class App {
                                 }
                             } else {
                                 CPQ intersectionCPQ = new IntersectionCPQ(List.of(cpq1, cpq2));
-                                if (QueryUtils.isInjectiveHomomorphic(intersectionCPQ, component, currentInfo.joinNodes)) {
+                                if (QueryUtils.isIsomorphic(intersectionCPQ, component, currentInfo.joinNodes)) {
                                     if (!updatedCPQs.contains(intersectionCPQ)) {
                                         updatedCPQs.add(intersectionCPQ);
                                         foundNewMatch = true;

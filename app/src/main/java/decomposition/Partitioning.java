@@ -63,7 +63,7 @@ public class Partitioning {
             if (memo.add(key)) result.add(new ArrayList<>(current));
             return;
         }
-
+ 
         for (List<Edge> subset : generateConnectedSubsets(remaining)) {
             List<Edge> nextRemaining = listSubtract(remaining, subset);
             current.add(subset);

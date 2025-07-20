@@ -203,7 +203,7 @@ public class QueryUtils {
 
 
 
-    public static boolean isInjectiveHomomorphic(CPQ cpq, List<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
+    public static boolean isIsomorphic(CPQ cpq, List<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
         UniqueGraph<VarCQ, AtomCQ> graph = cpq.toCQ().toQueryGraph().toUniqueGraph();
         List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
 
