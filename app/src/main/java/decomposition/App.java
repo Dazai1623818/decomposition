@@ -73,7 +73,6 @@ public class App {
                 CQ subCq = buildCQFromEdges(component);
                 Set<String> vars = getVarsFromEdges(component);
                 Set<String> joinNodes = joinNodesPerComponent.get(j);
-                System.out.println(joinNodes);
 
                 knownComponents.put(componentKey, new ComponentInfo(subCq, new ArrayList<>(), vars, joinNodes, false));
 
@@ -144,15 +143,15 @@ public class App {
                                 }
                             }
 
-                            CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
-                            if (QueryUtils.isInjectiveHomomorphic(concat2, component, currentInfo.joinNodes)) {
-                                if (!updatedCPQs.contains(concat2)) {
-                                    updatedCPQs.add(concat2);
-                                    foundNewMatch = true;
-                                    // System.out.println("Match found by concat (cpq2 + cpq1)");
-                                    // printEdgesFromCPQ(concat2);
-                                }
-                            }
+                            // CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
+                            // if (QueryUtils.isInjectiveHomomorphic(concat2, component, currentInfo.joinNodes)) {
+                            //     if (!updatedCPQs.contains(concat2)) {
+                            //         updatedCPQs.add(concat2);
+                            //         foundNewMatch = true;
+                            //         // System.out.println("Match found by concat (cpq2 + cpq1)");
+                            //         // printEdgesFromCPQ(concat2);
+                            //     }
+                            // }
 
                         } else if (sharedVars.size() == 2) {
 
@@ -202,10 +201,10 @@ public class App {
             componentMap.put(componentKey, updated);
 
             // Print all updated CPQs
-            System.out.println("Updated CPQs for matched component:");
-            for (CPQ cpq : updatedCPQs) {
-                System.out.println("  CPQ: " + cpq.toString());
-            }
+            // System.out.println("Updated CPQs for matched component:");
+            // for (CPQ cpq : updatedCPQs) {
+            //     System.out.println("  CPQ: " + cpq.toString());
+            // }
         }
     }
 
