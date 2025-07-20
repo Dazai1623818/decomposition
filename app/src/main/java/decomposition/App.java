@@ -143,16 +143,6 @@ public class App {
                                 }
                             }
 
-                            // CPQ concat2 = new ConcatCPQ(List.of(cpq2, cpq1));
-                            // if (QueryUtils.isInjectiveHomomorphic(concat2, component, currentInfo.joinNodes)) {
-                            //     if (!updatedCPQs.contains(concat2)) {
-                            //         updatedCPQs.add(concat2);
-                            //         foundNewMatch = true;
-                            //         // System.out.println("Match found by concat (cpq2 + cpq1)");
-                            //         // printEdgesFromCPQ(concat2);
-                            //     }
-                            // }
-
                         } else if (sharedVars.size() == 2) {
 
 
