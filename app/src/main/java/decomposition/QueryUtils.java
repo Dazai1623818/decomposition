@@ -1,6 +1,7 @@
 package decomposition;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -48,7 +49,7 @@ public class QueryUtils {
     }
 
 
-    public static CQ buildCQFromEdges(List<Partitioning.Edge> edges) {
+    public static CQ buildCQFromEdges(Collection<Partitioning.Edge> edges) {
         CQ cq = CQ.empty();
         Map<String, VarCQ> varMap = new HashMap<>();
         int predicateId = 1;
@@ -77,18 +78,19 @@ public class QueryUtils {
                 .collect(Collectors.toList());
     }
 
-    public static Set<String> getVarsFromEdges(List<Partitioning.Edge> edges) {
+    public static Set<String> getVarsFromEdges(Collection<Partitioning.Edge> edges) {
         return edges.stream().flatMap(e -> Stream.of(e.source, e.target)).collect(Collectors.toSet());
     }
 
-    public static CPQ constructCPQFromEdges(List<Partitioning.Edge> edges) {
-        if (edges.size() == 1) return new EdgeCPQ(edges.get(0).getPredicate());
+    public static CPQ constructCPQFromEdges(Collection<Partitioning.Edge> edges) {
+        List<Partitioning.Edge> edgeList = new ArrayList<>(edges);
+        if (edgeList.size() == 1) return new EdgeCPQ(edgeList.get(0).getPredicate());
 
         Map<String, Partitioning.Edge> outMap = new HashMap<>();
         Map<String, Partitioning.Edge> inMap = new HashMap<>();
         Set<String> nodes = new HashSet<>();
 
-        for (Partitioning.Edge edge : edges) {
+        for (Partitioning.Edge edge : edgeList) {
             outMap.put(edge.source, edge);
             inMap.put(edge.target, edge);
             nodes.add(edge.source);
@@ -108,10 +110,10 @@ public class QueryUtils {
                 curr = e.target;
             }
 
-            if (sequence.size() == edges.size()) return new ConcatCPQ(sequence);
+            if (sequence.size() == edgeList.size()) return new ConcatCPQ(sequence);
         }
 
-        return new IntersectionCPQ(edges.stream()
+        return new IntersectionCPQ(edgeList.stream()
                 .map(e -> new EdgeCPQ(e.getPredicate()))
                 .collect(Collectors.toList()));
     }
@@ -128,18 +130,18 @@ public class QueryUtils {
     }
 
     public static Map<Set<Partitioning.Edge>, ComponentInfo> initializeKnownComponents(
-            List<List<List<Partitioning.Edge>>> filteredPartitions,
+            List<List<Set<Partitioning.Edge>>> filteredPartitions,
             Set<String> freeVars) {
 
         Map<Set<Partitioning.Edge>, ComponentInfo> known = new HashMap<>();
 
         if (filteredPartitions.isEmpty()) return known;
 
-        List<List<Partitioning.Edge>> firstPartition = filteredPartitions.get(0);
+        List<Set<Partitioning.Edge>> firstPartition = filteredPartitions.get(0);
 
-        for (List<Partitioning.Edge> component : firstPartition) {
+        for (Set<Partitioning.Edge> component : firstPartition) {
             Set<Partitioning.Edge> componentSet = new HashSet<>(component);
-            Partitioning.Edge edge = component.get(0);
+            Partitioning.Edge edge = component.iterator().next();
             Predicate p = edge.getPredicate();
             Predicate pInv = p.getInverse();
 
@@ -203,7 +205,7 @@ public class QueryUtils {
 
 
 
-    public static boolean isIsomorphic(CPQ cpq, List<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
+    public static boolean isIsomorphic(CPQ cpq, Collection<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
         UniqueGraph<VarCQ, AtomCQ> graph = cpq.toCQ().toQueryGraph().toUniqueGraph();
         List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
 
@@ -289,7 +291,7 @@ public class QueryUtils {
 
 
 
-    public static Set<String> getNodesFromEdges(List<Edge> edges) {
+    public static Set<String> getNodesFromEdges(Collection<Edge> edges) {
         Set<String> nodes = new HashSet<>();
         for (Edge edge : edges) {
             nodes.add(edge.source);

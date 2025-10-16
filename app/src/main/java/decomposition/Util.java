@@ -19,11 +19,11 @@ public class Util {
 
     private static final String OUTPUT_DIR = "temp";
 
-    public static void exportAllPartitionsToJson(List<List<List<Edge>>> allPartitions, String subdir) {
+    public static void exportAllPartitionsToJson(List<List<Set<Edge>>> allPartitions, String subdir) {
         ensureTempDirectoryExists(subdir);
 
         for (int partitionIndex = 0; partitionIndex < allPartitions.size(); partitionIndex++) {
-            List<List<Edge>> partition = allPartitions.get(partitionIndex);
+            List<Set<Edge>> partition = allPartitions.get(partitionIndex);
             try {
                 exportPartitionToJson(partitionIndex + 1, partition, subdir);
             } catch (IOException e) {
@@ -32,12 +32,12 @@ public class Util {
         }
     }
 
-    public static void exportPartitionToJson(int partitionId, List<List<Edge>> partition, String subdir) throws IOException {
+    public static void exportPartitionToJson(int partitionId, List<Set<Edge>> partition, String subdir) throws IOException {
         String fileName = OUTPUT_DIR + File.separator + subdir + File.separator + "partition_" + partitionId + ".json";
         List<Map<String, String>> edgeEntries = new ArrayList<>();
 
         for (int componentIndex = 0; componentIndex < partition.size(); componentIndex++) {
-            List<Edge> component = partition.get(componentIndex);
+            Set<Edge> component = partition.get(componentIndex);
             for (Edge edge : component) {
                 Map<String, String> edgeMap = new HashMap<>();
                 edgeMap.put("source", edge.source);

@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Collection;
 
 import decomposition.Partitioning.Edge;
 import decomposition.QueryUtils.ComponentInfo;
@@ -32,7 +31,7 @@ public class App {
 
     public static void main(String[] args) {
         clearTempFolder("temp");
-        CQ cq = Example.example1();
+        CQ cq = Example.example2();
         processQuery(cq);
     }
 
@@ -41,32 +40,32 @@ public class App {
         Set<String> freeVars = extractFreeVariableNames(cq);
 
         // enumerate and filter partitions
-        List<List<List<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
+        List<List<Set<Edge>>> allPartitions = Partitioning.enumerateConnectedEdgePartitions(cq);
         System.out.println("Total partitions found: " + allPartitions.size());
         exportFreeVarsToJson(freeVars);
 
-        List<List<List<Edge>>> filteredPartitions = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
+        List<List<Set<Edge>>> filteredPartitions = Partitioning.filterPartitionsByJoinConstraint(allPartitions, 2, freeVars);
         System.out.println("Filtered partitions (≤ 2 join nodes/component): " + filteredPartitions.size());
 
-        List<List<List<Edge>>> unfiltered = new ArrayList<>(allPartitions);
+        List<List<Set<Edge>>> unfiltered = new ArrayList<>(allPartitions);
         unfiltered.removeAll(filteredPartitions);
         exportAllPartitionsToJson(filteredPartitions, "filtered");
         exportAllPartitionsToJson(unfiltered, "unfiltered");
 
         //Initialize known components
         Map<Set<Edge>, ComponentInfo> knownComponents = initializeKnownComponents(filteredPartitions, freeVars);
-        List<List<List<Edge>>> cpqValidPartitions = new ArrayList<>();
+        List<List<Set<Edge>>> cpqValidPartitions = new ArrayList<>();
         // printKnownComponents(knownComponents);
 
 
         for (int i = 0; i < filteredPartitions.size(); i++) {
         // for (int i = 0; i < 3; i++) {
-            List<List<Edge>> partition = filteredPartitions.get(i);
+            List<Set<Edge>> partition = filteredPartitions.get(i);
             System.out.println("\n========= Partition #" + (i + 1) + " =========");
             List<Set<String>> joinNodesPerComponent = Partitioning.getJoinNodesPerComponent(partition, freeVars);
 
             for (int j = 0; j < partition.size(); j++) {
-                List<Edge> component = partition.get(j);
+                Set<Edge> component = partition.get(j);
                 Set<Edge> componentKey = new HashSet<>(component);
                 ComponentInfo info = knownComponents.get(componentKey);
                 if (info != null && info.isKnown) continue;
@@ -95,7 +94,7 @@ public class App {
         check(knownComponents);
     }
 
-    public static void match(List<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
+    public static void match(Set<Edge> component, Map<Set<Edge>, ComponentInfo> componentMap) {
         Set<Edge> componentKey = new HashSet<>(component);
         Set<Edge> targetEdges = componentKey;
 
@@ -199,16 +198,6 @@ public class App {
     }
 
 
-
-    private static class PartitionSets {
-        final List<List<List<Edge>>> filtered;
-        final List<List<List<Edge>>> unfiltered;
-
-        PartitionSets(List<List<List<Edge>>> filtered, List<List<List<Edge>>> unfiltered) {
-            this.filtered = filtered;
-            this.unfiltered = unfiltered;
-        }
-    }
 
     public static void check(Map<Set<Edge>, ComponentInfo> componentMap) {
         System.out.println("\n=== Internal CPQ Homomorphism Check ===");
