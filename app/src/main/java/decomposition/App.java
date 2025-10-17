@@ -31,9 +31,9 @@ import dev.roanh.gmark.util.graph.GraphPanel;
 public class App {
 
     public static void main(String[] args) {
-        // GraphPanel.show(CPQ.parse("(((r2◦((r3◦r4) ∩ r5⁻))◦r1) ∩ id)"));
+        // GraphPanel.show(CPQ.parse("1◦((1◦((1◦((1◦1⁻)∩id)◦((1◦1⁻)∩id)◦1⁻)∩id)◦1⁻)∩id)"));
         clearTempFolder("temp");
-        CQ cq = Example.example6();
+        CQ cq = Example.example3();
         processQuery(cq);
     }
 
@@ -130,11 +130,7 @@ public class App {
                 for (CPQ cpq1 : componentMap.get(kc1).cpqs) {
                     for (CPQ cpq2 : componentMap.get(kc2).cpqs) {
                         if (sharedVars.size() == 1) {
-                            // System.out.println(cpq1 + ", " + cpq2);
                             CPQ concat1 = new ConcatCPQ(List.of(cpq1, cpq2));
-                            // System.out.println(concat1);
-
-
                             if (QueryUtils.isIsomorphic(concat1, component, currentInfo.joinNodes)) {
                                 if (!updatedCPQs.contains(concat1)) {
                                     updatedCPQs.add(concat1);
@@ -177,6 +173,20 @@ public class App {
 
                         }
                     }
+                }
+            }
+        }
+
+        if (!foundNewMatch) {
+            List<CPQ> backtrackingCandidates = QueryUtils.generateBacktrackingCPQs(componentKey, currentInfo.joinNodes);
+            for (CPQ candidate : backtrackingCandidates) {
+                boolean alreadyPresent = updatedCPQs.stream()
+                        .anyMatch(existing -> existing.toString().equals(candidate.toString()));
+                if (alreadyPresent) continue;
+
+                if (QueryUtils.isIsomorphic(candidate, component, currentInfo.joinNodes)) {
+                    updatedCPQs.add(candidate);
+                    foundNewMatch = true;
                 }
             }
         }
