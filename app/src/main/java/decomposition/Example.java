@@ -75,7 +75,7 @@ public class Example {
 
 
 
-
+    // short branch
     public static CQ example5() {
         CQ cq = CQ.empty();
         VarCQ a = cq.addFreeVariable("A");
@@ -83,16 +83,41 @@ public class Example {
         VarCQ c = cq.addBoundVariable("C");
         VarCQ d = cq.addBoundVariable("D");
         VarCQ e = cq.addBoundVariable("E");
+        VarCQ f = cq.addBoundVariable("F");
 
-        cq.addAtom(a, new Predicate(1, "r1"), b);
-        cq.addAtom(a, new Predicate(4, "r4"), e);
-        cq.addAtom(e, new Predicate(5, "r5"), a);
+
+        cq.addAtom(c, new Predicate(3, "r3"), d);
+        cq.addAtom(d, new Predicate(4, "r4"), e);
+        cq.addAtom(d, new Predicate(5, "r5"), f);
 
         return cq;
     }
 
-    // Example 7: Multiple edges between same nodes with different labels
+    // longer branch
     public static CQ example6() {
+        CQ cq = CQ.empty();
+        VarCQ a = cq.addFreeVariable("A");
+        VarCQ b = cq.addBoundVariable("B");
+        VarCQ c = cq.addBoundVariable("C");
+        VarCQ d = cq.addBoundVariable("D");
+        VarCQ e = cq.addBoundVariable("E");
+        VarCQ f = cq.addBoundVariable("F");
+
+        cq.addAtom(a, new Predicate(1, "r1"), b);
+        cq.addAtom(b, new Predicate(1, "r1"), a);
+        cq.addAtom(b, new Predicate(2, "r2"), c);
+        cq.addAtom(c, new Predicate(3, "r3"), d);
+        cq.addAtom(d, new Predicate(4, "r4"), e);
+        cq.addAtom(d, new Predicate(5, "r5"), f);
+
+
+        return cq;
+    }
+
+    
+
+    // Example 7: Multiple edges between same nodes with different labels
+    public static CQ example7() {
         CQ cq = CQ.empty();
         VarCQ a = cq.addFreeVariable("A");
         VarCQ b = cq.addBoundVariable("B");
@@ -110,7 +135,7 @@ public class Example {
     }
 
     // Example 8: Combination of long path and multiple edges
-    public static CQ example7() {
+    public static CQ example8() {
         CQ cq = CQ.empty();
         VarCQ a = cq.addFreeVariable("A");
         VarCQ b = cq.addBoundVariable("B");
