@@ -26,12 +26,14 @@ import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
+import dev.roanh.gmark.util.graph.GraphPanel;
 
 public class App {
 
     public static void main(String[] args) {
+        // GraphPanel.show(CPQ.parse("(((r2◦((r3◦r4) ∩ r5⁻))◦r1) ∩ id)"));
         clearTempFolder("temp");
-        CQ cq = Example.example2();
+        CQ cq = Example.example6();
         processQuery(cq);
     }
 
@@ -160,7 +162,7 @@ public class App {
                                         // printEdgesFromCPQ(loopIntersection);
                                     }
                                 }
-                            } else {
+                            } else if (!cpq2.toString().equals(cpq1.toString())){
                                 CPQ intersectionCPQ = new IntersectionCPQ(List.of(cpq1, cpq2));
                                 if (QueryUtils.isIsomorphic(intersectionCPQ, component, currentInfo.joinNodes)) {
                                     if (!updatedCPQs.contains(intersectionCPQ)) {
