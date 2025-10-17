@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -179,6 +180,99 @@ public class QueryUtils {
         return known;
     }
 
+    public static List<CPQ> generateBacktrackingCPQs(Set<Partitioning.Edge> component,
+                                                     Set<String> joinNodes) {
+        if (component == null || component.isEmpty()) return List.of();
+
+        Map<String, List<Partitioning.Edge>> adjacency = new HashMap<>();
+        for (Partitioning.Edge edge : component) {
+            adjacency.computeIfAbsent(edge.source, k -> new ArrayList<>()).add(edge);
+            adjacency.computeIfAbsent(edge.target, k -> new ArrayList<>()).add(edge);
+        }
+
+        Set<String> roots = new LinkedHashSet<>();
+        if (joinNodes != null && !joinNodes.isEmpty()) {
+            roots.addAll(joinNodes);
+        }
+
+        // Prefer leaves to anchor linear paths when join nodes are absent
+        for (Map.Entry<String, List<Partitioning.Edge>> entry : adjacency.entrySet()) {
+            if (entry.getValue().size() == 1) {
+                roots.add(entry.getKey());
+            }
+        }
+
+        if (roots.isEmpty()) {
+            roots.add(component.iterator().next().source);
+        }
+
+        Set<String> expressions = new LinkedHashSet<>();
+        for (String root : roots) {
+            List<Partitioning.Edge> neighbors = adjacency.getOrDefault(root, List.of());
+            for (Partitioning.Edge edge : neighbors) {
+                Set<Partitioning.Edge> visited = new HashSet<>();
+                visited.add(edge);
+
+                String neighbor = edge.source.equals(root) ? edge.target : edge.source;
+                String forwardLabel = edge.source.equals(root)
+                        ? edge.predicate.getAlias()
+                        : edge.predicate.getInverse().getAlias();
+
+                String subtreeExpr = buildBacktrackingSubtree(neighbor, root, adjacency, visited);
+                StringBuilder builder = new StringBuilder();
+                builder.append(forwardLabel);
+                if (!subtreeExpr.isEmpty()) {
+                    builder.append("◦(").append(subtreeExpr).append(")");
+                }
+                expressions.add(builder.toString());
+            }
+        }
+
+        List<CPQ> cpqs = new ArrayList<>();
+        for (String expr : expressions) {
+            try {
+                cpqs.add(CPQ.parse(expr));
+            } catch (IllegalArgumentException ignored) {
+                // skip expressions that fail to parse; they are not valid CPQs
+            }
+        }
+        return cpqs;
+    }
+
+    private static String buildBacktrackingSubtree(String node,
+                                                   String parent,
+                                                   Map<String, List<Partitioning.Edge>> adjacency,
+                                                   Set<Partitioning.Edge> visited) {
+        List<String> branches = new ArrayList<>();
+        for (Partitioning.Edge edge : adjacency.getOrDefault(node, List.of())) {
+            if (visited.contains(edge)) continue;
+
+            String neighbor = edge.source.equals(node) ? edge.target : edge.source;
+            if (neighbor.equals(parent)) continue;
+
+            visited.add(edge);
+
+            String forwardLabel = edge.source.equals(node)
+                    ? edge.predicate.getAlias()
+                    : edge.predicate.getInverse().getAlias();
+            String backwardLabel = edge.source.equals(node)
+                    ? edge.predicate.getInverse().getAlias()
+                    : edge.predicate.getAlias();
+
+            String childExpr = buildBacktrackingSubtree(neighbor, node, adjacency, visited);
+
+            StringBuilder branch = new StringBuilder();
+            branch.append(forwardLabel);
+            if (!childExpr.isEmpty()) {
+                branch.append("◦(").append(childExpr).append(")");
+            }
+            branch.append("◦").append(backwardLabel);
+
+            branches.add("(" + branch + ")∩id");
+        }
+        return String.join("◦", branches);
+    }
+
 
 
     public static void printEdgesFromCPQ(CPQ cpq) {
@@ -206,26 +300,42 @@ public class QueryUtils {
 
 
     public static boolean isIsomorphic(CPQ cpq, Collection<Partitioning.Edge> componentEdges, Set<String> allowedJoinNodes) {
+        // check here when we have a matching of backtrack with something else
         UniqueGraph<VarCQ, AtomCQ> graph = cpq.toCQ().toQueryGraph().toUniqueGraph();
         List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
 
         Map<String, String> varToNode = new HashMap<>();
         Set<String> usedComponentNodes = new HashSet<>();
-        List<Partitioning.Edge> unmatchedEdges = new ArrayList<>(componentEdges);
+        List<Partitioning.Edge> componentEdgeList = new ArrayList<>(componentEdges);
+        Set<Partitioning.Edge> matchedEdges = new HashSet<>();
+        Set<Partitioning.Edge> forwardMatched = new HashSet<>();
 
         for (GraphEdge<VarCQ, AtomCQ> cpqEdge : cpqEdges) {
             String cpqSrc = cpqEdge.getSource().getName();
             String cpqTrg = cpqEdge.getTarget().getName();
-            String cpqLabel = cpqEdge.getData().getLabel().getAlias();
+            Predicate cpqPredicate = cpqEdge.getData().getLabel();
+            String cpqLabel = cpqPredicate.getAlias();
 
             boolean matched = false;
 
-            for (Partitioning.Edge componentEdge : new ArrayList<>(unmatchedEdges)) {
-                String edgeSrc = componentEdge.source;
-                String edgeTrg = componentEdge.target;
-                String edgeLabel = componentEdge.predicate.getAlias();
+            for (Partitioning.Edge componentEdge : componentEdgeList) {
+                Predicate componentPredicate = componentEdge.predicate;
+                String edgeLabel = componentPredicate.getAlias();
 
-                if (!cpqLabel.equals(edgeLabel)) continue;
+                boolean reverseMatch = false;
+                if (!cpqLabel.equals(edgeLabel)) {
+                    String inverseLabel = cpqPredicate.getInverse().getAlias();
+                    if (!inverseLabel.equals(edgeLabel)) {
+                        continue;
+                    }
+                    reverseMatch = true;
+                }
+
+                if (!reverseMatch && forwardMatched.contains(componentEdge)) continue;
+
+                String edgeSrc = reverseMatch ? componentEdge.target : componentEdge.source;
+                String edgeTrg = reverseMatch ? componentEdge.source : componentEdge.target;
+
 
                 // Check for consistency
                 String mappedSrc = varToNode.get(cpqSrc);
@@ -243,7 +353,10 @@ public class QueryUtils {
                     varToNode.put(cpqTrg, edgeTrg);
                     usedComponentNodes.add(edgeSrc);
                     usedComponentNodes.add(edgeTrg);
-                    unmatchedEdges.remove(componentEdge);
+                    if (!reverseMatch) {
+                        forwardMatched.add(componentEdge);
+                    }
+                    matchedEdges.add(componentEdge);
                     matched = true;
                     break;
                 }
@@ -252,12 +365,13 @@ public class QueryUtils {
             if (!matched) return false;
         }
 
+        if (matchedEdges.size() != componentEdgeList.size()) return false;
+
         // Check allowedJoinNodes constraints
         if (allowedJoinNodes.size() == 1) {
             String allowedNode = allowedJoinNodes.iterator().next();
-            String mappedNode = varToNode.get("src,trg");
-            if (mappedNode == null || !mappedNode.equals(allowedNode)) {
-                return false; // Return false if "src,trg" does not map to the single allowed join node
+            if (!varToNode.containsValue(allowedNode)) {
+                return false; // ensure the single join node appears in the mapping
             }
         } else if (allowedJoinNodes.size() == 2) {
             Iterator<String> iterator = allowedJoinNodes.iterator();
