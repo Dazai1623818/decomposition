@@ -55,10 +55,10 @@ public final class Main {
 
             if (cliOptions.showVisualization()) {
                 for (KnownComponent component : result.recognizedComponents()) {
-                    GraphPanel.show(component.parse());
+                    GraphPanel.show(component.cpq());
                 }
                 if (result.hasFinalComponent()) {
-                    GraphPanel.show(result.finalComponent().parse());
+                    GraphPanel.show(result.finalComponent().cpq());
                 }
             }
 
