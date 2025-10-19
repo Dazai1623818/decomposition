@@ -17,7 +17,7 @@ dependencies {
 }
 
 application {
-    mainClass = 'decomposition.App'
+    mainClass = 'decomposition.cli.Main'
 }
 
 tasks.named('test') {
