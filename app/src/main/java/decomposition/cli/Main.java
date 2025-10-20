@@ -6,6 +6,9 @@ import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Partition;
+import decomposition.model.Component;
+import decomposition.PartitionEvaluation;
+import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.util.graph.GraphPanel;
@@ -13,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,13 +39,15 @@ public final class Main {
                     cliOptions.mode(),
                     cliOptions.maxPartitions(),
                     cliOptions.maxCovers(),
-                    cliOptions.timeBudgetMs());
+                    cliOptions.timeBudgetMs(),
+                    cliOptions.enumerationLimit());
 
             CQ query = loadQuery(cliOptions);
 
             DecompositionPipeline pipeline = new DecompositionPipeline();
             DecompositionResult result = pipeline.execute(query, cliOptions.freeVariables(), pipelineOptions);
 
+            printSummary(result, cliOptions);
             exportForVisualization(result);
 
             JsonReportBuilder reportBuilder = new JsonReportBuilder();
@@ -54,7 +60,7 @@ public final class Main {
             }
 
             if (cliOptions.showVisualization()) {
-                for (KnownComponent component : result.recognizedComponents()) {
+                for (KnownComponent component : result.recognizedCatalogue()) {
                     GraphPanel.show(component.cpq());
                 }
                 if (result.hasFinalComponent()) {
@@ -72,6 +78,49 @@ public final class Main {
         } catch (Exception ex) {
             ex.printStackTrace(System.err);
             return 4;
+        }
+    }
+
+    private void printSummary(DecompositionResult result, CliOptions options) {
+        int totalPartitions = result.filteredPartitionList().size();
+        int validPartitions = result.cpqPartitions().size();
+        System.out.println("Partitions considered: " + totalPartitions);
+        System.out.println("Valid partitions: " + validPartitions);
+        if (validPartitions == 0) {
+            System.out.println("No valid partitions identified.");
+            return;
+        }
+
+        int totalEdges = result.edges().size();
+        for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
+            System.out.println("Partition #" + evaluation.partitionIndex() + ":");
+            List<Component> components = evaluation.partition().components();
+            List<Integer> optionCounts = evaluation.componentOptionCounts();
+            for (int i = 0; i < components.size(); i++) {
+                var component = components.get(i);
+                String signature = BitsetUtils.signature(component.edgeBits(), totalEdges);
+                int optionsForComponent = optionCounts.get(i);
+                System.out.println("  Component #" + (i + 1) + " [" + signature + "] options=" + optionsForComponent);
+            }
+            if (options.mode() == Mode.ENUMERATE) {
+                List<List<KnownComponent>> tuples = evaluation.decompositionTuples();
+                if (tuples.isEmpty()) {
+                    System.out.println("  Tuples: none");
+                } else {
+                    System.out.println("  Tuples (showing " + tuples.size() + "):");
+                    for (int i = 0; i < tuples.size(); i++) {
+                        List<KnownComponent> tuple = tuples.get(i);
+                        List<String> fragments = new ArrayList<>(tuple.size());
+                        for (KnownComponent component : tuple) {
+                            fragments.add(component.cpq().toString() + " (" + component.source() + "→" + component.target() + ")");
+                        }
+                        System.out.println("    #" + (i + 1) + ": " + String.join(" | ", fragments));
+                    }
+                    if (options.enumerationLimit() > 0 && tuples.size() >= options.enumerationLimit()) {
+                        System.out.println("    ... limit reached (" + options.enumerationLimit() + ")");
+                    }
+                }
+            }
         }
     }
 
@@ -111,6 +160,7 @@ public final class Main {
         String maxCoversRaw = null;
         String timeBudgetRaw = null;
         String outputPath = null;
+        String limitRaw = null;
         boolean show = false;
 
         for (int i = 1; i < args.length; i++) {
@@ -123,6 +173,7 @@ public final class Main {
                 case "--max-partitions" -> maxPartitionsRaw = nextValue(args, ++i, arg);
                 case "--max-covers" -> maxCoversRaw = nextValue(args, ++i, arg);
                 case "--time-budget-ms" -> timeBudgetRaw = nextValue(args, ++i, arg);
+                case "--limit" -> limitRaw = nextValue(args, ++i, arg);
                 case "--out" -> outputPath = nextValue(args, ++i, arg);
                 case "--show" -> show = true;
                 default -> throw new IllegalArgumentException("Unknown option: " + arg);
@@ -135,20 +186,30 @@ public final class Main {
 
         Set<String> freeVars = parseFreeVariables(freeVarsRaw);
 
-        Mode mode = Mode.DECOMPOSE;
+        Mode mode = Mode.VALIDATE;
         if (modeRaw != null) {
-            try {
-                mode = Mode.valueOf(modeRaw.toUpperCase());
-            } catch (IllegalArgumentException ex) {
-                throw new IllegalArgumentException("Invalid mode: " + modeRaw);
+            String normalized = modeRaw.toLowerCase();
+            switch (normalized) {
+                case "validate" -> mode = Mode.VALIDATE;
+                case "enumerate" -> mode = Mode.ENUMERATE;
+                case "both", "decompose" -> {
+                    mode = Mode.ENUMERATE;
+                    System.err.println("Warning: --mode " + modeRaw + " is deprecated; using --mode enumerate.");
+                }
+                case "partitions" -> {
+                    mode = Mode.VALIDATE;
+                    System.err.println("Warning: --mode " + modeRaw + " is deprecated; using --mode validate.");
+                }
+                default -> throw new IllegalArgumentException("Invalid mode: " + modeRaw);
             }
         }
 
         int maxPartitions = parseInt(maxPartitionsRaw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions");
         int maxCovers = parseInt(maxCoversRaw, DecompositionOptions.defaults().maxCovers(), "--max-covers");
         long timeBudget = parseLong(timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
+        int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
 
-        return new CliOptions(queryText, queryFile, freeVars, mode, maxPartitions, maxCovers, timeBudget, show, outputPath);
+        return new CliOptions(queryText, queryFile, freeVars, mode, maxPartitions, maxCovers, timeBudget, limit, show, outputPath);
     }
 
     private String nextValue(String[] args, int index, String option) {

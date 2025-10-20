@@ -12,12 +12,16 @@ record CliOptions(
         int maxPartitions,
         int maxCovers,
         long timeBudgetMs,
+        int enumerationLimit,
         boolean showVisualization,
         String outputPath) {
 
     CliOptions {
         freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);
         Objects.requireNonNull(mode, "mode");
+        if (enumerationLimit < 0) {
+            throw new IllegalArgumentException("enumerationLimit must be non-negative");
+        }
     }
 
     boolean hasQueryText() {

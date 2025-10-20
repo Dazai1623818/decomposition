@@ -25,10 +25,13 @@ public final class CPQRecognizer {
     public Optional<KnownComponent> recognize(Component component) {
         BitSet edgeBits = component.edgeBits();
         String signature = BitsetUtils.signature(edgeBits, edgeCount);
-        return memo.computeIfAbsent(signature, key -> builder.build(edgeBits));
+        return memo.computeIfAbsent(signature, key -> {
+            List<KnownComponent> options = builder.options(edgeBits);
+            return options.isEmpty() ? Optional.empty() : Optional.of(options.get(0));
+        });
     }
 
     public List<KnownComponent> enumerateAll(Component component) {
-        return builder.enumerateAll(component.edgeBits());
+        return builder.options(component.edgeBits());
     }
 }

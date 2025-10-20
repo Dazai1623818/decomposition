@@ -7,23 +7,19 @@ public record DecompositionOptions(
         Mode mode,
         int maxPartitions,
         int maxCovers,
-        long timeBudgetMs) {
+        long timeBudgetMs,
+        int enumerationLimit) {
 
     public static DecompositionOptions defaults() {
-        return new DecompositionOptions(Mode.DECOMPOSE, 10_000, 500, 5_000);
+        return new DecompositionOptions(Mode.VALIDATE, 10_000, 500, 5_000, 100);
     }
 
     public enum Mode {
-        PARTITIONS,
-        DECOMPOSE,
-        BOTH;
+        VALIDATE,
+        ENUMERATE;
 
-        public boolean partitionsEnabled() {
-            return this == PARTITIONS || this == BOTH;
-        }
-
-        public boolean decomposeEnabled() {
-            return this == DECOMPOSE || this == BOTH;
+        public boolean enumerateTuples() {
+            return this == ENUMERATE;
         }
     }
 }

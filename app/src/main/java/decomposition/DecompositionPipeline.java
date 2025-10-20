@@ -1,17 +1,19 @@
 package decomposition;
 
-import decomposition.DecompositionOptions.Mode;
+import decomposition.PartitionEvaluation;
+import decomposition.cpq.ComponentCPQBuilder;
 import decomposition.cpq.ComponentKey;
-import decomposition.cpq.CPQRecognizer;
 import decomposition.cpq.KnownComponent;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
+import decomposition.partitions.PartitionValidator;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.partitions.PartitionFilterSorter;
 import decomposition.partitions.PartitionFilterSorter.FilterResult;
 import decomposition.partitions.PartitionGenerator;
+import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.Timing;
 import java.util.ArrayList;
@@ -19,7 +21,6 @@ import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import dev.roanh.gmark.lang.cq.CQ;
 
@@ -58,67 +59,64 @@ public final class DecompositionPipeline {
 
         if (timeExceeded(effectiveOptions, timing)) {
             terminationReason = "time_budget_exceeded_after_partitioning";
-            return buildResult(extraction, vertices, partitions, filteredPartitions, null,
-                    List.of(), List.of(), null, List.of(), List.of(), diagnostics, timing.elapsedMillis(), terminationReason, effectiveOptions.mode());
+            return buildResult(extraction, vertices, partitions, filteredPartitions,
+                    List.of(), List.of(), null, List.of(), List.of(),
+                    diagnostics, timing.elapsedMillis(), terminationReason);
         }
 
-        Partition winningPartition = null;
-        List<KnownComponent> winningComponents = List.of();
+        ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
+        PartitionValidator validator = new PartitionValidator();
+
         KnownComponent finalComponent = null;
         List<Partition> cpqPartitions = new ArrayList<>();
+        List<PartitionEvaluation> partitionEvaluations = new ArrayList<>();
         List<KnownComponent> globalCatalogue = List.of();
 
-        if (effectiveOptions.mode().decomposeEnabled()) {
-            CPQRecognizer recognizer = new CPQRecognizer(edges);
-
-            int partitionIndex = 0;
-            for (Partition partition : filteredPartitions) {
-                partitionIndex++;
-                List<KnownComponent> recognized = new ArrayList<>();
-                boolean allRecognized = true;
+        int partitionIndex = 0;
+        for (Partition partition : filteredPartitions) {
+            partitionIndex++;
+            boolean valid = validator.isValidCPQDecomposition(partition, builder);
+            if (valid) {
+                cpqPartitions.add(partition);
+                List<Integer> optionCounts = new ArrayList<>();
                 int componentIndex = 0;
                 for (Component component : partition.components()) {
                     componentIndex++;
-                    Optional<KnownComponent> recognizedOpt = recognizer.recognize(component);
-                    if (recognizedOpt.isEmpty()) {
-                        diagnostics.add("Partition#" + partitionIndex + " skipped: component #" + componentIndex + " not recognized");
-                        allRecognized = false;
-                        break;
-                    }
-                    recognized.add(recognizedOpt.get());
-                }
-
-                if (allRecognized) {
-                    cpqPartitions.add(partition);
-                    for (KnownComponent kc : recognized) {
+                    BitSet componentBits = component.edgeBits();
+                    List<KnownComponent> optionsForComponent = builder.options(componentBits);
+                    optionCounts.add(optionsForComponent.size());
+                    for (KnownComponent kc : optionsForComponent) {
                         recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
                     }
-                    if (winningPartition == null) {
-                        winningPartition = partition;
-                        winningComponents = List.copyOf(recognized);
+                }
+                List<List<KnownComponent>> tuples = effectiveOptions.mode().enumerateTuples()
+                        ? validator.enumerateDecompositions(partition, builder, effectiveOptions.enumerationLimit())
+                        : List.of();
+                partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
+            } else {
+                int componentIndex = 0;
+                for (Component component : partition.components()) {
+                    componentIndex++;
+                    BitSet componentBits = component.edgeBits();
+                    List<KnownComponent> optionsForComponent = builder.options(componentBits);
+                    if (optionsForComponent.isEmpty()) {
+                        String signature = BitsetUtils.signature(componentBits, edgeCount);
+                        diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
+                                + " rejected: no CPQ candidates for bits " + signature);
                     }
                 }
-
-                if (timeExceeded(effectiveOptions, timing)) {
-                    terminationReason = "time_budget_exceeded_during_recognition";
-                    break;
-                }
             }
 
-            if (winningPartition != null) {
-                BitSet globalBits = new BitSet(edgeCount);
-                globalBits.set(0, edgeCount);
-                Component whole = new Component(globalBits, GraphUtils.vertices(globalBits, edges));
-                finalComponent = recognizer.recognize(whole).orElse(null);
-                globalCatalogue = recognizer.enumerateAll(whole);
-            } else {
-                BitSet globalBits = new BitSet(edgeCount);
-                globalBits.set(0, edgeCount);
-                Component whole = new Component(globalBits, GraphUtils.vertices(globalBits, edges));
-                globalCatalogue = recognizer.enumerateAll(whole);
+            if (timeExceeded(effectiveOptions, timing)) {
+                terminationReason = "time_budget_exceeded_during_validation";
+                break;
             }
-        } else {
-            globalCatalogue = List.of();
+        }
+
+        if (terminationReason == null) {
+            List<KnownComponent> globalCandidates = builder.options(fullBits);
+            globalCatalogue = globalCandidates;
+            finalComponent = globalCandidates.isEmpty() ? null : globalCandidates.get(0);
         }
 
         long elapsed = timing.elapsedMillis();
@@ -126,29 +124,25 @@ public final class DecompositionPipeline {
             terminationReason = "time_budget_exceeded";
         }
 
+        List<KnownComponent> recognizedCatalogue = new ArrayList<>(recognizedCatalogueMap.values());
+
         return buildResult(extraction, vertices, partitions, filteredPartitions,
-                winningPartition, winningComponents, new ArrayList<>(recognizedCatalogueMap.values()),
-                finalComponent, cpqPartitions, globalCatalogue,
-                diagnostics, elapsed, terminationReason, effectiveOptions.mode());
+                cpqPartitions, recognizedCatalogue, finalComponent, globalCatalogue,
+                partitionEvaluations, diagnostics, elapsed, terminationReason);
     }
 
     private DecompositionResult buildResult(ExtractionResult extraction,
                                             Set<String> vertices,
                                             List<Partition> partitions,
                                             List<Partition> filteredPartitions,
-                                            Partition winningPartition,
-                                            List<KnownComponent> winningComponents,
+                                            List<Partition> cpqPartitions,
                                             List<KnownComponent> recognizedCatalogue,
                                             KnownComponent finalComponent,
-                                            List<Partition> cpqPartitions,
                                             List<KnownComponent> globalCatalogue,
+                                            List<PartitionEvaluation> partitionEvaluations,
                                             List<String> diagnostics,
                                             long elapsedMillis,
-                                            String terminationReason,
-                                            Mode mode) {
-        List<Partition> partitionsForResult = mode.partitionsEnabled()
-                ? filteredPartitions
-                : List.of();
+                                            String terminationReason) {
         return new DecompositionResult(
                 extraction.edges(),
                 extraction.freeVariables(),
@@ -156,13 +150,12 @@ public final class DecompositionPipeline {
                 partitions.size(),
                 filteredPartitions.size(),
                 partitions,
-                partitionsForResult,
-                winningPartition,
-                cpqPartitions,
-                winningComponents != null ? winningComponents : List.of(),
+                filteredPartitions,
+                cpqPartitions != null ? cpqPartitions : List.of(),
                 recognizedCatalogue != null ? recognizedCatalogue : List.of(),
                 finalComponent,
                 globalCatalogue != null ? globalCatalogue : List.of(),
+                partitionEvaluations != null ? partitionEvaluations : List.of(),
                 diagnostics,
                 elapsedMillis,
                 terminationReason);

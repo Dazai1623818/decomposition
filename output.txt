@@ -1,0 +1,5294 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Path for java installation '/usr/lib/jvm/openjdk-17' (Common Linux Locations) does not contain a java executable
+Path for java installation '/usr/lib/jvm/openjdk-11' (Common Linux Locations) does not contain a java executable
+> Task :app:compileJava UP-TO-DATE
+> Task :app:processResources NO-SOURCE
+> Task :app:classes UP-TO-DATE
+
+> Task :app:run
+Partitions considered: 12
+Valid partitions: 12
+Partition #1:
+  Component #1 [[0]] options=1
+  Component #2 [[1]] options=1
+  Component #3 [[2]] options=1
+  Component #4 [[3]] options=1
+  Component #5 [[4]] options=1
+  Tuples (showing 1):
+    #1: r1 (A→B) | r2 (B→C) | r3 (C→D) | r4 (D→A) | r5 (A→C)
+Partition #2:
+  Component #1 [[0]] options=1
+  Component #2 [[1]] options=1
+  Component #3 [[2,3]] options=1
+  Component #4 [[4]] options=1
+  Tuples (showing 1):
+    #1: r1 (A→B) | r2 (B→C) | (r3◦r4) (C→A) | r5 (A→C)
+Partition #3:
+  Component #1 [[0,1]] options=1
+  Component #2 [[2]] options=1
+  Component #3 [[3]] options=1
+  Component #4 [[4]] options=1
+  Tuples (showing 1):
+    #1: (r1◦r2) (A→C) | r3 (C→D) | r4 (D→A) | r5 (A→C)
+Partition #4:
+  Component #1 [[0,1]] options=1
+  Component #2 [[2,3]] options=1
+  Component #3 [[4]] options=1
+  Tuples (showing 1):
+    #1: (r1◦r2) (A→C) | (r3◦r4) (C→A) | r5 (A→C)
+Partition #5:
+  Component #1 [[0,1]] options=1
+  Component #2 [[2,3,4]] options=12
+  Tuples (showing 12):
+    #1: (r1◦r2) (A→C) | (((r5◦r3)◦r4) ∩ id) (A→A)
+    #2: (r1◦r2) (A→C) | ((r5◦(r3◦r4)) ∩ id) (A→A)
+    #3: (r1◦r2) (A→C) | ((r5◦r3)◦r4) (A→A)
+    #4: (r1◦r2) (A→C) | (r5◦(r3◦r4)) (A→A)
+    #5: (r1◦r2) (A→C) | (((r3◦r4)◦r5) ∩ id) (C→C)
+    #6: (r1◦r2) (A→C) | ((r3◦(r4◦r5)) ∩ id) (C→C)
+    #7: (r1◦r2) (A→C) | ((r3◦r4)◦r5) (C→C)
+    #8: (r1◦r2) (A→C) | (r3◦(r4◦r5)) (C→C)
+    #9: (r1◦r2) (A→C) | (((r4◦r5)◦r3) ∩ id) (D→D)
+    #10: (r1◦r2) (A→C) | ((r4◦(r5◦r3)) ∩ id) (D→D)
+    #11: (r1◦r2) (A→C) | ((r4◦r5)◦r3) (D→D)
+    #12: (r1◦r2) (A→C) | (r4◦(r5◦r3)) (D→D)
+Partition #6:
+  Component #1 [[0,1,4]] options=2
+  Component #2 [[2,3]] options=1
+  Tuples (showing 2):
+    #1: ((r1◦r2) ∩ r5) (A→C) | (r3◦r4) (C→A)
+    #2: (r5 ∩ (r1◦r2)) (A→C) | (r3◦r4) (C→A)
+Partition #7:
+  Component #1 [[0]] options=1
+  Component #2 [[1]] options=1
+  Component #3 [[2,3,4]] options=12
+  Tuples (showing 12):
+    #1: r1 (A→B) | r2 (B→C) | (((r5◦r3)◦r4) ∩ id) (A→A)
+    #2: r1 (A→B) | r2 (B→C) | ((r5◦(r3◦r4)) ∩ id) (A→A)
+    #3: r1 (A→B) | r2 (B→C) | ((r5◦r3)◦r4) (A→A)
+    #4: r1 (A→B) | r2 (B→C) | (r5◦(r3◦r4)) (A→A)
+    #5: r1 (A→B) | r2 (B→C) | (((r3◦r4)◦r5) ∩ id) (C→C)
+    #6: r1 (A→B) | r2 (B→C) | ((r3◦(r4◦r5)) ∩ id) (C→C)
+    #7: r1 (A→B) | r2 (B→C) | ((r3◦r4)◦r5) (C→C)
+    #8: r1 (A→B) | r2 (B→C) | (r3◦(r4◦r5)) (C→C)
+    #9: r1 (A→B) | r2 (B→C) | (((r4◦r5)◦r3) ∩ id) (D→D)
+    #10: r1 (A→B) | r2 (B→C) | ((r4◦(r5◦r3)) ∩ id) (D→D)
+    #11: r1 (A→B) | r2 (B→C) | ((r4◦r5)◦r3) (D→D)
+    #12: r1 (A→B) | r2 (B→C) | (r4◦(r5◦r3)) (D→D)
+Partition #8:
+  Component #1 [[0,1,4]] options=2
+  Component #2 [[2]] options=1
+  Component #3 [[3]] options=1
+  Tuples (showing 2):
+    #1: ((r1◦r2) ∩ r5) (A→C) | r3 (C→D) | r4 (D→A)
+    #2: (r5 ∩ (r1◦r2)) (A→C) | r3 (C→D) | r4 (D→A)
+Partition #9:
+  Component #1 [[0]] options=1
+  Component #2 [[1,2,3,4]] options=7
+  Tuples (showing 7):
+    #1: r1 (A→B) | (((r2◦r3)◦r4)◦r5) (B→C)
+    #2: r1 (A→B) | ((r2◦(r3◦r4))◦r5) (B→C)
+    #3: r1 (A→B) | ((r2◦r3)◦(r4◦r5)) (B→C)
+    #4: r1 (A→B) | (r2◦(((r3◦r4)◦r5) ∩ id)) (B→C)
+    #5: r1 (A→B) | (r2◦((r3◦(r4◦r5)) ∩ id)) (B→C)
+    #6: r1 (A→B) | (r2◦((r3◦r4)◦r5)) (B→C)
+    #7: r1 (A→B) | (r2◦(r3◦(r4◦r5))) (B→C)
+Partition #10:
+  Component #1 [[0,1,2,3]] options=40
+  Component #2 [[4]] options=1
+  Tuples (showing 40):
+    #1: ((((r1◦r2)◦r3)◦r4) ∩ id) (A→A) | r5 (A→C)
+    #2: (((r1◦(r2◦r3))◦r4) ∩ id) (A→A) | r5 (A→C)
+    #3: (((r1◦r2)◦(r3◦r4)) ∩ id) (A→A) | r5 (A→C)
+    #4: (((r1◦r2)◦r3)◦r4) (A→A) | r5 (A→C)
+    #5: ((r1◦((r2◦r3)◦r4)) ∩ id) (A→A) | r5 (A→C)
+    #6: ((r1◦(r2◦(r3◦r4))) ∩ id) (A→A) | r5 (A→C)
+    #7: ((r1◦(r2◦r3))◦r4) (A→A) | r5 (A→C)
+    #8: ((r1◦r2)◦(r3◦r4)) (A→A) | r5 (A→C)
+    #9: (r1◦((r2◦r3)◦r4)) (A→A) | r5 (A→C)
+    #10: (r1◦(r2◦(r3◦r4))) (A→A) | r5 (A→C)
+    #11: ((((r2◦r3)◦r4)◦r1) ∩ id) (B→B) | r5 (A→C)
+    #12: (((r2◦(r3◦r4))◦r1) ∩ id) (B→B) | r5 (A→C)
+    #13: (((r2◦r3)◦(r4◦r1)) ∩ id) (B→B) | r5 (A→C)
+    #14: (((r2◦r3)◦r4)◦r1) (B→B) | r5 (A→C)
+    #15: ((r2◦((r3◦r4)◦r1)) ∩ id) (B→B) | r5 (A→C)
+    #16: ((r2◦(r3◦(r4◦r1))) ∩ id) (B→B) | r5 (A→C)
+    #17: ((r2◦(r3◦r4))◦r1) (B→B) | r5 (A→C)
+    #18: ((r2◦r3)◦(r4◦r1)) (B→B) | r5 (A→C)
+    #19: (r2◦((r3◦r4)◦r1)) (B→B) | r5 (A→C)
+    #20: (r2◦(r3◦(r4◦r1))) (B→B) | r5 (A→C)
+    #21: ((((r3◦r4)◦r1)◦r2) ∩ id) (C→C) | r5 (A→C)
+    #22: (((r3◦(r4◦r1))◦r2) ∩ id) (C→C) | r5 (A→C)
+    #23: (((r3◦r4)◦(r1◦r2)) ∩ id) (C→C) | r5 (A→C)
+    #24: (((r3◦r4)◦r1)◦r2) (C→C) | r5 (A→C)
+    #25: ((r3◦((r4◦r1)◦r2)) ∩ id) (C→C) | r5 (A→C)
+    #26: ((r3◦(r4◦(r1◦r2))) ∩ id) (C→C) | r5 (A→C)
+    #27: ((r3◦(r4◦r1))◦r2) (C→C) | r5 (A→C)
+    #28: ((r3◦r4)◦(r1◦r2)) (C→C) | r5 (A→C)
+    #29: (r3◦((r4◦r1)◦r2)) (C→C) | r5 (A→C)
+    #30: (r3◦(r4◦(r1◦r2))) (C→C) | r5 (A→C)
+    #31: ((((r4◦r1)◦r2)◦r3) ∩ id) (D→D) | r5 (A→C)
+    #32: (((r4◦(r1◦r2))◦r3) ∩ id) (D→D) | r5 (A→C)
+    #33: (((r4◦r1)◦(r2◦r3)) ∩ id) (D→D) | r5 (A→C)
+    #34: (((r4◦r1)◦r2)◦r3) (D→D) | r5 (A→C)
+    #35: ((r4◦((r1◦r2)◦r3)) ∩ id) (D→D) | r5 (A→C)
+    #36: ((r4◦(r1◦(r2◦r3))) ∩ id) (D→D) | r5 (A→C)
+    #37: ((r4◦(r1◦r2))◦r3) (D→D) | r5 (A→C)
+    #38: ((r4◦r1)◦(r2◦r3)) (D→D) | r5 (A→C)
+    #39: (r4◦((r1◦r2)◦r3)) (D→D) | r5 (A→C)
+    #40: (r4◦(r1◦(r2◦r3))) (D→D) | r5 (A→C)
+Partition #11:
+  Component #1 [[0,1,2,4]] options=2
+  Component #2 [[3]] options=1
+  Tuples (showing 2):
+    #1: (((r1◦r2) ∩ r5)◦r3) (A→D) | r4 (D→A)
+    #2: ((r5 ∩ (r1◦r2))◦r3) (A→D) | r4 (D→A)
+Partition #12:
+  Component #1 [[0,1,2,3,4]] options=70
+  Tuples (showing 70):
+    #1: (((((r1◦r2) ∩ r5)◦r3)◦r4) ∩ id) (A→A)
+    #2: ((((r1◦r2) ∩ r5)◦(r3◦r4)) ∩ id) (A→A)
+    #3: ((((r1◦r2) ∩ r5)◦r3)◦r4) (A→A)
+    #4: ((((r5 ∩ (r1◦r2))◦r3)◦r4) ∩ id) (A→A)
+    #5: (((r1◦r2) ∩ r5)◦(r3◦r4)) (A→A)
+    #6: (((r5 ∩ (r1◦r2))◦(r3◦r4)) ∩ id) (A→A)
+    #7: (((r5 ∩ (r1◦r2))◦r3)◦r4) (A→A)
+    #8: ((r5 ∩ (r1◦r2))◦(r3◦r4)) (A→A)
+    #9: (((((r1◦r2)◦r3)◦r4) ∩ id)◦r5) (A→C)
+    #10: (((((r5◦r3)◦r4) ∩ id)◦r1)◦r2) (A→C)
+    #11: ((((r1◦(r2◦r3))◦r4) ∩ id)◦r5) (A→C)
+    #12: ((((r1◦r2)◦(r3◦r4)) ∩ id)◦r5) (A→C)
+    #13: ((((r1◦r2)◦r3)◦r4)◦r5) (A→C)
+    #14: ((((r5◦(r3◦r4)) ∩ id)◦r1)◦r2) (A→C)
+    #15: ((((r5◦r3)◦r4) ∩ id)◦(r1◦r2)) (A→C)
+    #16: ((((r5◦r3)◦r4)◦r1)◦r2) (A→C)
+    #17: (((r1◦((r2◦r3)◦r4)) ∩ id)◦r5) (A→C)
+    #18: (((r1◦(r2◦(r3◦r4))) ∩ id)◦r5) (A→C)
+    #19: (((r1◦(r2◦r3))◦r4)◦r5) (A→C)
+    #20: (((r1◦r2)◦(r3◦r4))◦r5) (A→C)
+    #21: (((r1◦r2)◦r3)◦(r4◦r5)) (A→C)
+    #22: (((r5◦(r3◦r4)) ∩ id)◦(r1◦r2)) (A→C)
+    #23: (((r5◦(r3◦r4))◦r1)◦r2) (A→C)
+    #24: (((r5◦r3)◦(r4◦r1))◦r2) (A→C)
+    #25: (((r5◦r3)◦r4)◦(r1◦r2)) (A→C)
+    #26: ((r1◦((r2◦r3)◦r4))◦r5) (A→C)
+    #27: ((r1◦(r2◦(r3◦r4)))◦r5) (A→C)
+    #28: ((r1◦(r2◦r3))◦(r4◦r5)) (A→C)
+    #29: ((r1◦r2)◦(((r3◦r4)◦r5) ∩ id)) (A→C)
+    #30: ((r1◦r2)◦((r3◦(r4◦r5)) ∩ id)) (A→C)
+    #31: ((r1◦r2)◦((r3◦r4)◦r5)) (A→C)
+    #32: ((r1◦r2)◦(r3◦(r4◦r5))) (A→C)
+    #33: ((r5◦((r3◦r4)◦r1))◦r2) (A→C)
+    #34: ((r5◦(r3◦(r4◦r1)))◦r2) (A→C)
+    #35: ((r5◦(r3◦r4))◦(r1◦r2)) (A→C)
+    #36: ((r5◦r3)◦((r4◦r1)◦r2)) (A→C)
+    #37: ((r5◦r3)◦(r4◦(r1◦r2))) (A→C)
+    #38: (r1◦(((r2◦r3)◦r4)◦r5)) (A→C)
+    #39: (r1◦((r2◦(r3◦r4))◦r5)) (A→C)
+    #40: (r1◦((r2◦r3)◦(r4◦r5))) (A→C)
+    #41: (r1◦(r2◦(((r3◦r4)◦r5) ∩ id))) (A→C)
+    #42: (r1◦(r2◦((r3◦(r4◦r5)) ∩ id))) (A→C)
+    #43: (r1◦(r2◦((r3◦r4)◦r5))) (A→C)
+    #44: (r1◦(r2◦(r3◦(r4◦r5)))) (A→C)
+    #45: (r5◦((((r3◦r4)◦r1)◦r2) ∩ id)) (A→C)
+    #46: (r5◦(((r3◦(r4◦r1))◦r2) ∩ id)) (A→C)
+    #47: (r5◦(((r3◦r4)◦(r1◦r2)) ∩ id)) (A→C)
+    #48: (r5◦(((r3◦r4)◦r1)◦r2)) (A→C)
+    #49: (r5◦((r3◦((r4◦r1)◦r2)) ∩ id)) (A→C)
+    #50: (r5◦((r3◦(r4◦(r1◦r2))) ∩ id)) (A→C)
+    #51: (r5◦((r3◦(r4◦r1))◦r2)) (A→C)
+    #52: (r5◦((r3◦r4)◦(r1◦r2))) (A→C)
+    #53: (r5◦(r3◦((r4◦r1)◦r2))) (A→C)
+    #54: (r5◦(r3◦(r4◦(r1◦r2)))) (A→C)
+    #55: (((r3◦r4)◦((r1◦r2) ∩ r5)) ∩ id) (C→C)
+    #56: (((r3◦r4)◦(r5 ∩ (r1◦r2))) ∩ id) (C→C)
+    #57: ((r3◦(r4◦((r1◦r2) ∩ r5))) ∩ id) (C→C)
+    #58: ((r3◦(r4◦(r5 ∩ (r1◦r2)))) ∩ id) (C→C)
+    #59: ((r3◦r4)◦((r1◦r2) ∩ r5)) (C→C)
+    #60: ((r3◦r4)◦(r5 ∩ (r1◦r2))) (C→C)
+    #61: (r3◦(r4◦((r1◦r2) ∩ r5))) (C→C)
+    #62: (r3◦(r4◦(r5 ∩ (r1◦r2)))) (C→C)
+    #63: (((r4◦((r1◦r2) ∩ r5))◦r3) ∩ id) (D→D)
+    #64: (((r4◦(r5 ∩ (r1◦r2)))◦r3) ∩ id) (D→D)
+    #65: ((r4◦(((r1◦r2) ∩ r5)◦r3)) ∩ id) (D→D)
+    #66: ((r4◦((r1◦r2) ∩ r5))◦r3) (D→D)
+    #67: ((r4◦((r5 ∩ (r1◦r2))◦r3)) ∩ id) (D→D)
+    #68: ((r4◦(r5 ∩ (r1◦r2)))◦r3) (D→D)
+    #69: (r4◦(((r1◦r2) ∩ r5)◦r3)) (D→D)
+    #70: (r4◦((r5 ∩ (r1◦r2))◦r3)) (D→D)
+{
+  "meta": {
+    "version": "1.0.0",
+    "time_ms": 153,
+    "edge_count": 5,
+    "vertex_count": 4,
+    "free_vars": [
+      "A"
+    ]
+  },
+  "candidates": {
+    "partitions_considered": 43,
+    "filtered": 12,
+    "sorting_metric": "L_then_M",
+    "valid": 12
+  },
+  "component_cpq_catalog": [
+    {
+      "edges": [
+        0
+      ],
+      "source": "A",
+      "target": "B",
+      "rule": "r1",
+      "derivation": "Forward atom on label \u0027r1\u0027 (A→B)"
+    },
+    {
+      "edges": [
+        1
+      ],
+      "source": "B",
+      "target": "C",
+      "rule": "r2",
+      "derivation": "Forward atom on label \u0027r2\u0027 (B→C)"
+    },
+    {
+      "edges": [
+        2
+      ],
+      "source": "C",
+      "target": "D",
+      "rule": "r3",
+      "derivation": "Forward atom on label \u0027r3\u0027 (C→D)"
+    },
+    {
+      "edges": [
+        3
+      ],
+      "source": "D",
+      "target": "A",
+      "rule": "r4",
+      "derivation": "Forward atom on label \u0027r4\u0027 (D→A)"
+    },
+    {
+      "edges": [
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "r5",
+      "derivation": "Forward atom on label \u0027r5\u0027 (A→C)"
+    },
+    {
+      "edges": [
+        2,
+        3
+      ],
+      "source": "C",
+      "target": "A",
+      "rule": "(r3◦r4)",
+      "derivation": "Concatenation: [r3] then [r4] via D"
+    },
+    {
+      "edges": [
+        0,
+        1
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦r2)",
+      "derivation": "Concatenation: [r1] then [r2] via B"
+    },
+    {
+      "edges": [
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((r5◦r3)◦r4) ∩ id)",
+      "derivation": "Anchor with id: [((r5◦r3)◦r4)] ∩ id at A"
+    },
+    {
+      "edges": [
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(((r3◦r4)◦r5) ∩ id)",
+      "derivation": "Anchor with id: [((r3◦r4)◦r5)] ∩ id at C"
+    },
+    {
+      "edges": [
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(((r4◦r5)◦r3) ∩ id)",
+      "derivation": "Anchor with id: [((r4◦r5)◦r3)] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦r2) ∩ r5)",
+      "derivation": "Intersection: [(r1◦r2)] ∩ [r5] at A→C"
+    },
+    {
+      "edges": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "B",
+      "target": "C",
+      "rule": "(((r2◦r3)◦r4)◦r5)",
+      "derivation": "Concatenation: [((r2◦r3)◦r4)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "((((r1◦r2)◦r3)◦r4) ∩ id)",
+      "derivation": "Anchor with id: [(((r1◦r2)◦r3)◦r4)] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "source": "B",
+      "target": "B",
+      "rule": "((((r2◦r3)◦r4)◦r1) ∩ id)",
+      "derivation": "Anchor with id: [(((r2◦r3)◦r4)◦r1)] ∩ id at B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "((((r3◦r4)◦r1)◦r2) ∩ id)",
+      "derivation": "Anchor with id: [(((r3◦r4)◦r1)◦r2)] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "((((r4◦r1)◦r2)◦r3) ∩ id)",
+      "derivation": "Anchor with id: [(((r4◦r1)◦r2)◦r3)] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        4
+      ],
+      "source": "A",
+      "target": "D",
+      "rule": "(((r1◦r2) ∩ r5)◦r3)",
+      "derivation": "Concatenation: [((r1◦r2) ∩ r5)] then [r3] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((((r1◦r2) ∩ r5)◦r3)◦r4) ∩ id)",
+      "derivation": "Anchor with id: [((((r1◦r2) ∩ r5)◦r3)◦r4)] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((((r1◦r2)◦r3)◦r4) ∩ id)◦r5)",
+      "derivation": "Concatenation: [((((r1◦r2)◦r3)◦r4) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(((r3◦r4)◦((r1◦r2) ∩ r5)) ∩ id)",
+      "derivation": "Anchor with id: [((r3◦r4)◦((r1◦r2) ∩ r5))] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(((r4◦((r1◦r2) ∩ r5))◦r3) ∩ id)",
+      "derivation": "Anchor with id: [((r4◦((r1◦r2) ∩ r5))◦r3)] ∩ id at D"
+    }
+  ],
+  "final_rule": "(((((r1◦r2) ∩ r5)◦r3)◦r4) ∩ id)",
+  "final_rule_derivation": "Anchor with id: [((((r1◦r2) ∩ r5)◦r3)◦r4)] ∩ id at A",
+  "global_cpq_catalog": [
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((((r1◦r2) ∩ r5)◦r3)◦r4) ∩ id)",
+      "derivation": "Anchor with id: [((((r1◦r2) ∩ r5)◦r3)◦r4)] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "((((r1◦r2) ∩ r5)◦(r3◦r4)) ∩ id)",
+      "derivation": "Anchor with id: [(((r1◦r2) ∩ r5)◦(r3◦r4))] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "((((r1◦r2) ∩ r5)◦r3)◦r4)",
+      "derivation": "Concatenation: [(((r1◦r2) ∩ r5)◦r3)] then [r4] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "((((r5 ∩ (r1◦r2))◦r3)◦r4) ∩ id)",
+      "derivation": "Anchor with id: [(((r5 ∩ (r1◦r2))◦r3)◦r4)] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((r1◦r2) ∩ r5)◦(r3◦r4))",
+      "derivation": "Concatenation: [((r1◦r2) ∩ r5)] then [(r3◦r4)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((r5 ∩ (r1◦r2))◦(r3◦r4)) ∩ id)",
+      "derivation": "Anchor with id: [((r5 ∩ (r1◦r2))◦(r3◦r4))] ∩ id at A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "(((r5 ∩ (r1◦r2))◦r3)◦r4)",
+      "derivation": "Concatenation: [((r5 ∩ (r1◦r2))◦r3)] then [r4] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "A",
+      "rule": "((r5 ∩ (r1◦r2))◦(r3◦r4))",
+      "derivation": "Concatenation: [(r5 ∩ (r1◦r2))] then [(r3◦r4)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((((r1◦r2)◦r3)◦r4) ∩ id)◦r5)",
+      "derivation": "Concatenation: [((((r1◦r2)◦r3)◦r4) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((((r5◦r3)◦r4) ∩ id)◦r1)◦r2)",
+      "derivation": "Concatenation: [((((r5◦r3)◦r4) ∩ id)◦r1)] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r1◦(r2◦r3))◦r4) ∩ id)◦r5)",
+      "derivation": "Concatenation: [(((r1◦(r2◦r3))◦r4) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r1◦r2)◦(r3◦r4)) ∩ id)◦r5)",
+      "derivation": "Concatenation: [(((r1◦r2)◦(r3◦r4)) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r1◦r2)◦r3)◦r4)◦r5)",
+      "derivation": "Concatenation: [(((r1◦r2)◦r3)◦r4)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r5◦(r3◦r4)) ∩ id)◦r1)◦r2)",
+      "derivation": "Concatenation: [(((r5◦(r3◦r4)) ∩ id)◦r1)] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r5◦r3)◦r4) ∩ id)◦(r1◦r2))",
+      "derivation": "Concatenation: [(((r5◦r3)◦r4) ∩ id)] then [(r1◦r2)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((((r5◦r3)◦r4)◦r1)◦r2)",
+      "derivation": "Concatenation: [(((r5◦r3)◦r4)◦r1)] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r1◦((r2◦r3)◦r4)) ∩ id)◦r5)",
+      "derivation": "Concatenation: [((r1◦((r2◦r3)◦r4)) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r1◦(r2◦(r3◦r4))) ∩ id)◦r5)",
+      "derivation": "Concatenation: [((r1◦(r2◦(r3◦r4))) ∩ id)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r1◦(r2◦r3))◦r4)◦r5)",
+      "derivation": "Concatenation: [((r1◦(r2◦r3))◦r4)] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r1◦r2)◦(r3◦r4))◦r5)",
+      "derivation": "Concatenation: [((r1◦r2)◦(r3◦r4))] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r1◦r2)◦r3)◦(r4◦r5))",
+      "derivation": "Concatenation: [((r1◦r2)◦r3)] then [(r4◦r5)] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r5◦(r3◦r4)) ∩ id)◦(r1◦r2))",
+      "derivation": "Concatenation: [((r5◦(r3◦r4)) ∩ id)] then [(r1◦r2)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r5◦(r3◦r4))◦r1)◦r2)",
+      "derivation": "Concatenation: [((r5◦(r3◦r4))◦r1)] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r5◦r3)◦(r4◦r1))◦r2)",
+      "derivation": "Concatenation: [((r5◦r3)◦(r4◦r1))] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(((r5◦r3)◦r4)◦(r1◦r2))",
+      "derivation": "Concatenation: [((r5◦r3)◦r4)] then [(r1◦r2)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦((r2◦r3)◦r4))◦r5)",
+      "derivation": "Concatenation: [(r1◦((r2◦r3)◦r4))] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦(r2◦(r3◦r4)))◦r5)",
+      "derivation": "Concatenation: [(r1◦(r2◦(r3◦r4)))] then [r5] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦(r2◦r3))◦(r4◦r5))",
+      "derivation": "Concatenation: [(r1◦(r2◦r3))] then [(r4◦r5)] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦r2)◦(((r3◦r4)◦r5) ∩ id))",
+      "derivation": "Concatenation: [(r1◦r2)] then [(((r3◦r4)◦r5) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦r2)◦((r3◦(r4◦r5)) ∩ id))",
+      "derivation": "Concatenation: [(r1◦r2)] then [((r3◦(r4◦r5)) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦r2)◦((r3◦r4)◦r5))",
+      "derivation": "Concatenation: [(r1◦r2)] then [((r3◦r4)◦r5)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r1◦r2)◦(r3◦(r4◦r5)))",
+      "derivation": "Concatenation: [(r1◦r2)] then [(r3◦(r4◦r5))] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r5◦((r3◦r4)◦r1))◦r2)",
+      "derivation": "Concatenation: [(r5◦((r3◦r4)◦r1))] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r5◦(r3◦(r4◦r1)))◦r2)",
+      "derivation": "Concatenation: [(r5◦(r3◦(r4◦r1)))] then [r2] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r5◦(r3◦r4))◦(r1◦r2))",
+      "derivation": "Concatenation: [(r5◦(r3◦r4))] then [(r1◦r2)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r5◦r3)◦((r4◦r1)◦r2))",
+      "derivation": "Concatenation: [(r5◦r3)] then [((r4◦r1)◦r2)] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "((r5◦r3)◦(r4◦(r1◦r2)))",
+      "derivation": "Concatenation: [(r5◦r3)] then [(r4◦(r1◦r2))] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦(((r2◦r3)◦r4)◦r5))",
+      "derivation": "Concatenation: [r1] then [(((r2◦r3)◦r4)◦r5)] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦((r2◦(r3◦r4))◦r5))",
+      "derivation": "Concatenation: [r1] then [((r2◦(r3◦r4))◦r5)] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦((r2◦r3)◦(r4◦r5)))",
+      "derivation": "Concatenation: [r1] then [((r2◦r3)◦(r4◦r5))] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦(r2◦(((r3◦r4)◦r5) ∩ id)))",
+      "derivation": "Concatenation: [r1] then [(r2◦(((r3◦r4)◦r5) ∩ id))] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦(r2◦((r3◦(r4◦r5)) ∩ id)))",
+      "derivation": "Concatenation: [r1] then [(r2◦((r3◦(r4◦r5)) ∩ id))] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦(r2◦((r3◦r4)◦r5)))",
+      "derivation": "Concatenation: [r1] then [(r2◦((r3◦r4)◦r5))] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r1◦(r2◦(r3◦(r4◦r5))))",
+      "derivation": "Concatenation: [r1] then [(r2◦(r3◦(r4◦r5)))] via B"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦((((r3◦r4)◦r1)◦r2) ∩ id))",
+      "derivation": "Concatenation: [r5] then [((((r3◦r4)◦r1)◦r2) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦(((r3◦(r4◦r1))◦r2) ∩ id))",
+      "derivation": "Concatenation: [r5] then [(((r3◦(r4◦r1))◦r2) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦(((r3◦r4)◦(r1◦r2)) ∩ id))",
+      "derivation": "Concatenation: [r5] then [(((r3◦r4)◦(r1◦r2)) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦(((r3◦r4)◦r1)◦r2))",
+      "derivation": "Concatenation: [r5] then [(((r3◦r4)◦r1)◦r2)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦((r3◦((r4◦r1)◦r2)) ∩ id))",
+      "derivation": "Concatenation: [r5] then [((r3◦((r4◦r1)◦r2)) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦((r3◦(r4◦(r1◦r2))) ∩ id))",
+      "derivation": "Concatenation: [r5] then [((r3◦(r4◦(r1◦r2))) ∩ id)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦((r3◦(r4◦r1))◦r2))",
+      "derivation": "Concatenation: [r5] then [((r3◦(r4◦r1))◦r2)] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦((r3◦r4)◦(r1◦r2)))",
+      "derivation": "Concatenation: [r5] then [((r3◦r4)◦(r1◦r2))] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦(r3◦((r4◦r1)◦r2)))",
+      "derivation": "Concatenation: [r5] then [(r3◦((r4◦r1)◦r2))] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "A",
+      "target": "C",
+      "rule": "(r5◦(r3◦(r4◦(r1◦r2))))",
+      "derivation": "Concatenation: [r5] then [(r3◦(r4◦(r1◦r2)))] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(((r3◦r4)◦((r1◦r2) ∩ r5)) ∩ id)",
+      "derivation": "Anchor with id: [((r3◦r4)◦((r1◦r2) ∩ r5))] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(((r3◦r4)◦(r5 ∩ (r1◦r2))) ∩ id)",
+      "derivation": "Anchor with id: [((r3◦r4)◦(r5 ∩ (r1◦r2)))] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "((r3◦(r4◦((r1◦r2) ∩ r5))) ∩ id)",
+      "derivation": "Anchor with id: [(r3◦(r4◦((r1◦r2) ∩ r5)))] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "((r3◦(r4◦(r5 ∩ (r1◦r2)))) ∩ id)",
+      "derivation": "Anchor with id: [(r3◦(r4◦(r5 ∩ (r1◦r2))))] ∩ id at C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "((r3◦r4)◦((r1◦r2) ∩ r5))",
+      "derivation": "Concatenation: [(r3◦r4)] then [((r1◦r2) ∩ r5)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "((r3◦r4)◦(r5 ∩ (r1◦r2)))",
+      "derivation": "Concatenation: [(r3◦r4)] then [(r5 ∩ (r1◦r2))] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(r3◦(r4◦((r1◦r2) ∩ r5)))",
+      "derivation": "Concatenation: [r3] then [(r4◦((r1◦r2) ∩ r5))] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "C",
+      "target": "C",
+      "rule": "(r3◦(r4◦(r5 ∩ (r1◦r2))))",
+      "derivation": "Concatenation: [r3] then [(r4◦(r5 ∩ (r1◦r2)))] via D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(((r4◦((r1◦r2) ∩ r5))◦r3) ∩ id)",
+      "derivation": "Anchor with id: [((r4◦((r1◦r2) ∩ r5))◦r3)] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(((r4◦(r5 ∩ (r1◦r2)))◦r3) ∩ id)",
+      "derivation": "Anchor with id: [((r4◦(r5 ∩ (r1◦r2)))◦r3)] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "((r4◦(((r1◦r2) ∩ r5)◦r3)) ∩ id)",
+      "derivation": "Anchor with id: [(r4◦(((r1◦r2) ∩ r5)◦r3))] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "((r4◦((r1◦r2) ∩ r5))◦r3)",
+      "derivation": "Concatenation: [(r4◦((r1◦r2) ∩ r5))] then [r3] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "((r4◦((r5 ∩ (r1◦r2))◦r3)) ∩ id)",
+      "derivation": "Anchor with id: [(r4◦((r5 ∩ (r1◦r2))◦r3))] ∩ id at D"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "((r4◦(r5 ∩ (r1◦r2)))◦r3)",
+      "derivation": "Concatenation: [(r4◦(r5 ∩ (r1◦r2)))] then [r3] via C"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(r4◦(((r1◦r2) ∩ r5)◦r3))",
+      "derivation": "Concatenation: [r4] then [(((r1◦r2) ∩ r5)◦r3)] via A"
+    },
+    {
+      "edges": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source": "D",
+      "target": "D",
+      "rule": "(r4◦((r5 ∩ (r1◦r2))◦r3))",
+      "derivation": "Concatenation: [r4] then [((r5 ∩ (r1◦r2))◦r3)] via A"
+    }
+  ],
+  "diagnostics": [
+    "Partition#2 rejected: component had \u003e2 join nodes",
+    "Partition#5 rejected: component had \u003e2 join nodes",
+    "Partition#6 rejected: component had \u003e2 join nodes",
+    "Partition#7 rejected: component had \u003e2 join nodes",
+    "Partition#8 rejected: component had \u003e2 join nodes",
+    "Partition#10 rejected: component had \u003e2 join nodes",
+    "Partition#11 rejected: component had \u003e2 join nodes",
+    "Partition#12 rejected: component had \u003e2 join nodes",
+    "Partition#13 rejected: component had \u003e2 join nodes",
+    "Partition#15 rejected: component had \u003e2 join nodes",
+    "Partition#18 rejected: component had \u003e2 join nodes",
+    "Partition#19 rejected: component had \u003e2 join nodes",
+    "Partition#20 rejected: component had \u003e2 join nodes",
+    "Partition#24 rejected: component had \u003e2 join nodes",
+    "Partition#25 rejected: component had \u003e2 join nodes",
+    "Partition#26 rejected: free var A not a join node",
+    "Partition#29 rejected: component had \u003e2 join nodes",
+    "Partition#30 rejected: component had \u003e2 join nodes",
+    "Partition#31 rejected: component had \u003e2 join nodes",
+    "Partition#32 rejected: component had \u003e2 join nodes",
+    "Partition#33 rejected: component had \u003e2 join nodes",
+    "Partition#34 rejected: component had \u003e2 join nodes",
+    "Partition#35 rejected: component had \u003e2 join nodes",
+    "Partition#36 rejected: free var A not a join node",
+    "Partition#37 rejected: free var A not a join node",
+    "Partition#38 rejected: free var A not a join node",
+    "Partition#39 rejected: component had \u003e2 join nodes",
+    "Partition#40 rejected: component had \u003e2 join nodes",
+    "Partition#41 rejected: component had \u003e2 join nodes",
+    "Partition#42 rejected: component had \u003e2 join nodes",
+    "Partition#43 rejected: component had \u003e2 join nodes"
+  ],
+  "partitions": [
+    {
+      "L": 1,
+      "M": 5,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 2,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,3",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 5,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    }
+  ],
+  "valid_partitions": [
+    {
+      "L": 1,
+      "M": 5,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 2,
+      "M": 2,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 3,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,3",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 4,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ]
+    },
+    {
+      "L": 5,
+      "M": 1,
+      "components": [
+        {
+          "edge_bits": "0,1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ]
+    }
+  ],
+  "partition_evaluations": [
+    {
+      "index": 1,
+      "component_options": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2
+            ],
+            "source": "C",
+            "target": "D",
+            "rule": "r3"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 2,
+      "component_options": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "A",
+            "rule": "(r3◦r4)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 3,
+      "component_options": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2
+            ],
+            "source": "C",
+            "target": "D",
+            "rule": "r3"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 4,
+      "component_options": [
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "A",
+            "rule": "(r3◦r4)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 5,
+      "component_options": [
+        1,
+        12
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r5◦r3)◦r4) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r5◦(r3◦r4)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r5◦r3)◦r4)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(r5◦(r3◦r4))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦r5) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦r5)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦r4)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦(r4◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦r5)◦r3) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(r5◦r3)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦r5)◦r3)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦r2)"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦(r5◦r3))"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 6,
+      "component_options": [
+        2,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2) ∩ r5)"
+          },
+          {
+            "edges": [
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "A",
+            "rule": "(r3◦r4)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5 ∩ (r1◦r2))"
+          },
+          {
+            "edges": [
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "A",
+            "rule": "(r3◦r4)"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 7,
+      "component_options": [
+        1,
+        1,
+        12
+      ],
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1",
+          "vertices": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2,3,4",
+          "vertices": [
+            "A",
+            "C",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r5◦r3)◦r4) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r5◦(r3◦r4)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r5◦r3)◦r4)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(r5◦(r3◦r4))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦r5) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦r5)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦r4)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦(r4◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦r5)◦r3) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(r5◦r3)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦r5)◦r3)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "r2"
+          },
+          {
+            "edges": [
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦(r5◦r3))"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 8,
+      "component_options": [
+        2,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1,4",
+          "vertices": [
+            "A",
+            "B",
+            "C"
+          ]
+        },
+        {
+          "edge_bits": "2",
+          "vertices": [
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2) ∩ r5)"
+          },
+          {
+            "edges": [
+              2
+            ],
+            "source": "C",
+            "target": "D",
+            "rule": "r3"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5 ∩ (r1◦r2))"
+          },
+          {
+            "edges": [
+              2
+            ],
+            "source": "C",
+            "target": "D",
+            "rule": "r3"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 9,
+      "component_options": [
+        1,
+        7
+      ],
+      "components": [
+        {
+          "edge_bits": "0",
+          "vertices": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "edge_bits": "1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "(((r2◦r3)◦r4)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "((r2◦(r3◦r4))◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "((r2◦r3)◦(r4◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "(r2◦(((r3◦r4)◦r5) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "(r2◦((r3◦(r4◦r5)) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "(r2◦((r3◦r4)◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0
+            ],
+            "source": "A",
+            "target": "B",
+            "rule": "r1"
+          },
+          {
+            "edges": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "B",
+            "target": "C",
+            "rule": "(r2◦(r3◦(r4◦r5)))"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 10,
+      "component_options": [
+        40,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1,2,3",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "4",
+          "vertices": [
+            "A",
+            "C"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((((r1◦r2)◦r3)◦r4) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r1◦(r2◦r3))◦r4) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r1◦r2)◦(r3◦r4)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r1◦r2)◦r3)◦r4)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r1◦((r2◦r3)◦r4)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r1◦(r2◦(r3◦r4))) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r1◦(r2◦r3))◦r4)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r1◦r2)◦(r3◦r4))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(r1◦((r2◦r3)◦r4))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(r1◦(r2◦(r3◦r4)))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "((((r2◦r3)◦r4)◦r1) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "(((r2◦(r3◦r4))◦r1) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "(((r2◦r3)◦(r4◦r1)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "(((r2◦r3)◦r4)◦r1)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "((r2◦((r3◦r4)◦r1)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "((r2◦(r3◦(r4◦r1))) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "((r2◦(r3◦r4))◦r1)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "((r2◦r3)◦(r4◦r1))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "(r2◦((r3◦r4)◦r1))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "B",
+            "target": "B",
+            "rule": "(r2◦(r3◦(r4◦r1)))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((((r3◦r4)◦r1)◦r2) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦(r4◦r1))◦r2) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦(r1◦r2)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦r1)◦r2)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦((r4◦r1)◦r2)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦(r1◦r2))) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦r1))◦r2)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦r4)◦(r1◦r2))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦((r4◦r1)◦r2))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦(r4◦(r1◦r2)))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((((r4◦r1)◦r2)◦r3) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦(r1◦r2))◦r3) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦r1)◦(r2◦r3)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦r1)◦r2)◦r3)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦((r1◦r2)◦r3)) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(r1◦(r2◦r3))) ∩ id)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(r1◦r2))◦r3)"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦r1)◦(r2◦r3))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦((r1◦r2)◦r3))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦(r1◦(r2◦r3)))"
+          },
+          {
+            "edges": [
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "r5"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 11,
+      "component_options": [
+        2,
+        1
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1,2,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "edge_bits": "3",
+          "vertices": [
+            "A",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              4
+            ],
+            "source": "A",
+            "target": "D",
+            "rule": "(((r1◦r2) ∩ r5)◦r3)"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              4
+            ],
+            "source": "A",
+            "target": "D",
+            "rule": "((r5 ∩ (r1◦r2))◦r3)"
+          },
+          {
+            "edges": [
+              3
+            ],
+            "source": "D",
+            "target": "A",
+            "rule": "r4"
+          }
+        ]
+      ]
+    },
+    {
+      "index": 12,
+      "component_options": [
+        70
+      ],
+      "components": [
+        {
+          "edge_bits": "0,1,2,3,4",
+          "vertices": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ]
+        }
+      ],
+      "tuples": [
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((((r1◦r2) ∩ r5)◦r3)◦r4) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((((r1◦r2) ∩ r5)◦(r3◦r4)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((((r1◦r2) ∩ r5)◦r3)◦r4)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((((r5 ∩ (r1◦r2))◦r3)◦r4) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r1◦r2) ∩ r5)◦(r3◦r4))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r5 ∩ (r1◦r2))◦(r3◦r4)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "(((r5 ∩ (r1◦r2))◦r3)◦r4)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "A",
+            "rule": "((r5 ∩ (r1◦r2))◦(r3◦r4))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((((r1◦r2)◦r3)◦r4) ∩ id)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((((r5◦r3)◦r4) ∩ id)◦r1)◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r1◦(r2◦r3))◦r4) ∩ id)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r1◦r2)◦(r3◦r4)) ∩ id)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r1◦r2)◦r3)◦r4)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r5◦(r3◦r4)) ∩ id)◦r1)◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r5◦r3)◦r4) ∩ id)◦(r1◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((((r5◦r3)◦r4)◦r1)◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r1◦((r2◦r3)◦r4)) ∩ id)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r1◦(r2◦(r3◦r4))) ∩ id)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r1◦(r2◦r3))◦r4)◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r1◦r2)◦(r3◦r4))◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r1◦r2)◦r3)◦(r4◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r5◦(r3◦r4)) ∩ id)◦(r1◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r5◦(r3◦r4))◦r1)◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r5◦r3)◦(r4◦r1))◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(((r5◦r3)◦r4)◦(r1◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦((r2◦r3)◦r4))◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦(r2◦(r3◦r4)))◦r5)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦(r2◦r3))◦(r4◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2)◦(((r3◦r4)◦r5) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2)◦((r3◦(r4◦r5)) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2)◦((r3◦r4)◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r1◦r2)◦(r3◦(r4◦r5)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r5◦((r3◦r4)◦r1))◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r5◦(r3◦(r4◦r1)))◦r2)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r5◦(r3◦r4))◦(r1◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r5◦r3)◦((r4◦r1)◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "((r5◦r3)◦(r4◦(r1◦r2)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦(((r2◦r3)◦r4)◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦((r2◦(r3◦r4))◦r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦((r2◦r3)◦(r4◦r5)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦(r2◦(((r3◦r4)◦r5) ∩ id)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦(r2◦((r3◦(r4◦r5)) ∩ id)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦(r2◦((r3◦r4)◦r5)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r1◦(r2◦(r3◦(r4◦r5))))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦((((r3◦r4)◦r1)◦r2) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦(((r3◦(r4◦r1))◦r2) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦(((r3◦r4)◦(r1◦r2)) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦(((r3◦r4)◦r1)◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦((r3◦((r4◦r1)◦r2)) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦((r3◦(r4◦(r1◦r2))) ∩ id))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦((r3◦(r4◦r1))◦r2))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦((r3◦r4)◦(r1◦r2)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦(r3◦((r4◦r1)◦r2)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "A",
+            "target": "C",
+            "rule": "(r5◦(r3◦(r4◦(r1◦r2))))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦((r1◦r2) ∩ r5)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(((r3◦r4)◦(r5 ∩ (r1◦r2))) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦((r1◦r2) ∩ r5))) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦(r4◦(r5 ∩ (r1◦r2)))) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦r4)◦((r1◦r2) ∩ r5))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "((r3◦r4)◦(r5 ∩ (r1◦r2)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦(r4◦((r1◦r2) ∩ r5)))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "C",
+            "target": "C",
+            "rule": "(r3◦(r4◦(r5 ∩ (r1◦r2))))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦((r1◦r2) ∩ r5))◦r3) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(((r4◦(r5 ∩ (r1◦r2)))◦r3) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(((r1◦r2) ∩ r5)◦r3)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦((r1◦r2) ∩ r5))◦r3)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦((r5 ∩ (r1◦r2))◦r3)) ∩ id)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "((r4◦(r5 ∩ (r1◦r2)))◦r3)"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦(((r1◦r2) ∩ r5)◦r3))"
+          }
+        ],
+        [
+          {
+            "edges": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "source": "D",
+            "target": "D",
+            "rule": "(r4◦((r5 ∩ (r1◦r2))◦r3))"
+          }
+        ]
+      ]
+    }
+  ]
+}
+
+BUILD SUCCESSFUL in 8s
+2 actionable tasks: 1 executed, 1 up-to-date

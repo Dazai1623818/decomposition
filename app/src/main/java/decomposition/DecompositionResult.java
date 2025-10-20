@@ -19,12 +19,11 @@ public record DecompositionResult(
         int filteredPartitions,
         List<Partition> allPartitions,
         List<Partition> filteredPartitionList,
-        Partition winningPartition,
         List<Partition> cpqPartitions,
-        List<KnownComponent> recognizedComponents,
         List<KnownComponent> recognizedCatalogue,
         KnownComponent finalComponent,
         List<KnownComponent> globalCatalogue,
+        List<PartitionEvaluation> partitionEvaluations,
         List<String> diagnostics,
         long elapsedMillis,
         String terminationReason) {
@@ -35,23 +34,19 @@ public record DecompositionResult(
         Objects.requireNonNull(allPartitions, "allPartitions");
         Objects.requireNonNull(filteredPartitionList, "filteredPartitionList");
         Objects.requireNonNull(cpqPartitions, "cpqPartitions");
-        Objects.requireNonNull(recognizedComponents, "recognizedComponents");
         Objects.requireNonNull(recognizedCatalogue, "recognizedCatalogue");
         Objects.requireNonNull(globalCatalogue, "globalCatalogue");
         Objects.requireNonNull(diagnostics, "diagnostics");
+        Objects.requireNonNull(partitionEvaluations, "partitionEvaluations");
         edges = List.copyOf(edges);
         freeVariables = Set.copyOf(freeVariables);
         allPartitions = Collections.unmodifiableList(allPartitions);
         filteredPartitionList = Collections.unmodifiableList(filteredPartitionList);
         cpqPartitions = Collections.unmodifiableList(cpqPartitions);
-        recognizedComponents = List.copyOf(recognizedComponents);
         recognizedCatalogue = List.copyOf(recognizedCatalogue);
         globalCatalogue = List.copyOf(globalCatalogue);
+        partitionEvaluations = List.copyOf(partitionEvaluations);
         diagnostics = List.copyOf(diagnostics);
-    }
-
-    public boolean hasWinningPartition() {
-        return winningPartition != null;
     }
 
     public boolean hasFinalComponent() {

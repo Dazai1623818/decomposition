@@ -21,10 +21,16 @@ final class DecompositionPipelineTest {
         DecompositionPipeline pipeline = new DecompositionPipeline();
         DecompositionResult result = pipeline.execute(cq, Set.of(), DecompositionOptions.defaults());
 
-        assertTrue(result.hasWinningPartition(), "Single-edge query should have a decomposition");
-        assertEquals(1, result.recognizedComponents().size(), "Should recognize the single edge");
+        assertEquals(1, result.cpqPartitions().size(), "Single-edge query should have one valid partition");
+        assertTrue(result.recognizedCatalogue().stream().anyMatch(kc -> "r1".equals(kc.cpqRule())),
+                "Recognized catalogue should include the plain edge label");
         assertTrue(result.hasFinalComponent(), "Final CPQ should be available");
         assertEquals("r1", result.finalComponent().cpqRule(), "Single edge rule should match label");
+        assertEquals(1, result.partitionEvaluations().size(), "Exactly one partition evaluation expected");
+        assertEquals(1, result.partitionEvaluations().get(0).componentOptionCounts().size(),
+                "Single component in the partition");
+        assertTrue(result.partitionEvaluations().get(0).componentOptionCounts().get(0) >= 1,
+                "Single component should have at least one CPQ option");
     }
 
     @Test
@@ -34,14 +40,17 @@ final class DecompositionPipelineTest {
         DecompositionPipeline pipeline = new DecompositionPipeline();
         DecompositionOptions defaults = DecompositionOptions.defaults();
         DecompositionOptions options = new DecompositionOptions(
-                DecompositionOptions.Mode.BOTH,
+                DecompositionOptions.Mode.VALIDATE,
                 defaults.maxPartitions(),
                 defaults.maxCovers(),
-                defaults.timeBudgetMs());
+                defaults.timeBudgetMs(),
+                defaults.enumerationLimit());
 
         DecompositionResult result = pipeline.execute(cq, Set.of(), options);
 
         assertEquals(12, result.filteredPartitionList().size(), "Example1 should yield 12 filtered partitions");
         assertEquals(12, result.cpqPartitions().size(), "All filtered partitions should be CPQ constructable");
+        assertEquals(result.cpqPartitions().size(), result.partitionEvaluations().size(),
+                "Evaluations should align with valid partitions");
     }
 }

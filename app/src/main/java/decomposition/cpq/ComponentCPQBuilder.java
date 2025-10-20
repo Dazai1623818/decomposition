@@ -2,11 +2,14 @@ package decomposition.cpq;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
@@ -21,11 +24,11 @@ import dev.roanh.gmark.lang.cpq.CPQ;
  * - Components never swap source/target endpoints
  * - Matching is strictly directional
  */
-final class ComponentCPQBuilder {
+public final class ComponentCPQBuilder {
     private final List<Edge> edges;
     private final Map<String, List<KnownComponent>> memo = new HashMap<>();
 
-    ComponentCPQBuilder(List<Edge> edges) {
+    public ComponentCPQBuilder(List<Edge> edges) {
         this.edges = List.copyOf(edges);
     }
 
@@ -33,13 +36,21 @@ final class ComponentCPQBuilder {
         return edges.size();
     }
 
+    /**
+     * Deprecated: do not rely on early ‘first candidate’ semantics.
+     */
+    @Deprecated(forRemoval = false)
     Optional<KnownComponent> build(BitSet edgeBits) {
-        List<KnownComponent> candidates = enumerate(edgeBits);
+        List<KnownComponent> candidates = options(edgeBits);
         return candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0));
     }
 
-    List<KnownComponent> enumerateAll(BitSet edgeBits) {
+    public List<KnownComponent> options(BitSet edgeBits) {
         return enumerate(edgeBits);
+    }
+
+    List<KnownComponent> enumerateAll(BitSet edgeBits) {
+        return options(edgeBits);
     }
 
     private List<KnownComponent> enumerate(BitSet edgeBits) {
@@ -48,7 +59,7 @@ final class ComponentCPQBuilder {
             return memo.get(signature);
         }
 
-        Map<ComponentKey, KnownComponent> results = new LinkedHashMap<>();
+        Map<String, KnownComponent> results = new LinkedHashMap<>();
         int cardinality = edgeBits.cardinality();
 
         if (cardinality == 0) {
@@ -73,7 +84,7 @@ final class ComponentCPQBuilder {
             );
             tryAdd(results, forward);
 
-            // 1) Enrich single-edge case with backtrack/selfloop/multi forms.
+            // 1) Enrich single-edge case with anchored backtrack/self-loop forms only.
             addSingleEdgeBacktrackVariants(results, edge, bitsCopy);
 
         } else {
@@ -155,7 +166,10 @@ final class ComponentCPQBuilder {
             tryAdd(results, extra);
         }
 
-        List<KnownComponent> finalList = List.copyOf(results.values());
+        List<KnownComponent> ordered = new ArrayList<>(results.values());
+        ordered.sort(CANDIDATE_COMPARATOR);
+        List<KnownComponent> deduped = dedupe(ordered);
+        List<KnownComponent> finalList = List.copyOf(deduped);
         memo.put(signature, finalList);
         return finalList;
     }
@@ -173,7 +187,7 @@ final class ComponentCPQBuilder {
      *
      * Note: r⁻ is an inverse LABEL, not a reversed CPQ. Endpoints are never swapped.
      */
-    private void addSingleEdgeBacktrackVariants(Map<ComponentKey, KnownComponent> results, Edge e, BitSet bits) {
+    private void addSingleEdgeBacktrackVariants(Map<String, KnownComponent> results, Edge e, BitSet bits) {
         String s = e.source();
         String t = e.target();
         String r = e.label();
@@ -223,7 +237,7 @@ final class ComponentCPQBuilder {
      * This is separate from concat and conjunction as it represents extending
      * the backtrack case with multiple edge traversals.
      */
-    private void addMultiEdgeBacktrackVariants(Map<ComponentKey, KnownComponent> results, BitSet edgeBits) {
+    private void addMultiEdgeBacktrackVariants(Map<String, KnownComponent> results, BitSet edgeBits) {
         List<KnownComponent> snapshot = new ArrayList<>(results.values());
 
         for (KnownComponent component : snapshot) {
@@ -279,7 +293,7 @@ final class ComponentCPQBuilder {
         return new KnownComponent(cpq, bits, source, target, derivation);
     }
 
-    private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
+    private void tryAdd(Map<String, KnownComponent> results, KnownComponent candidate) {
         // Validate that the CPQ is valid (it should be since we built it via CPQ.parse)
         try {
             candidate.cpq().toString(); // Just ensure it's valid
@@ -287,7 +301,7 @@ final class ComponentCPQBuilder {
             // Skip invalid CPQs
             return;
         }
-        ComponentKey key = candidate.toKey(edges.size());
+        String key = canonicalKey(candidate);
         KnownComponent existing = results.get(key);
         if (existing == null) {
             results.put(key, candidate);
@@ -313,5 +327,28 @@ final class ComponentCPQBuilder {
             }
         }
         return false;
+    }
+
+    private static final Comparator<KnownComponent> CANDIDATE_COMPARATOR =
+            Comparator.comparingInt((KnownComponent kc) -> kc.edges().cardinality())
+                    .thenComparing(KnownComponent::source)
+                    .thenComparing(KnownComponent::target)
+                    .thenComparing(kc -> kc.cpq().toString());
+
+    private List<KnownComponent> dedupe(List<KnownComponent> candidates) {
+        List<KnownComponent> deduped = new ArrayList<>(candidates.size());
+        Set<String> seen = new LinkedHashSet<>();
+        for (KnownComponent candidate : candidates) {
+            String key = canonicalKey(candidate);
+            if (seen.add(key)) {
+                deduped.add(candidate);
+            }
+        }
+        return deduped;
+    }
+
+    private String canonicalKey(KnownComponent candidate) {
+        String edgeSignature = BitsetUtils.signature(candidate.edges(), edges.size());
+        return edgeSignature + "|" + candidate.source() + "|" + candidate.target() + "|" + candidate.cpq().toString();
     }
 }
