@@ -27,4 +27,8 @@ public final class CPQRecognizer {
         String signature = BitsetUtils.signature(edgeBits, edgeCount);
         return memo.computeIfAbsent(signature, key -> builder.build(edgeBits));
     }
+
+    public List<KnownComponent> enumerateAll(Component component) {
+        return builder.enumerateAll(component.edgeBits());
+    }
 }

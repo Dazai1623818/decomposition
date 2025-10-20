@@ -23,7 +23,14 @@ final class JsonReportBuilder {
         root.put("candidates", candidates(result));
         root.put("winning_partition", winningPartition(result));
         root.put("recognized_components", recognizedComponents(result));
+        if (!result.recognizedCatalogue().isEmpty()) {
+            root.put("component_cpq_catalog", catalogue(result.recognizedCatalogue()));
+        }
         root.put("final_rule", result.hasFinalComponent() ? result.finalComponent().cpqRule() : null);
+        root.put("final_rule_derivation", result.hasFinalComponent() ? result.finalComponent().derivation() : null);
+        if (!result.globalCatalogue().isEmpty()) {
+            root.put("global_cpq_catalog", catalogue(result.globalCatalogue()));
+        }
         root.put("diagnostics", result.diagnostics());
         if (!result.filteredPartitionList().isEmpty()) {
             root.put("partitions", partitionSummaries(result.filteredPartitionList()));
@@ -77,6 +84,21 @@ final class JsonReportBuilder {
             map.put("source", component.source());
             map.put("target", component.target());
             map.put("rule", component.cpqRule());
+            map.put("derivation", component.derivation());
+            list.add(map);
+        }
+        return list;
+    }
+
+    private List<Map<String, Object>> catalogue(List<KnownComponent> components) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (KnownComponent component : components) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("edges", BitsetUtils.toIndexList(component.edges()));
+            map.put("source", component.source());
+            map.put("target", component.target());
+            map.put("rule", component.cpqRule());
+            map.put("derivation", component.derivation());
             list.add(map);
         }
         return list;

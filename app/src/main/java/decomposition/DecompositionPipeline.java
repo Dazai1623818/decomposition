@@ -1,6 +1,7 @@
 package decomposition;
 
 import decomposition.DecompositionOptions.Mode;
+import decomposition.cpq.ComponentKey;
 import decomposition.cpq.CPQRecognizer;
 import decomposition.cpq.KnownComponent;
 import decomposition.extract.CQExtractor;
@@ -15,7 +16,9 @@ import decomposition.util.GraphUtils;
 import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -50,18 +53,20 @@ public final class DecompositionPipeline {
         List<Partition> filteredPartitions = filterResult.partitions();
 
         List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
+        Map<ComponentKey, KnownComponent> recognizedCatalogueMap = new LinkedHashMap<>();
         String terminationReason = null;
 
         if (timeExceeded(effectiveOptions, timing)) {
             terminationReason = "time_budget_exceeded_after_partitioning";
             return buildResult(extraction, vertices, partitions, filteredPartitions, null,
-                    List.of(), null, List.of(), diagnostics, timing.elapsedMillis(), terminationReason, effectiveOptions.mode());
+                    List.of(), List.of(), null, List.of(), List.of(), diagnostics, timing.elapsedMillis(), terminationReason, effectiveOptions.mode());
         }
 
         Partition winningPartition = null;
         List<KnownComponent> winningComponents = List.of();
         KnownComponent finalComponent = null;
         List<Partition> cpqPartitions = new ArrayList<>();
+        List<KnownComponent> globalCatalogue = List.of();
 
         if (effectiveOptions.mode().decomposeEnabled()) {
             CPQRecognizer recognizer = new CPQRecognizer(edges);
@@ -85,6 +90,9 @@ public final class DecompositionPipeline {
 
                 if (allRecognized) {
                     cpqPartitions.add(partition);
+                    for (KnownComponent kc : recognized) {
+                        recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
+                    }
                     if (winningPartition == null) {
                         winningPartition = partition;
                         winningComponents = List.copyOf(recognized);
@@ -102,7 +110,15 @@ public final class DecompositionPipeline {
                 globalBits.set(0, edgeCount);
                 Component whole = new Component(globalBits, GraphUtils.vertices(globalBits, edges));
                 finalComponent = recognizer.recognize(whole).orElse(null);
+                globalCatalogue = recognizer.enumerateAll(whole);
+            } else {
+                BitSet globalBits = new BitSet(edgeCount);
+                globalBits.set(0, edgeCount);
+                Component whole = new Component(globalBits, GraphUtils.vertices(globalBits, edges));
+                globalCatalogue = recognizer.enumerateAll(whole);
             }
+        } else {
+            globalCatalogue = List.of();
         }
 
         long elapsed = timing.elapsedMillis();
@@ -111,7 +127,8 @@ public final class DecompositionPipeline {
         }
 
         return buildResult(extraction, vertices, partitions, filteredPartitions,
-                winningPartition, winningComponents, finalComponent, cpqPartitions,
+                winningPartition, winningComponents, new ArrayList<>(recognizedCatalogueMap.values()),
+                finalComponent, cpqPartitions, globalCatalogue,
                 diagnostics, elapsed, terminationReason, effectiveOptions.mode());
     }
 
@@ -121,8 +138,10 @@ public final class DecompositionPipeline {
                                             List<Partition> filteredPartitions,
                                             Partition winningPartition,
                                             List<KnownComponent> winningComponents,
+                                            List<KnownComponent> recognizedCatalogue,
                                             KnownComponent finalComponent,
                                             List<Partition> cpqPartitions,
+                                            List<KnownComponent> globalCatalogue,
                                             List<String> diagnostics,
                                             long elapsedMillis,
                                             String terminationReason,
@@ -141,7 +160,9 @@ public final class DecompositionPipeline {
                 winningPartition,
                 cpqPartitions,
                 winningComponents != null ? winningComponents : List.of(),
+                recognizedCatalogue != null ? recognizedCatalogue : List.of(),
                 finalComponent,
+                globalCatalogue != null ? globalCatalogue : List.of(),
                 diagnostics,
                 elapsedMillis,
                 terminationReason);

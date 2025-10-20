@@ -22,7 +22,9 @@ public record DecompositionResult(
         Partition winningPartition,
         List<Partition> cpqPartitions,
         List<KnownComponent> recognizedComponents,
+        List<KnownComponent> recognizedCatalogue,
         KnownComponent finalComponent,
+        List<KnownComponent> globalCatalogue,
         List<String> diagnostics,
         long elapsedMillis,
         String terminationReason) {
@@ -34,6 +36,8 @@ public record DecompositionResult(
         Objects.requireNonNull(filteredPartitionList, "filteredPartitionList");
         Objects.requireNonNull(cpqPartitions, "cpqPartitions");
         Objects.requireNonNull(recognizedComponents, "recognizedComponents");
+        Objects.requireNonNull(recognizedCatalogue, "recognizedCatalogue");
+        Objects.requireNonNull(globalCatalogue, "globalCatalogue");
         Objects.requireNonNull(diagnostics, "diagnostics");
         edges = List.copyOf(edges);
         freeVariables = Set.copyOf(freeVariables);
@@ -41,6 +45,8 @@ public record DecompositionResult(
         filteredPartitionList = Collections.unmodifiableList(filteredPartitionList);
         cpqPartitions = Collections.unmodifiableList(cpqPartitions);
         recognizedComponents = List.copyOf(recognizedComponents);
+        recognizedCatalogue = List.copyOf(recognizedCatalogue);
+        globalCatalogue = List.copyOf(globalCatalogue);
         diagnostics = List.copyOf(diagnostics);
     }
 

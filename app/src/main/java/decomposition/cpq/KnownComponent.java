@@ -13,18 +13,21 @@ import dev.roanh.gmark.lang.cpq.CPQ;
  * - CPQs are always forward-directional (source → target)
  * - Reverse edges are represented by inverse labels (r⁻) within the CPQ, never by swapping endpoints
  * - Source and target correspond to the original CQ orientation
+ * - Each instance records a derivation description for explainability/debugging
  */
 public record KnownComponent(
         CPQ cpq,
         BitSet edges,
         String source,
-        String target) {
+        String target,
+        String derivation) {
 
     public KnownComponent {
         Objects.requireNonNull(cpq, "cpq");
         Objects.requireNonNull(edges, "edges");
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(derivation, "derivation");
         edges = BitsetUtils.copy(edges);
     }
 

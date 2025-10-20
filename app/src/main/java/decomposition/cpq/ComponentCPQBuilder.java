@@ -1,8 +1,5 @@
 package decomposition.cpq;
 
-import decomposition.model.Edge;
-import decomposition.util.BitsetUtils;
-import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -10,6 +7,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import decomposition.model.Edge;
+import decomposition.util.BitsetUtils;
+import dev.roanh.gmark.lang.cpq.CPQ;
 
 /**
  * Builds CPQ expressions for connected components using gMark's CPQ model.
@@ -37,6 +38,10 @@ final class ComponentCPQBuilder {
         return candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0));
     }
 
+    List<KnownComponent> enumerateAll(BitSet edgeBits) {
+        return enumerate(edgeBits);
+    }
+
     private List<KnownComponent> enumerate(BitSet edgeBits) {
         String signature = BitsetUtils.signature(edgeBits, edges.size());
         if (memo.containsKey(signature)) {
@@ -59,11 +64,12 @@ final class ComponentCPQBuilder {
 
             // 0) Plain forward atom: s --r--> t
             CPQ forwardCPQ = CPQ.parse(edge.label());
-            KnownComponent forward = new KnownComponent(
+            KnownComponent forward = derived(
                 forwardCPQ,
                 bitsCopy,
                 edge.source(),
-                edge.target()
+                edge.target(),
+                "Forward atom on label '" + edge.label() + "' (" + edge.source() + "→" + edge.target() + ")"
             );
             tryAdd(results, forward);
 
@@ -97,8 +103,10 @@ final class ComponentCPQBuilder {
                         if (left.target().equals(right.source())) {
                             String concatStr = "(" + left.cpq().toString() + " ◦ " + right.cpq().toString() + ")";
                             CPQ concatCPQ = CPQ.parse(concatStr);
-                            KnownComponent combined = new KnownComponent(
-                                concatCPQ, BitsetUtils.copy(edgeBits), left.source(), right.target()
+                            String derivation = "Concatenation: [" + left.cpqRule() + "] then [" + right.cpqRule()
+                                    + "] via " + left.target();
+                            KnownComponent combined = derived(
+                                concatCPQ, BitsetUtils.copy(edgeBits), left.source(), right.target(), derivation
                             );
                             tryAdd(results, combined);
                         }
@@ -106,14 +114,19 @@ final class ComponentCPQBuilder {
                         if (left.source().equals(right.source()) && left.target().equals(right.target())) {
                             String conjStr = "(" + left.cpq().toString() + " ∩ " + right.cpq().toString() + ")";
                             CPQ conjCPQ = CPQ.parse(conjStr);
-                            KnownComponent combined = new KnownComponent(
-                                conjCPQ, BitsetUtils.copy(edgeBits), left.source(), left.target()
+                            String derivation = "Intersection: [" + left.cpqRule() + "] ∩ [" + right.cpqRule()
+                                    + "] at " + left.source() + "→" + left.target();
+                            KnownComponent combined = derived(
+                                conjCPQ, BitsetUtils.copy(edgeBits), left.source(), left.target(), derivation
                             );
                             tryAdd(results, combined);
                         }
                     }
                 }
             }
+
+            // Multi-edge backtrack variants: extend backtrack patterns when cardinality > 1
+            addMultiEdgeBacktrackVariants(results, edgeBits);
         }
 
         // Post-processing: add anchored variants for same-node components if not already anchored.
@@ -127,8 +140,10 @@ final class ComponentCPQBuilder {
                 String anchoredStr = candidate.cpq().toString() + " ∩ id";
                 try {
                     CPQ anchoredCPQ = CPQ.parse(anchoredStr);
-                    KnownComponent anchoredComponent = new KnownComponent(
-                        anchoredCPQ, candidate.edges(), candidate.source(), candidate.target()
+                    String derivation = "Anchor with id: [" + candidate.cpqRule() + "] ∩ id at "
+                            + candidate.source();
+                    KnownComponent anchoredComponent = derived(
+                        anchoredCPQ, candidate.edges(), candidate.source(), candidate.target(), derivation
                     );
                     additional.add(anchoredComponent);
                 } catch (RuntimeException ex) {
@@ -146,14 +161,15 @@ final class ComponentCPQBuilder {
     }
 
     /**
-     * Adds backtrack variants using inverse labels (r⁻) within CPQs.
+     * Adds backtrack variants using inverse labels (r⁻) within CPQs for SINGLE edges only.
      * All components maintain forward direction (source → target).
      *
-     * Generates:
+     * Generates only:
      *  - single backtracks: (r◦r⁻)∩id anchored at source, (r⁻◦r)∩id anchored at target
-     *  - double backtracks: (r◦((r◦r⁻)∩id)◦r⁻)∩id at source and symmetric at target
-     *  - multi backtracks:  (r◦q◦r⁻)∩id at source for any q anchored at target (and symmetric)
      *  - selfloop: if source==target also add (r)∩id
+     *
+     * Multi-edge backtracks (double, multi) are handled separately during composition
+     * when cardinality > 1, as they represent extending the backtrack case.
      *
      * Note: r⁻ is an inverse LABEL, not a reversed CPQ. Endpoints are never swapped.
      */
@@ -167,7 +183,8 @@ final class ComponentCPQBuilder {
         String singleSStr = "(" + r + " ◦ (" + r + ")⁻) ∩ id";
         try {
             CPQ singleSCPQ = CPQ.parse(singleSStr);
-            tryAdd(results, new KnownComponent(singleSCPQ, bits, s, s));
+            String derivation = "Single backtrack anchored at " + s + " via " + singleSStr;
+            tryAdd(results, derived(singleSCPQ, bits, s, s, derivation));
         } catch (RuntimeException ex) {
             // Skip if parsing fails
         }
@@ -176,28 +193,8 @@ final class ComponentCPQBuilder {
         String singleTStr = "((" + r + ")⁻ ◦ " + r + ") ∩ id";
         try {
             CPQ singleTCPQ = CPQ.parse(singleTStr);
-            tryAdd(results, new KnownComponent(singleTCPQ, bits, t, t));
-        } catch (RuntimeException ex) {
-            // Skip if parsing fails
-        }
-
-        // --- double backtracks (anchored) ---
-        // (r◦((r◦r⁻)∩id)◦r⁻) ∩ id at source
-        String innerS = "(" + r + " ◦ (" + r + ")⁻) ∩ id";
-        String dblSStr = "(" + r + " ◦ (" + innerS + ") ◦ (" + r + ")⁻) ∩ id";
-        try {
-            CPQ dblSCPQ = CPQ.parse(dblSStr);
-            tryAdd(results, new KnownComponent(dblSCPQ, bits, s, s));
-        } catch (RuntimeException ex) {
-            // Skip if parsing fails
-        }
-
-        // (r⁻◦((r⁻◦r)∩id)◦r) ∩ id at target
-        String innerT = "((" + r + ")⁻ ◦ " + r + ") ∩ id";
-        String dblTStr = "((" + r + ")⁻ ◦ (" + innerT + ") ◦ " + r + ") ∩ id";
-        try {
-            CPQ dblTCPQ = CPQ.parse(dblTStr);
-            tryAdd(results, new KnownComponent(dblTCPQ, bits, t, t));
+            String derivation = "Single backtrack anchored at " + t + " via " + singleTStr;
+            tryAdd(results, derived(singleTCPQ, bits, t, t, derivation));
         } catch (RuntimeException ex) {
             // Skip if parsing fails
         }
@@ -207,38 +204,63 @@ final class ComponentCPQBuilder {
             String rAnchoredStr = r + " ∩ id";
             try {
                 CPQ rAnchoredCPQ = CPQ.parse(rAnchoredStr);
-                tryAdd(results, new KnownComponent(rAnchoredCPQ, bits, s, s));
+                String derivation = "Self-loop anchor at " + s + " exposing " + rAnchoredStr;
+                tryAdd(results, derived(rAnchoredCPQ, bits, s, s, derivation));
             } catch (RuntimeException ex) {
                 // Skip if parsing fails
             }
         }
+    }
 
-        // --- multi backtracks: (r ◦ q ◦ r⁻) ∩ id (and symmetric) ---
-        // Snapshot BEFORE adding new multis to avoid unbounded growth.
-        List<KnownComponent> pre = new ArrayList<>(results.values());
+    /**
+     * Adds multi-edge backtrack variants when cardinality > 1.
+     * These patterns extend the single backtrack case by wrapping existing components.
+     *
+     * Generates patterns like:
+     *  - (r◦q◦r⁻)∩id where q is an anchored component and r is from decomposition
+     *  - Double backtracks and higher-order patterns via composition
+     *
+     * This is separate from concat and conjunction as it represents extending
+     * the backtrack case with multiple edge traversals.
+     */
+    private void addMultiEdgeBacktrackVariants(Map<ComponentKey, KnownComponent> results, BitSet edgeBits) {
+        List<KnownComponent> snapshot = new ArrayList<>(results.values());
 
-        // q anchored at t → produce @s
-        for (KnownComponent q : pre) {
-            if (q.source().equals(t) && q.target().equals(t)) {
-                String multiAtSStr = "(" + r + " ◦ " + q.cpq().toString() + " ◦ (" + r + ")⁻) ∩ id";
-                try {
-                    CPQ multiAtSCPQ = CPQ.parse(multiAtSStr);
-                    tryAdd(results, new KnownComponent(multiAtSCPQ, bits, s, s));
-                } catch (RuntimeException ex) {
-                    // Skip if parsing fails
+        for (KnownComponent component : snapshot) {
+            // For each component that uses these edges, try to find single-edge subsets
+            // that could wrap around it for backtracking patterns
+            List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
+
+            for (int edgeIndex : indices) {
+                Edge edge = edges.get(edgeIndex);
+                String r = edge.label();
+                String s = edge.source();
+                String t = edge.target();
+
+                // Pattern: r ◦ q ◦ r⁻ anchored at source
+                // where q is anchored at target and uses remaining edges
+                if (component.source().equals(t) && component.target().equals(t)) {
+                    String backtrackStr = "(" + r + " ◦ " + component.cpq().toString() + " ◦ (" + r + ")⁻) ∩ id";
+                    try {
+                        CPQ backtrackCPQ = CPQ.parse(backtrackStr);
+                        String derivation = "Extended backtrack at " + s + " wrapping [" + component.cpqRule() + "]";
+                        tryAdd(results, derived(backtrackCPQ, edgeBits, s, s, derivation));
+                    } catch (RuntimeException ex) {
+                        // Skip if parsing fails
+                    }
                 }
-            }
-        }
 
-        // q' anchored at s → produce @t (symmetric direction)
-        for (KnownComponent q : pre) {
-            if (q.source().equals(s) && q.target().equals(s)) {
-                String multiAtTStr = "((" + r + ")⁻ ◦ " + q.cpq().toString() + " ◦ " + r + ") ∩ id";
-                try {
-                    CPQ multiAtTCPQ = CPQ.parse(multiAtTStr);
-                    tryAdd(results, new KnownComponent(multiAtTCPQ, bits, t, t));
-                } catch (RuntimeException ex) {
-                    // Skip if parsing fails
+                // Symmetric pattern: r⁻ ◦ q ◦ r anchored at target
+                // where q is anchored at source and uses remaining edges
+                if (component.source().equals(s) && component.target().equals(s)) {
+                    String backtrackStr = "((" + r + ")⁻ ◦ " + component.cpq().toString() + " ◦ " + r + ") ∩ id";
+                    try {
+                        CPQ backtrackCPQ = CPQ.parse(backtrackStr);
+                        String derivation = "Extended backtrack at " + t + " wrapping [" + component.cpqRule() + "]";
+                        tryAdd(results, derived(backtrackCPQ, edgeBits, t, t, derivation));
+                    } catch (RuntimeException ex) {
+                        // Skip if parsing fails
+                    }
                 }
             }
         }
@@ -253,6 +275,10 @@ final class ComponentCPQBuilder {
         return str.endsWith("∩id") || str.endsWith("∩id)") || str.contains(")∩id");
     }
 
+    private KnownComponent derived(CPQ cpq, BitSet bits, String source, String target, String derivation) {
+        return new KnownComponent(cpq, bits, source, target, derivation);
+    }
+
     private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
         // Validate that the CPQ is valid (it should be since we built it via CPQ.parse)
         try {
@@ -262,6 +288,30 @@ final class ComponentCPQBuilder {
             return;
         }
         ComponentKey key = candidate.toKey(edges.size());
-        results.putIfAbsent(key, candidate);
+        KnownComponent existing = results.get(key);
+        if (existing == null) {
+            results.put(key, candidate);
+            return;
+        }
+        if (shouldReplace(existing, candidate)) {
+            results.put(key, candidate);
+        }
+    }
+
+    private boolean shouldReplace(KnownComponent existing, KnownComponent candidate) {
+        boolean existingAnchored = looksAnchored(existing.cpq());
+        boolean candidateAnchored = looksAnchored(candidate.cpq());
+        if (candidateAnchored && !existingAnchored) {
+            return true;
+        }
+        if (candidateAnchored == existingAnchored) {
+            // Prefer more descriptive derivation (longer CPQ string) as a heuristic for richer structure.
+            int existingLength = existing.cpqRule().length();
+            int candidateLength = candidate.cpqRule().length();
+            if (candidateLength > existingLength) {
+                return true;
+            }
+        }
+        return false;
     }
 }
