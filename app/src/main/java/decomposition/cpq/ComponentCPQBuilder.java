@@ -19,9 +19,9 @@ import dev.roanh.gmark.lang.cpq.CPQ;
  * Builds CPQ expressions for connected components using gMark's CPQ model.
  *
  * Design principles:
- * - All CPQs are forward-directional (source → target)
- * - Reverse directionality is expressed via inverse LABELS (r⁻), not reversed CPQs
- * - Components never swap source/target endpoints
+ * - Every CPQ records the concrete traversal direction via its source → target
+ * - Reverse directionality is expressed via inverse LABELS (r⁻) when needed
+ * - Components may expose both forward and inverse orientations when the CQ permits it
  * - Matching is strictly directional
  */
 public final class ComponentCPQBuilder {
@@ -83,6 +83,24 @@ public final class ComponentCPQBuilder {
                 "Forward atom on label '" + edge.label() + "' (" + edge.source() + "→" + edge.target() + ")"
             );
             tryAdd(results, forward);
+
+            // 0a) Inverse atom: t --r⁻--> s (only when endpoints differ)
+            if (!edge.source().equals(edge.target())) {
+                String inverseStr = edge.label() + "⁻";
+                try {
+                    CPQ inverseCPQ = CPQ.parse(inverseStr);
+                    KnownComponent inverse = derived(
+                        inverseCPQ,
+                        bitsCopy,
+                        edge.target(),
+                        edge.source(),
+                        "Inverse atom on label '" + edge.label() + "' (" + edge.target() + "→" + edge.source() + ")"
+                    );
+                    tryAdd(results, inverse);
+                } catch (RuntimeException ex) {
+                    // Skip if inverse parsing fails
+                }
+            }
 
             // 1) Enrich single-edge case with anchored backtrack/self-loop forms only.
             addSingleEdgeBacktrackVariants(results, edge, bitsCopy);
@@ -176,7 +194,7 @@ public final class ComponentCPQBuilder {
 
     /**
      * Adds backtrack variants using inverse labels (r⁻) within CPQs for SINGLE edges only.
-     * All components maintain forward direction (source → target).
+     * Variants remain anchored at the original source or target through identity intersections.
      *
      * Generates only:
      *  - single backtracks: (r◦r⁻)∩id anchored at source, (r⁻◦r)∩id anchored at target

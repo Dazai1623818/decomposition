@@ -10,9 +10,8 @@ import dev.roanh.gmark.lang.cpq.CPQ;
  * The CPQ object is the authoritative representation; toString() is only for display.
  *
  * Design invariants:
- * - CPQs are always forward-directional (source → target)
- * - Reverse edges are represented by inverse labels (r⁻) within the CPQ, never by swapping endpoints
- * - Source and target correspond to the original CQ orientation
+ * - CPQs capture the traversal direction via source → target, which may differ from the CQ edge
+ * - Reverse edges are represented via inverse labels (r⁻) when required for intersections or joins
  * - Each instance records a derivation description for explainability/debugging
  */
 public record KnownComponent(

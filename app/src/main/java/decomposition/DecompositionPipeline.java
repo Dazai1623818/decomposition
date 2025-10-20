@@ -18,10 +18,13 @@ import decomposition.util.GraphUtils;
 import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import dev.roanh.gmark.lang.cq.CQ;
 
 /**
@@ -75,34 +78,57 @@ public final class DecompositionPipeline {
         int partitionIndex = 0;
         for (Partition partition : filteredPartitions) {
             partitionIndex++;
-            boolean valid = validator.isValidCPQDecomposition(partition, builder);
+            List<Component> componentsInPartition = partition.components();
+            boolean enforceJoinNodes = componentsInPartition.size() > 1;
+            Set<String> joinNodes = enforceJoinNodes
+                    ? computeJoinNodes(componentsInPartition, extraction.freeVariables())
+                    : Set.of();
+
+            boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables());
             if (valid) {
                 cpqPartitions.add(partition);
                 List<Integer> optionCounts = new ArrayList<>();
                 int componentIndex = 0;
-                for (Component component : partition.components()) {
+                for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
-                    List<KnownComponent> optionsForComponent = builder.options(componentBits);
-                    optionCounts.add(optionsForComponent.size());
-                    for (KnownComponent kc : optionsForComponent) {
+                    List<KnownComponent> rawOptions = builder.options(componentBits);
+                    List<KnownComponent> filteredOptions = enforceJoinNodes
+                            ? rawOptions.stream()
+                                    .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                                    .collect(Collectors.toList())
+                            : rawOptions;
+
+                    optionCounts.add(filteredOptions.size());
+                    for (KnownComponent kc : rawOptions) {
                         recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
                     }
                 }
                 List<List<KnownComponent>> tuples = effectiveOptions.mode().enumerateTuples()
-                        ? validator.enumerateDecompositions(partition, builder, effectiveOptions.enumerationLimit())
+                        ? validator.enumerateDecompositions(partition, builder, effectiveOptions.enumerationLimit(),
+                                extraction.freeVariables(), edges)
                         : List.of();
                 partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
             } else {
                 int componentIndex = 0;
-                for (Component component : partition.components()) {
+                for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
-                    List<KnownComponent> optionsForComponent = builder.options(componentBits);
-                    if (optionsForComponent.isEmpty()) {
+                    List<KnownComponent> rawOptions = builder.options(componentBits);
+                    List<KnownComponent> filteredOptions = enforceJoinNodes
+                            ? rawOptions.stream()
+                                    .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                                    .collect(Collectors.toList())
+                            : rawOptions;
+
+                    if (rawOptions.isEmpty()) {
                         String signature = BitsetUtils.signature(componentBits, edgeCount);
                         diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
                                 + " rejected: no CPQ candidates for bits " + signature);
+                    } else if (filteredOptions.isEmpty()) {
+                        String signature = BitsetUtils.signature(componentBits, edgeCount);
+                        diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
+                                + " rejected: endpoints not on join nodes for bits " + signature);
                     }
                 }
             }
@@ -167,5 +193,26 @@ public final class DecompositionPipeline {
 
     private boolean timeExceeded(DecompositionOptions options, long elapsedMillis) {
         return options.timeBudgetMs() > 0 && elapsedMillis > options.timeBudgetMs();
+    }
+
+    private Set<String> computeJoinNodes(List<Component> components, Set<String> freeVariables) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (Component component : components) {
+            for (String vertex : component.vertices()) {
+                counts.merge(vertex, 1, Integer::sum);
+            }
+        }
+
+        Set<String> joinNodes = new HashSet<>();
+        if (freeVariables != null) {
+            joinNodes.addAll(freeVariables);
+        }
+
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() >= 2) {
+                joinNodes.add(entry.getKey());
+            }
+        }
+        return joinNodes;
     }
 }
