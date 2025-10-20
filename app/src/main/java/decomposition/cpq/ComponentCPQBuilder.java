@@ -367,6 +367,184 @@ public final class ComponentCPQBuilder {
 
     private String canonicalKey(KnownComponent candidate) {
         String edgeSignature = BitsetUtils.signature(candidate.edges(), edges.size());
-        return edgeSignature + "|" + candidate.source() + "|" + candidate.target() + "|" + candidate.cpq().toString();
+        String normalizedCPQ = normalizeCPQ(candidate.cpq().toString());
+        return edgeSignature + "|" + candidate.source() + "|" + candidate.target() + "|" + normalizedCPQ;
+    }
+
+    /**
+     * Normalizes a CPQ string representation to eliminate semantic duplicates.
+     * Specifically handles conjunction commutativity: (a ∩ b) and (b ∩ a) become the same canonical form.
+     * Preserves composition order since composition is not commutative.
+     *
+     * Algorithm:
+     * 1. Parse the CPQ string into a tree structure
+     * 2. Recursively normalize nested expressions
+     * 3. For conjunction nodes, sort the operands alphabetically
+     * 4. Reconstruct the normalized string
+     */
+    private String normalizeCPQ(String cpqStr) {
+        // Remove all whitespace for consistent parsing
+        String normalized = cpqStr.replaceAll("\\s+", "");
+
+        // Recursively normalize the expression
+        return normalizeExpression(normalized);
+    }
+
+    /**
+     * Recursively normalizes a CPQ expression.
+     * Handles nested parentheses and operators.
+     */
+    private String normalizeExpression(String expr) {
+        // Base case: simple atom (no operators)
+        if (!expr.contains("∩") && !expr.contains("◦")) {
+            return expr;
+        }
+
+        // Handle parentheses
+        if (expr.startsWith("(") && expr.endsWith(")")) {
+            // Find the matching closing parenthesis
+            int depth = 0;
+            int matchingClose = -1;
+            for (int i = 0; i < expr.length(); i++) {
+                if (expr.charAt(i) == '(') depth++;
+                else if (expr.charAt(i) == ')') {
+                    depth--;
+                    if (depth == 0) {
+                        matchingClose = i;
+                        break;
+                    }
+                }
+            }
+
+            // If the outer parentheses wrap the whole expression, remove them and recurse
+            if (matchingClose == expr.length() - 1) {
+                String inner = expr.substring(1, expr.length() - 1);
+                return "(" + normalizeExpression(inner) + ")";
+            }
+        }
+
+        // Find the top-level operator (not inside parentheses)
+        int topLevelOp = findTopLevelOperator(expr);
+
+        if (topLevelOp == -1) {
+            // No operator at top level, just return as-is
+            return expr;
+        }
+
+        char op = expr.charAt(topLevelOp);
+
+        if (op == '∩') {
+            // Conjunction: normalize and sort operands
+            return normalizeConjunction(expr, topLevelOp);
+        } else if (op == '◦') {
+            // Composition: normalize operands but preserve order
+            return normalizeComposition(expr, topLevelOp);
+        }
+
+        return expr;
+    }
+
+    /**
+     * Finds the position of the top-level operator (not inside parentheses).
+     * Returns -1 if no top-level operator is found.
+     * Prioritizes finding ∩ first (lower precedence), then ◦.
+     */
+    private int findTopLevelOperator(String expr) {
+        int depth = 0;
+
+        // First pass: look for conjunction (∩)
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (depth == 0 && c == '∩') {
+                return i;
+            }
+        }
+
+        // Second pass: look for composition (◦)
+        depth = 0;
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (depth == 0 && c == '◦') {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Normalizes a conjunction by sorting its operands.
+     * Handles nested conjunctions by flattening them first.
+     */
+    private String normalizeConjunction(String expr, int opPos) {
+        // Split by all top-level conjunctions
+        List<String> operands = splitByTopLevelOperator(expr, '∩');
+
+        // Normalize each operand
+        List<String> normalizedOperands = new ArrayList<>();
+        for (String operand : operands) {
+            normalizedOperands.add(normalizeExpression(operand.trim()));
+        }
+
+        // Sort the operands alphabetically for canonical form
+        normalizedOperands.sort(String::compareTo);
+
+        // Reconstruct with parentheses around the whole expression
+        if (normalizedOperands.size() == 1) {
+            return normalizedOperands.get(0);
+        }
+
+        StringBuilder result = new StringBuilder("(");
+        for (int i = 0; i < normalizedOperands.size(); i++) {
+            if (i > 0) result.append("∩");
+            result.append(normalizedOperands.get(i));
+        }
+        result.append(")");
+
+        return result.toString();
+    }
+
+    /**
+     * Normalizes a composition by normalizing operands but preserving order.
+     */
+    private String normalizeComposition(String expr, int opPos) {
+        String left = expr.substring(0, opPos);
+        String right = expr.substring(opPos + 1);
+
+        String normalizedLeft = normalizeExpression(left.trim());
+        String normalizedRight = normalizeExpression(right.trim());
+
+        return "(" + normalizedLeft + "◦" + normalizedRight + ")";
+    }
+
+    /**
+     * Splits an expression by a top-level operator (not inside parentheses).
+     * Returns all operands separated by that operator at the top level.
+     */
+    private List<String> splitByTopLevelOperator(String expr, char operator) {
+        List<String> operands = new ArrayList<>();
+        int depth = 0;
+        int start = 0;
+
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (depth == 0 && c == operator) {
+                operands.add(expr.substring(start, i));
+                start = i + 1;
+            }
+        }
+
+        // Add the last operand
+        if (start < expr.length()) {
+            operands.add(expr.substring(start));
+        }
+
+        return operands;
     }
 }

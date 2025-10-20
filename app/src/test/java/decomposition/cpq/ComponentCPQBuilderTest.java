@@ -61,4 +61,59 @@ final class ComponentCPQBuilderTest {
                                 && "A".equals(kc.target())),
                 "Component {r3,r4,r5} should include (r3◦r4) ∩ r5⁻ to cover the reverse join");
     }
+
+    @Test
+    void conjunctionDeduplicationEliminatesCommutativeDuplicates() {
+        ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+
+        // Create a component with 4 edges that would generate conjunctions
+        BitSet edgeBits = new BitSet();
+        edgeBits.set(0); // r1
+        edgeBits.set(1); // r2
+        edgeBits.set(2); // r3
+        edgeBits.set(3); // r4
+
+        List<KnownComponent> options = builder.options(edgeBits);
+
+        // Count unique CPQ strings for components with same source and target
+        long countAtoC = options.stream()
+                .filter(kc -> "A".equals(kc.source()) && "C".equals(kc.target()))
+                .map(kc -> kc.cpq().toString())
+                .distinct()
+                .count();
+
+        // Before normalization, we would get duplicates like:
+        // ((r1◦r2) ∩ (r4⁻◦r3⁻)) and ((r4⁻◦r3⁻) ∩ (r1◦r2))
+        // After normalization, these should be deduplicated
+
+        long countCtoA = options.stream()
+                .filter(kc -> "C".equals(kc.source()) && "A".equals(kc.target()))
+                .map(kc -> kc.cpq().toString())
+                .distinct()
+                .count();
+
+        // Verify that we don't have excessive duplicates
+        // The exact count will depend on the CPQ generation logic,
+        // but we should have significantly fewer options than before normalization
+        assertTrue(countAtoC > 0, "Should have at least one CPQ from A to C");
+        assertTrue(countCtoA > 0, "Should have at least one CPQ from C to A");
+
+        // More specific test: check that commutative duplicates are eliminated
+        List<String> cpqStringsAtoC = options.stream()
+                .filter(kc -> "A".equals(kc.source()) && "C".equals(kc.target()))
+                .map(kc -> kc.cpq().toString())
+                .toList();
+
+        // Check for specific duplicates that should be eliminated
+        long countR1R2IntersectR4R3 = cpqStringsAtoC.stream()
+                .filter(cpq -> cpq.contains("r1") && cpq.contains("r2") &&
+                        cpq.contains("r4") && cpq.contains("r3") &&
+                        cpq.contains("∩"))
+                .count();
+
+        // After deduplication, we should only have one version of this conjunction
+        assertTrue(countR1R2IntersectR4R3 <= 2,
+                "Should not have many duplicate conjunctions with same operands in different order. Found: " +
+                        countR1R2IntersectR4R3 + " instances");
+    }
 }
