@@ -79,11 +79,7 @@ public final class DecompositionPipeline {
         for (Partition partition : filteredPartitions) {
             partitionIndex++;
             List<Component> componentsInPartition = partition.components();
-            boolean enforceJoinNodes = componentsInPartition.size() > 1;
-            Set<String> joinNodes = enforceJoinNodes
-                    ? computeJoinNodes(componentsInPartition, extraction.freeVariables())
-                    : Set.of();
-
+            Set<String> joinNodes = computeJoinNodes(componentsInPartition, extraction.freeVariables());
             boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables());
             if (valid) {
                 cpqPartitions.add(partition);
@@ -93,7 +89,7 @@ public final class DecompositionPipeline {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits);
-                    List<KnownComponent> filteredOptions = enforceJoinNodes
+                    List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
                                     .collect(Collectors.toList())
@@ -115,7 +111,7 @@ public final class DecompositionPipeline {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits);
-                    List<KnownComponent> filteredOptions = enforceJoinNodes
+                    List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
                                     .collect(Collectors.toList())
@@ -214,5 +210,15 @@ public final class DecompositionPipeline {
             }
         }
         return joinNodes;
+    }
+
+    private boolean shouldEnforceJoinNodes(Set<String> joinNodes, int totalComponents, Component component) {
+        if (joinNodes.isEmpty()) {
+            return false;
+        }
+        if (totalComponents > 1) {
+            return true;
+        }
+        return component.edgeCount() > 1;
     }
 }

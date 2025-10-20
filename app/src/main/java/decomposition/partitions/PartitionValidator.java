@@ -22,20 +22,15 @@ public final class PartitionValidator {
                                            ComponentCPQBuilder builder,
                                            Set<String> freeVariables) {
         List<Component> components = partition.components();
-        boolean enforceJoinNodes = components.size() > 1;
-
         List<Set<String>> componentVariables = new ArrayList<>(components.size());
         for (Component component : components) {
             componentVariables.add(component.vertices());
         }
 
-        Set<String> joinNodes = enforceJoinNodes
-                ? computeJoinNodes(componentVariables, freeVariables)
-                : Set.of();
-
+        Set<String> joinNodes = computeJoinNodes(componentVariables, freeVariables);
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits());
-            if (enforceJoinNodes) {
+            if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
                         .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
                         .collect(Collectors.toList());
@@ -59,15 +54,11 @@ public final class PartitionValidator {
             componentVariables.add(component.vertices());
         }
 
-        boolean enforceJoinNodes = components.size() > 1;
-        Set<String> joinNodes = enforceJoinNodes
-                ? computeJoinNodes(componentVariables, freeVariables)
-                : Set.of();
-
+        Set<String> joinNodes = computeJoinNodes(componentVariables, freeVariables);
         List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits());
-            if (enforceJoinNodes) {
+            if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
                         .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
                         .collect(Collectors.toList());
@@ -268,5 +259,15 @@ public final class PartitionValidator {
             }
         }
         return joinNodes;
+    }
+
+    private boolean shouldEnforceJoinNodes(Set<String> joinNodes, int totalComponents, Component component) {
+        if (joinNodes.isEmpty()) {
+            return false;
+        }
+        if (totalComponents > 1) {
+            return true;
+        }
+        return component.edgeCount() > 1;
     }
 }

@@ -7,6 +7,7 @@ import java.util.Set;
 record CliOptions(
         String queryText,
         String queryFile,
+        String exampleName,
         Set<String> freeVariables,
         Mode mode,
         int maxPartitions,
@@ -30,5 +31,9 @@ record CliOptions(
 
     boolean hasQueryFile() {
         return queryFile != null && !queryFile.isBlank();
+    }
+
+    boolean hasExample() {
+        return exampleName != null && !exampleName.isBlank();
     }
 }

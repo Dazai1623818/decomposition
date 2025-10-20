@@ -4,6 +4,7 @@ import decomposition.DecompositionOptions;
 import decomposition.DecompositionOptions.Mode;
 import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
+import decomposition.Example;
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Partition;
 import decomposition.model.Component;
@@ -148,12 +149,32 @@ public final class Main {
         if (args == null || args.length == 0) {
             throw new IllegalArgumentException("Missing command. Use: decompose [options]");
         }
-        if (!"decompose".equalsIgnoreCase(args[0])) {
-            throw new IllegalArgumentException("Unknown command: " + args[0]);
+        String command = args[0];
+        if ("decompose".equalsIgnoreCase(command)) {
+            return parseDecomposeArgs(args);
+        }
+        if ("example".equalsIgnoreCase(command)) {
+            if (args.length < 2) {
+                throw new IllegalArgumentException("Missing example name. Usage: example <exampleName> [options]");
+            }
+            String[] remapped = remapExampleArgs(args[1], Arrays.copyOfRange(args, 2, args.length));
+            return parseDecomposeArgs(remapped);
+        }
+        if (isExampleAlias(command)) {
+            String[] remapped = remapExampleArgs(command, Arrays.copyOfRange(args, 1, args.length));
+            return parseDecomposeArgs(remapped);
+        }
+        throw new IllegalArgumentException("Unknown command: " + command);
+    }
+
+    private CliOptions parseDecomposeArgs(String[] args) {
+        if (args.length == 0 || !"decompose".equalsIgnoreCase(args[0])) {
+            throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
         }
 
         String queryText = null;
         String queryFile = null;
+        String exampleName = null;
         String freeVarsRaw = null;
         String modeRaw = null;
         String maxPartitionsRaw = null;
@@ -168,6 +189,7 @@ public final class Main {
             switch (arg) {
                 case "--cq" -> queryText = nextValue(args, ++i, arg);
                 case "--file" -> queryFile = nextValue(args, ++i, arg);
+                case "--example" -> exampleName = nextValue(args, ++i, arg);
                 case "--free-vars" -> freeVarsRaw = nextValue(args, ++i, arg);
                 case "--mode" -> modeRaw = nextValue(args, ++i, arg);
                 case "--max-partitions" -> maxPartitionsRaw = nextValue(args, ++i, arg);
@@ -180,8 +202,12 @@ public final class Main {
             }
         }
 
-        if ((queryText == null) == (queryFile == null)) {
-            throw new IllegalArgumentException("Provide exactly one of --cq or --file");
+        int sources = 0;
+        if (queryText != null) sources++;
+        if (queryFile != null) sources++;
+        if (exampleName != null) sources++;
+        if (sources != 1) {
+            throw new IllegalArgumentException("Provide exactly one of --cq, --file, or --example");
         }
 
         Set<String> freeVars = parseFreeVariables(freeVarsRaw);
@@ -209,7 +235,25 @@ public final class Main {
         long timeBudget = parseLong(timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
         int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
 
-        return new CliOptions(queryText, queryFile, freeVars, mode, maxPartitions, maxCovers, timeBudget, limit, show, outputPath);
+        return new CliOptions(queryText, queryFile, exampleName, freeVars, mode,
+                maxPartitions, maxCovers, timeBudget, limit, show, outputPath);
+    }
+
+    private boolean isExampleAlias(String command) {
+        if (command == null) {
+            return false;
+        }
+        String normalized = command.trim().toLowerCase();
+        return normalized.startsWith("example") && normalized.length() > "example".length();
+    }
+
+    private String[] remapExampleArgs(String exampleName, String[] remaining) {
+        String[] remapped = new String[remaining.length + 3];
+        remapped[0] = "decompose";
+        remapped[1] = "--example";
+        remapped[2] = exampleName;
+        System.arraycopy(remaining, 0, remapped, 3, remaining.length);
+        return remapped;
     }
 
     private String nextValue(String[] args, int index, String option) {
@@ -254,6 +298,9 @@ public final class Main {
     }
 
     private CQ loadQuery(CliOptions options) throws IOException {
+        if (options.hasExample()) {
+            return loadExample(options.exampleName());
+        }
         if (options.hasQueryText()) {
             return CQ.parse(options.queryText());
         }
@@ -263,6 +310,21 @@ public final class Main {
         }
         String content = Files.readString(path);
         return CQ.parse(content);
+    }
+
+    private CQ loadExample(String exampleName) {
+        String normalized = exampleName.trim().toLowerCase();
+        return switch (normalized) {
+            case "example1" -> Example.example1();
+            case "example2" -> Example.example2();
+            case "example3" -> Example.example3();
+            case "example4" -> Example.example4();
+            case "example5" -> Example.example5();
+            case "example6" -> Example.example6();
+            case "example7" -> Example.example7();
+            case "example8" -> Example.example8();
+            default -> throw new IllegalArgumentException("Unknown example: " + exampleName);
+        };
     }
 
     private void writeOutput(String outputPath, String json) throws IOException {
