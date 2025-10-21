@@ -32,7 +32,7 @@ public final class PartitionValidator {
             List<KnownComponent> options = builder.options(component.edgeBits());
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                        .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
                         .collect(Collectors.toList());
             }
             if (options.isEmpty()) {
@@ -60,7 +60,7 @@ public final class PartitionValidator {
             List<KnownComponent> options = builder.options(component.edgeBits());
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                        .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
                         .collect(Collectors.toList());
             }
             if (options.isEmpty()) {
@@ -143,18 +143,9 @@ public final class PartitionValidator {
         // Components with ∩ id create self-loops which don't connect properly
         if (!joinVariables.isEmpty()) {
             for (KnownComponent kc : tuple) {
-                String source = kc.source();
-                String target = kc.target();
                 String cpqStr = kc.cpq().toString();
 
-                // Reject self-loops (source == target) for multi-component cases
-                // These don't properly connect through join variables
-                if (source.equals(target)) {
-                    return false;
-                }
-
-                // Also reject if CPQ contains ∩ id in multi-component case
-                // because ∩ id forces endpoints to be the same (creates self-loop)
+                // Reject anchored loops that collapse to identity
                 if (cpqStr.contains("∩ id") || cpqStr.contains("∩id")) {
                     return false;
                 }
@@ -269,5 +260,18 @@ public final class PartitionValidator {
             return true;
         }
         return component.edgeCount() > 1;
+    }
+
+    private boolean endpointsRespectJoinNodes(KnownComponent component, Set<String> joinNodes) {
+        if (joinNodes == null || joinNodes.isEmpty()) {
+            return true;
+        }
+        if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
+            return false;
+        }
+        if (joinNodes.size() > 1 && component.source().equals(component.target())) {
+            return false;
+        }
+        return true;
     }
 }

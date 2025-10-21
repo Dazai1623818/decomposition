@@ -84,6 +84,7 @@ public final class DecompositionPipeline {
             if (valid) {
                 cpqPartitions.add(partition);
                 List<Integer> optionCounts = new ArrayList<>();
+                List<List<KnownComponent>> filteredOptionsPerComponent = new ArrayList<>();
                 int componentIndex = 0;
                 for (Component component : componentsInPartition) {
                     componentIndex++;
@@ -91,19 +92,35 @@ public final class DecompositionPipeline {
                     List<KnownComponent> rawOptions = builder.options(componentBits);
                     List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
-                                    .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                                    .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
                                     .collect(Collectors.toList())
                             : rawOptions;
 
                     optionCounts.add(filteredOptions.size());
-                    for (KnownComponent kc : rawOptions) {
-                        recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
-                    }
+                    filteredOptionsPerComponent.add(filteredOptions);
                 }
                 List<List<KnownComponent>> tuples = effectiveOptions.mode().enumerateTuples()
-                        ? validator.enumerateDecompositions(partition, builder, effectiveOptions.enumerationLimit(),
-                                extraction.freeVariables(), edges)
+                        ? validator.enumerateDecompositions(
+                                partition,
+                                builder,
+                                effectiveOptions.enumerationLimit() == 0 ? 1 : Math.min(1, effectiveOptions.enumerationLimit()),
+                                extraction.freeVariables(),
+                                edges)
                         : List.of();
+
+                if (!tuples.isEmpty()) {
+                    for (KnownComponent kc : tuples.get(0)) {
+                        recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
+                    }
+                } else {
+                    for (List<KnownComponent> filteredOptions : filteredOptionsPerComponent) {
+                        if (!filteredOptions.isEmpty()) {
+                            KnownComponent kc = filteredOptions.get(0);
+                            recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
+                        }
+                    }
+                }
+
                 partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
             } else {
                 int componentIndex = 0;
@@ -113,7 +130,7 @@ public final class DecompositionPipeline {
                     List<KnownComponent> rawOptions = builder.options(componentBits);
                     List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
-                                    .filter(kc -> joinNodes.contains(kc.source()) && joinNodes.contains(kc.target()))
+                                    .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
                                     .collect(Collectors.toList())
                             : rawOptions;
 
@@ -220,5 +237,18 @@ public final class DecompositionPipeline {
             return true;
         }
         return component.edgeCount() > 1;
+    }
+
+    private boolean endpointsRespectJoinNodes(KnownComponent component, Set<String> joinNodes) {
+        if (joinNodes == null || joinNodes.isEmpty()) {
+            return true;
+        }
+        if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
+            return false;
+        }
+        if (joinNodes.size() > 1 && component.source().equals(component.target())) {
+            return false;
+        }
+        return true;
     }
 }
