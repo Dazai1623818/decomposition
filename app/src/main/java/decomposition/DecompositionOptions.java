@@ -11,7 +11,7 @@ public record DecompositionOptions(
         int enumerationLimit) {
 
     public static DecompositionOptions defaults() {
-        return new DecompositionOptions(Mode.VALIDATE, 10_000, 500, 5_000, 100);
+        return new DecompositionOptions(Mode.VALIDATE, 10_000, 500, 0, 100);
     }
 
     public enum Mode {

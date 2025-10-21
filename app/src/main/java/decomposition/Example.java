@@ -78,10 +78,8 @@ public class Example {
     // short branch
     public static CQ example5() {
         CQ cq = CQ.empty();
-        VarCQ a = cq.addFreeVariable("A");
-        VarCQ b = cq.addBoundVariable("B");
         VarCQ c = cq.addBoundVariable("C");
-        VarCQ d = cq.addBoundVariable("D");
+        VarCQ d = cq.addFreeVariable("D");
         VarCQ e = cq.addBoundVariable("E");
         VarCQ f = cq.addBoundVariable("F");
 
