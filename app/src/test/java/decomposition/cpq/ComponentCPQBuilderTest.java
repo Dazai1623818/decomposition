@@ -41,6 +41,30 @@ final class ComponentCPQBuilderTest {
     }
 
     @Test
+    void singleEdgeIncludesBacktrackLoops() {
+        ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+
+        BitSet edgeBits = new BitSet();
+        edgeBits.set(0);
+
+        List<KnownComponent> options = builder.options(edgeBits);
+
+        String sourceLoop = CPQ.parse("((r1 ◦ r1⁻) ∩ id)").toString();
+        String targetLoop = CPQ.parse("((r1⁻ ◦ r1) ∩ id)").toString();
+
+        assertTrue(options.stream().anyMatch(kc ->
+                        sourceLoop.equals(kc.cpq().toString())
+                                && "A".equals(kc.source())
+                                && "A".equals(kc.target())),
+                "Backtrack loop at source should be available");
+        assertTrue(options.stream().anyMatch(kc ->
+                        targetLoop.equals(kc.cpq().toString())
+                                && "B".equals(kc.source())
+                                && "B".equals(kc.target())),
+                "Backtrack loop at target should be available");
+    }
+
+    @Test
     void threeEdgeComponentSupportsIntersectionWithInverse() {
         ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
 
@@ -115,5 +139,27 @@ final class ComponentCPQBuilderTest {
         assertTrue(countR1R2IntersectR4R3 <= 2,
                 "Should not have many duplicate conjunctions with same operands in different order. Found: " +
                         countR1R2IntersectR4R3 + " instances");
+    }
+
+    @Test
+    void loopsAreAnchoredWithIdentity() {
+        ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+
+        BitSet edgeBits = new BitSet();
+        edgeBits.set(0);
+        edgeBits.set(1);
+        edgeBits.set(2);
+        edgeBits.set(3);
+        edgeBits.set(4);
+
+        List<KnownComponent> options = builder.options(edgeBits);
+
+        String anchored = CPQ.parse("(r1⁻◦(((r4⁻◦r3⁻) ∩ r5)◦r2⁻)) ∩ id").toString();
+        assertTrue(
+                options.stream().anyMatch(kc ->
+                        anchored.equals(kc.cpq().toString())
+                                && kc.source().equals("B")
+                                && kc.target().equals("B")),
+                "Loop B→B should enforce equality via intersection with id");
     }
 }

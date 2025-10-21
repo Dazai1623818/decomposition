@@ -136,8 +136,7 @@ public final class DecompositionPipeline {
                             c -> localJoinNodes(c, joinNodes));
                     Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
                             c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
-                    registerOptionVariants(filteredOptionsPerComponent.get(i), component,
-                            componentJoinNodes, componentJoinRoles, recognizedCatalogueMap, edgeCount);
+                    registerOptionVariants(filteredOptionsPerComponent.get(i), recognizedCatalogueMap, edgeCount);
                 }
 
                 partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
@@ -197,68 +196,29 @@ public final class DecompositionPipeline {
     }
 
     private void registerOptionVariants(List<KnownComponent> options,
-                                        Component component,
-                                        Set<String> componentJoinNodes,
-                                        Map<String, JoinNodeRole> joinNodeRoles,
                                         Map<ComponentKey, KnownComponent> catalogue,
                                         int edgeCount) {
-        if (options == null || options.isEmpty()) {
+        if (options == null) {
             return;
         }
 
-        KnownComponent first = options.get(0);
-        registerRecognized(catalogue, first, edgeCount);
-
-        options.stream()
-                .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                        kc, component, componentJoinNodes, joinNodeRoles) && isAnchored(kc))
-                .findFirst()
-                .ifPresent(kc -> registerRecognized(catalogue, kc, edgeCount));
-
-        options.stream()
-                .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                        kc, component, componentJoinNodes, joinNodeRoles) && !isAnchored(kc))
-                .findFirst()
-                .ifPresent(kc -> registerRecognized(catalogue, kc, edgeCount));
+        for (KnownComponent option : options) {
+            registerRecognized(catalogue, option, edgeCount);
+        }
     }
 
     private void registerRecognized(Map<ComponentKey, KnownComponent> catalogue,
                                     KnownComponent candidate,
                                     int edgeCount) {
         ComponentKey key = candidate.toKey(edgeCount);
-        catalogue.merge(key, candidate, this::preferRecognizedCandidate);
-    }
-
-    private KnownComponent preferRecognizedCandidate(KnownComponent existing,
-                                                     KnownComponent candidate) {
-        boolean existingAnchored = isAnchored(existing);
-        boolean candidateAnchored = isAnchored(candidate);
-        if (candidateAnchored && !existingAnchored) {
-            return candidate;
-        }
-        if (candidateAnchored == existingAnchored) {
-            int existingLength = existing.cpq().toString().length();
-            int candidateLength = candidate.cpq().toString().length();
-            if (candidateLength > existingLength) {
-                return candidate;
-            }
-        }
-        return existing;
-    }
-
-    private boolean isAnchored(KnownComponent component) {
-        String normalized = component.cpq().toString().replace(" ", "");
-        return normalized.endsWith("∩id") || normalized.contains(")∩id");
+        catalogue.putIfAbsent(key, candidate);
     }
 
     private KnownComponent selectPreferredFinalComponent(List<KnownComponent> candidates) {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
-        return candidates.stream()
-                .filter(kc -> !isAnchored(kc))
-                .findFirst()
-                .orElse(candidates.get(0));
+        return candidates.get(0);
     }
 
     private DecompositionResult buildResult(ExtractionResult extraction,

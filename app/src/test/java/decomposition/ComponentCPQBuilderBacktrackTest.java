@@ -1,6 +1,7 @@
 package decomposition;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -37,19 +38,38 @@ final class ComponentCPQBuilderBacktrackTest {
         assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4⁻ ◦ r4) ∩ id"));
 
         List<KnownComponent> options = builder.options(r4Bits);
-        List<KnownComponent> anchoredAtJoin = options.stream()
-                .filter(kc -> kc.derivation().startsWith("Single backtrack anchored at")
-                        && "D".equals(kc.source())
-                        && "D".equals(kc.target()))
-                .collect(Collectors.toList());
+        Edge r4 = edges.get(r4Index);
 
         assertFalse(options.isEmpty(), "Expected CPQ options for single edge component");
-        assertFalse(anchoredAtJoin.isEmpty(),
-                () -> "Expected anchored backtrack variant for join node but saw:\n"
-                        + options.stream()
-                                .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "] :: "
-                                        + kc.derivation())
-                                .collect(Collectors.joining("\n")));
+        assertTrue(options.stream()
+                        .filter(kc -> kc.source().equals(r4.source())
+                                && kc.target().equals(r4.source()))
+                        .allMatch(kc -> kc.cpqRule().contains("∩ id")),
+                () -> "Backtrack loop at source missing ∩ id but saw:\n" + options.stream()
+                        .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "] :: "
+                                + kc.derivation())
+                        .collect(Collectors.joining("\n")));
+        assertTrue(options.stream()
+                        .filter(kc -> kc.source().equals(r4.target())
+                                && kc.target().equals(r4.target()))
+                        .allMatch(kc -> kc.cpqRule().contains("∩ id")),
+                () -> "Backtrack loop at target missing ∩ id but saw:\n" + options.stream()
+                        .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "] :: "
+                                + kc.derivation())
+                        .collect(Collectors.joining("\n")));
+
+        Set<List<String>> endpointPairs = options.stream()
+                .map(kc -> List.of(kc.source(), kc.target()))
+                .collect(Collectors.toSet());
+
+        Set<List<String>> expectedPairs = Set.of(
+                List.of(r4.source(), r4.target()),
+                List.of(r4.target(), r4.source()),
+                List.of(r4.source(), r4.source()),
+                List.of(r4.target(), r4.target()));
+
+        assertEquals(expectedPairs, endpointPairs,
+                () -> "Expected forward, inverse, and backtrack orientations but saw: " + endpointPairs);
 
         PartitionGenerator generator = new PartitionGenerator(0);
         List<decomposition.model.Component> components = generator.enumerateConnectedComponents(edges);
@@ -66,7 +86,7 @@ final class ComponentCPQBuilderBacktrackTest {
     }
 
     @Test
-    void selfLoopComponentsExposeAnchoredVariant() {
+    void selfLoopComponentsYieldSingleStructuralOption() {
         CQ cq = Example.example7();
         CQExtractor extractor = new CQExtractor();
         ExtractionResult extraction = extractor.extract(cq, Set.of("A"));
@@ -80,8 +100,10 @@ final class ComponentCPQBuilderBacktrackTest {
 
         List<KnownComponent> options = builder.options(selfLoopBits);
 
-        assertTrue(options.stream().anyMatch(kc -> kc.cpqRule().contains("∩ id")),
-                () -> "Expected anchored variant for self-loop but saw: "
+        assertEquals(1, options.size(), "Self-loop should produce a single structural option");
+        KnownComponent loop = options.get(0);
+        assertTrue(loop.cpqRule().contains("∩ id"),
+                () -> "Self-loop should enforce equality via id but saw: "
                         + options.stream()
                                 .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "]")
                                 .collect(Collectors.joining(", ")));

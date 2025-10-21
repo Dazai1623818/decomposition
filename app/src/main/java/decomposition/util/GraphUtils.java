@@ -3,7 +3,6 @@ package decomposition.util;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashMap;
@@ -92,11 +91,4 @@ public final class GraphUtils {
         return vertices;
     }
 
-    public static List<Component> componentsFromPartition(List<BitSet> bitSets, List<Edge> edges) {
-        List<Component> components = new ArrayList<>(bitSets.size());
-        for (BitSet bitSet : bitSets) {
-            components.add(buildComponent(bitSet, edges));
-        }
-        return components;
-    }
 }

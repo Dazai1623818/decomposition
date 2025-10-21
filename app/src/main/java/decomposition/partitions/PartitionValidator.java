@@ -129,16 +129,14 @@ public final class PartitionValidator {
      * Validates that a tuple of components forms a valid decomposition.
      *
      * Key rules:
-     * 1. For multi-component partitions with join variables:
-     *    - Components should NOT be self-loops (source == target)
-     *    - CPQs with ∩ id collapse to self-loops and don't connect properly
-     * 2. For single-component partitions:
-     *    - Self-loops with ∩ id are valid
+     * 1. For multi-component partitions with join variables, avoid degenerate self-loops
+     *    that fail to connect distinct join nodes.
+     * 2. Single-component partitions accept self-loop structures.
      */
     private boolean isValidDecompositionTuple(List<KnownComponent> tuple,
                                                List<Set<String>> componentVariables,
                                                Set<String> freeVariables) {
-        // Single component - allow all including self-loops with ∩ id
+        // Single component - allow all including self-loops
         if (tuple.size() == 1) {
             return true;
         }

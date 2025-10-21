@@ -2,7 +2,6 @@ package decomposition.cpq;
 
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -30,6 +29,8 @@ import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
  * - Reverse directionality is expressed via inverse LABELS (r⁻) when needed
  * - Components may expose both forward and inverse orientations when the CQ permits it
  * - Matching is strictly directional
+ * - Structural equivalence is defined solely by the covered edge bitset and oriented endpoints;
+ *   internal CPQ syntax is ignored for deduplication
  */
 public final class ComponentCPQBuilder {
     private final List<Edge> edges;
@@ -37,10 +38,6 @@ public final class ComponentCPQBuilder {
 
     public ComponentCPQBuilder(List<Edge> edges) {
         this.edges = List.copyOf(edges);
-    }
-
-    int totalEdges() {
-        return edges.size();
     }
 
     public List<Edge> allEdges() {
@@ -57,7 +54,7 @@ public final class ComponentCPQBuilder {
             return memo.get(signature);
         }
 
-        Map<String, KnownComponent> results = new LinkedHashMap<>();
+        Map<ComponentKey, KnownComponent> results = new LinkedHashMap<>();
         int cardinality = edgeBits.cardinality();
 
         if (cardinality == 0) {
@@ -98,10 +95,39 @@ public final class ComponentCPQBuilder {
                 } catch (RuntimeException ex) {
                     // Skip if inverse parsing fails
                 }
-            }
 
-            // 1) Enrich single-edge case with anchored backtrack/self-loop forms only.
-            addSingleEdgeBacktrackVariants(results, edge, bitsCopy);
+                // 0b) Backtrack at source: s --r--> t --r⁻--> s anchored with id
+                String backtrackSourceStr = "((" + edge.label() + " ◦ " + edge.label() + "⁻) ∩ id)";
+                try {
+                    CPQ backtrackSource = CPQ.parse(backtrackSourceStr);
+                    KnownComponent loopSource = derived(
+                        backtrackSource,
+                        bitsCopy,
+                        edge.source(),
+                        edge.source(),
+                        "Backtrack loop via '" + edge.label() + "' at " + edge.source()
+                    );
+                    tryAdd(results, loopSource);
+                } catch (RuntimeException ex) {
+                    // Ignore unparsable backtrack variants
+                }
+
+                // 0c) Backtrack at target: t --r⁻--> s --r--> t anchored with id
+                String backtrackTargetStr = "((" + edge.label() + "⁻ ◦ " + edge.label() + ") ∩ id)";
+                try {
+                    CPQ backtrackTarget = CPQ.parse(backtrackTargetStr);
+                    KnownComponent loopTarget = derived(
+                        backtrackTarget,
+                        bitsCopy,
+                        edge.target(),
+                        edge.target(),
+                        "Backtrack loop via '" + edge.label() + "' at " + edge.target()
+                    );
+                    tryAdd(results, loopTarget);
+                } catch (RuntimeException ex) {
+                    // Ignore unparsable backtrack variants
+                }
+            }
 
         } else {
             // unchanged: your existing composition logic
@@ -152,221 +178,50 @@ public final class ComponentCPQBuilder {
                 }
             }
 
-            // Multi-edge backtrack variants: extend backtrack patterns when cardinality > 1
-            addMultiEdgeBacktrackVariants(results, edgeBits);
         }
 
-        // Post-processing: add anchored variants for same-node components if not already anchored.
-        // REMOVED: Inverse CPQ generation - reverse direction is only supported via inverse labels (r⁻),
-        // not by reversing entire CPQs and swapping endpoints.
-        List<KnownComponent> snapshot = new ArrayList<>(results.values());
-        List<KnownComponent> additional = new ArrayList<>();
-        for (KnownComponent candidate : snapshot) {
-            // Only add ... ∩ id if it's a same-node component AND not already anchored
-            if (candidate.source().equals(candidate.target()) && !looksAnchored(candidate.cpq())) {
-                String anchoredStr = candidate.cpq().toString() + " ∩ id";
-                try {
-                    CPQ anchoredCPQ = CPQ.parse(anchoredStr);
-                    String derivation = "Anchor with id: [" + candidate.cpqRule() + "] ∩ id at "
-                            + candidate.source();
-                    KnownComponent anchoredComponent = derived(
-                        anchoredCPQ, candidate.edges(), candidate.source(), candidate.target(), derivation
-                    );
-                    additional.add(anchoredComponent);
-                } catch (RuntimeException ex) {
-                    // Skip if anchoring fails
-                }
-            }
-        }
-        for (KnownComponent extra : additional) {
-            tryAdd(results, extra);
-        }
-
-        List<KnownComponent> ordered = new ArrayList<>(results.values());
-        ordered.sort(CANDIDATE_COMPARATOR);
-        List<KnownComponent> deduped = dedupe(ordered);
-        List<KnownComponent> finalList = List.copyOf(deduped);
+        List<KnownComponent> finalList = List.copyOf(results.values());
         memo.put(signature, finalList);
         return finalList;
-    }
-
-    /**
-     * Adds backtrack variants using inverse labels (r⁻) within CPQs for SINGLE edges only.
-     * Variants remain anchored at the original source or target through identity intersections.
-     *
-     * Generates only:
-     *  - single backtracks: (r◦r⁻)∩id anchored at source, (r⁻◦r)∩id anchored at target
-     *  - selfloop: if source==target also add (r)∩id
-     *
-     * Multi-edge backtracks (double, multi) are handled separately during composition
-     * when cardinality > 1, as they represent extending the backtrack case.
-     *
-     * Note: r⁻ is an inverse LABEL, not a reversed CPQ. Endpoints are never swapped.
-     */
-    private void addSingleEdgeBacktrackVariants(Map<String, KnownComponent> results, Edge e, BitSet bits) {
-        String s = e.source();
-        String t = e.target();
-        String r = e.label();
-        String inverseLabel = r + "⁻";
-
-        // --- single backtracks (anchored) ---
-        // (r◦r⁻) ∩ id at source
-        String singleSStr = "(" + r + " ◦ " + inverseLabel + ") ∩ id";
-        try {
-            CPQ singleSCPQ = CPQ.parse(singleSStr);
-            String derivation = "Single backtrack anchored at " + s + " via " + singleSStr;
-            tryAdd(results, derived(singleSCPQ, bits, s, s, derivation));
-        } catch (RuntimeException ex) {
-            // Skip if parsing fails
-        }
-
-        // (r⁻◦r) ∩ id at target
-        String singleTStr = "(" + inverseLabel + " ◦ " + r + ") ∩ id";
-        try {
-            CPQ singleTCPQ = CPQ.parse(singleTStr);
-            String derivation = "Single backtrack anchored at " + t + " via " + singleTStr;
-            tryAdd(results, derived(singleTCPQ, bits, t, t, derivation));
-        } catch (RuntimeException ex) {
-            // Skip if parsing fails
-        }
-
-        // --- self-loop convenience: if s==t, also expose r∩id explicitly ---
-        if (s.equals(t)) {
-            String rAnchoredStr = r + " ∩ id";
-            try {
-                CPQ rAnchoredCPQ = CPQ.parse(rAnchoredStr);
-                String derivation = "Self-loop anchor at " + s + " exposing " + rAnchoredStr;
-                tryAdd(results, derived(rAnchoredCPQ, bits, s, s, derivation));
-            } catch (RuntimeException ex) {
-                // Skip if parsing fails
-            }
-        }
-    }
-
-    /**
-     * Adds multi-edge backtrack variants when cardinality > 1.
-     * These patterns extend the single backtrack case by wrapping existing components.
-     *
-     * Generates patterns like:
-     *  - (r◦q◦r⁻)∩id where q is an anchored component and r is from decomposition
-     *  - Double backtracks and higher-order patterns via composition
-     *
-     * This is separate from concat and conjunction as it represents extending
-     * the backtrack case with multiple edge traversals.
-     */
-    private void addMultiEdgeBacktrackVariants(Map<String, KnownComponent> results, BitSet edgeBits) {
-        List<KnownComponent> snapshot = new ArrayList<>(results.values());
-
-        for (KnownComponent component : snapshot) {
-            // For each component that uses these edges, try to find single-edge subsets
-            // that could wrap around it for backtracking patterns
-            List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
-
-            for (int edgeIndex : indices) {
-                Edge edge = edges.get(edgeIndex);
-                String r = edge.label();
-                String s = edge.source();
-                String t = edge.target();
-                String inverseLabel = r + "⁻";
-
-                // Pattern: r ◦ q ◦ r⁻ anchored at source
-                // where q is anchored at target and uses remaining edges
-                if (component.source().equals(t) && component.target().equals(t)) {
-                    String backtrackStr = "(" + r + " ◦ " + component.cpq().toString() + " ◦ " + inverseLabel + ") ∩ id";
-                    try {
-                        CPQ backtrackCPQ = CPQ.parse(backtrackStr);
-                        String derivation = "Extended backtrack at " + s + " wrapping [" + component.cpqRule() + "]";
-                        tryAdd(results, derived(backtrackCPQ, edgeBits, s, s, derivation));
-                    } catch (RuntimeException ex) {
-                        // Skip if parsing fails
-                    }
-                }
-
-                // Symmetric pattern: r⁻ ◦ q ◦ r anchored at target
-                // where q is anchored at source and uses remaining edges
-                if (component.source().equals(s) && component.target().equals(s)) {
-                    String backtrackStr = "(" + inverseLabel + " ◦ " + component.cpq().toString() + " ◦ " + r + ") ∩ id";
-                    try {
-                        CPQ backtrackCPQ = CPQ.parse(backtrackStr);
-                        String derivation = "Extended backtrack at " + t + " wrapping [" + component.cpqRule() + "]";
-                        tryAdd(results, derived(backtrackCPQ, edgeBits, t, t, derivation));
-                    } catch (RuntimeException ex) {
-                        // Skip if parsing fails
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Lightweight detector to avoid ((...) ∩ id) ∩ id duplicates.
-     * Checks if the CPQ is already anchored with identity based on its string representation.
-     */
-    private static boolean looksAnchored(CPQ cpq) {
-        String str = cpq.toString().replace(" ", "");
-        return str.endsWith("∩id") || str.endsWith("∩id)") || str.contains(")∩id");
     }
 
     private KnownComponent derived(CPQ cpq, BitSet bits, String source, String target, String derivation) {
         return new KnownComponent(cpq, bits, source, target, derivation);
     }
 
-    private void tryAdd(Map<String, KnownComponent> results, KnownComponent candidate) {
-        // Validate that the CPQ is valid (it should be since we built it via CPQ.parse)
+    private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
+        KnownComponent adjusted = ensureLoopAnchored(candidate);
         try {
-            candidate.cpq().toString(); // Just ensure it's valid
-            if (!matchesComponent(candidate)) {
-                return;
+            adjusted.cpq().toString();
+        } catch (RuntimeException ex) {
+            return;
+        }
+        if (!matchesComponent(adjusted)) {
+            return;
+        }
+        ComponentKey key = adjusted.toKey(edges.size());
+        results.putIfAbsent(key, adjusted);
+    }
+
+    private KnownComponent ensureLoopAnchored(KnownComponent candidate) {
+        if (!candidate.source().equals(candidate.target())) {
+            return candidate;
+        }
+        try {
+            QueryGraphCPQ graph = candidate.cpq().toQueryGraph();
+            if (graph.isLoop()) {
+                return candidate;
             }
         } catch (RuntimeException ex) {
-            // Skip invalid CPQs
-            return;
+            return candidate;
         }
-        String key = canonicalKey(candidate);
-        KnownComponent existing = results.get(key);
-        if (existing == null) {
-            results.put(key, candidate);
-            return;
+        try {
+            CPQ anchored = CPQ.parse("(" + candidate.cpq().toString() + " ∩ id)");
+            String derivation = candidate.derivation() + " + anchored with id";
+            return new KnownComponent(anchored, candidate.edges(), candidate.source(), candidate.target(), derivation);
+        } catch (RuntimeException ex) {
+            return candidate;
         }
-        if (shouldReplace(existing, candidate)) {
-            results.put(key, candidate);
-        }
-    }
-
-    private boolean shouldReplace(KnownComponent existing, KnownComponent candidate) {
-        boolean existingAnchored = looksAnchored(existing.cpq());
-        boolean candidateAnchored = looksAnchored(candidate.cpq());
-        if (candidateAnchored && !existingAnchored) {
-            return true;
-        }
-        if (candidateAnchored == existingAnchored) {
-            // Prefer more descriptive derivation (longer CPQ string) as a heuristic for richer structure.
-            int existingLength = existing.cpqRule().length();
-            int candidateLength = candidate.cpqRule().length();
-            if (candidateLength > existingLength) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static final Comparator<KnownComponent> CANDIDATE_COMPARATOR =
-            Comparator.comparingInt((KnownComponent kc) -> kc.edges().cardinality())
-                    .thenComparingInt(kc -> looksAnchored(kc.cpq()) ? 0 : 1)
-                    .thenComparing(KnownComponent::source)
-                    .thenComparing(KnownComponent::target)
-                    .thenComparing(kc -> kc.cpq().toString());
-
-    private List<KnownComponent> dedupe(List<KnownComponent> candidates) {
-        List<KnownComponent> deduped = new ArrayList<>(candidates.size());
-        Set<String> seen = new LinkedHashSet<>();
-        for (KnownComponent candidate : candidates) {
-            String key = canonicalKey(candidate);
-            if (seen.add(key)) {
-                deduped.add(candidate);
-            }
-        }
-        return deduped;
     }
 
     private boolean matchesComponent(KnownComponent candidate) {
@@ -374,10 +229,6 @@ public final class ComponentCPQBuilder {
         List<Edge> componentEdges = edgesFor(edgeBits);
         if (componentEdges.isEmpty()) {
             return false;
-        }
-
-        if (componentEdges.size() == 1 && isSingleEdgeBacktrackVariant(candidate, componentEdges.get(0))) {
-            return true;
         }
 
         LinkedHashSet<String> componentVertices = new LinkedHashSet<>();
@@ -407,6 +258,11 @@ public final class ComponentCPQBuilder {
         }
 
         QueryGraphCPQ cpqGraph = candidate.cpq().toQueryGraph();
+        boolean cpqEnforcesLoop = cpqGraph.isLoop();
+        boolean candidateIsLoop = candidate.source().equals(candidate.target());
+        if (cpqEnforcesLoop != candidateIsLoop) {
+            return false;
+        }
         String sourceVarName = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
         String targetVarName = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
 
@@ -509,29 +365,4 @@ public final class ComponentCPQBuilder {
         return false;
     }
 
-    private boolean isSingleEdgeBacktrackVariant(KnownComponent candidate, Edge edge) {
-        if (!candidate.derivation().startsWith("Single backtrack anchored at ")) {
-            return false;
-        }
-        if (!candidate.source().equals(candidate.target())) {
-            return false;
-        }
-
-        String anchor = candidate.source();
-        if (!anchor.equals(edge.source()) && !anchor.equals(edge.target())) {
-            return false;
-        }
-
-        String derivation = candidate.derivation();
-        if (!derivation.contains(edge.label()) || !derivation.contains("∩ id")) {
-            return false;
-        }
-        return true;
-    }
-
-    private String canonicalKey(KnownComponent candidate) {
-        String edgeSignature = BitsetUtils.signature(candidate.edges(), edges.size());
-        String normalizedCPQ = CPQCanonicalizer.canonicalize(candidate.cpq().toString());
-        return edgeSignature + "|" + candidate.source() + "|" + candidate.target() + "|" + normalizedCPQ;
-    }
 }

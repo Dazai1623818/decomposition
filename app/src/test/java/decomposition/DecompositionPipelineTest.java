@@ -88,17 +88,22 @@ final class DecompositionPipelineTest {
                 "Tuple length should match the number of components");
 
         assertTrue(result.recognizedCatalogue().stream()
-                        .anyMatch(kc -> kc.source().equals("C")
-                                && kc.target().equals("C")
+                        .anyMatch(kc -> kc.source().equals("C") && kc.target().equals("C")
                                 && kc.cpqRule().contains("∩ id")),
-                () -> "Recognized catalogue should contain the anchored self-loop component at C but had: "
+                () -> "Recognized catalogue should contain an anchored self-loop at C but had: "
                         + result.recognizedCatalogue().stream()
                                 .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "]")
                                 .collect(Collectors.joining(", ")));
 
         assertTrue(evaluation.decompositionTuples().stream()
-                        .flatMap(tuple -> tuple.stream().map(KnownComponent::cpqRule))
-                        .anyMatch(rule -> rule.contains("∩ id")),
-                "Enumerated tuples should include the anchored self-loop CPQ");
+                        .flatMap(tuple -> tuple.stream())
+                        .anyMatch(kc -> kc.source().equals("C") && kc.target().equals("C")
+                                && kc.cpqRule().contains("∩ id")),
+                "Enumerated tuples should include the anchored C→C component");
+
+        assertTrue(result.recognizedCatalogue().stream()
+                        .filter(kc -> kc.source().equals("C") && kc.target().equals("C"))
+                        .allMatch(kc -> kc.cpqRule().contains("∩ id")),
+                "Self-loop catalogue entries must enforce equality via id");
     }
 }

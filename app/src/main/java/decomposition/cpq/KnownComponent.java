@@ -13,6 +13,7 @@ import dev.roanh.gmark.lang.cpq.CPQ;
  * - CPQs capture the traversal direction via source → target, which may differ from the CQ edge
  * - Reverse edges are represented via inverse labels (r⁻) when required for intersections or joins
  * - Each instance records a derivation description for explainability/debugging
+ * - Structural comparisons use only edge coverage + oriented endpoints; CPQ syntax is informational
  */
 public record KnownComponent(
         CPQ cpq,
