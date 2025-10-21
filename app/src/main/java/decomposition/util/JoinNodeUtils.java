@@ -128,7 +128,16 @@ public final class JoinNodeUtils {
                 boolean matchesTarget = target.equals(join) && allowTarget;
                 return matchesSource || matchesTarget;
             }
-            return source.equals(join) && target.equals(join) && allowSource && allowTarget;
+            if (!source.equals(join) || !target.equals(join) || !allowSource) {
+                return false;
+            }
+            boolean loopEnforced = false;
+            try {
+                loopEnforced = option.cpq().toQueryGraph().isLoop();
+            } catch (RuntimeException ex) {
+                loopEnforced = false;
+            }
+            return allowTarget || loopEnforced;
         }
 
         if (localJoinNodes.size() == 2) {
