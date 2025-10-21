@@ -246,9 +246,6 @@ public final class DecompositionPipeline {
         if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
             return false;
         }
-        if (joinNodes.size() > 1 && component.source().equals(component.target())) {
-            return false;
-        }
         return true;
     }
 }

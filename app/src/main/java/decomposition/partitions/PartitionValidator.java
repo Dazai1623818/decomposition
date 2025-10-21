@@ -136,22 +136,6 @@ public final class PartitionValidator {
             return true;
         }
 
-        // Multi-component partition - check for join variables
-        Set<String> joinVariables = computeJoinNodes(componentVariables, freeVariables);
-
-        // If there are join variables, components should connect through them
-        // Components with ∩ id create self-loops which don't connect properly
-        if (!joinVariables.isEmpty()) {
-            for (KnownComponent kc : tuple) {
-                String cpqStr = kc.cpq().toString();
-
-                // Reject anchored loops that collapse to identity
-                if (cpqStr.contains("∩ id") || cpqStr.contains("∩id")) {
-                    return false;
-                }
-            }
-        }
-
         return true;
     }
 
@@ -267,9 +251,6 @@ public final class PartitionValidator {
             return true;
         }
         if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
-            return false;
-        }
-        if (joinNodes.size() > 1 && component.source().equals(component.target())) {
             return false;
         }
         return true;
