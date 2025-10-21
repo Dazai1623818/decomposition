@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 import decomposition.model.Edge;
@@ -44,21 +43,12 @@ public final class ComponentCPQBuilder {
         return edges.size();
     }
 
-    /**
-     * Deprecated: do not rely on early ‘first candidate’ semantics.
-     */
-    @Deprecated(forRemoval = false)
-    Optional<KnownComponent> build(BitSet edgeBits) {
-        List<KnownComponent> candidates = options(edgeBits);
-        return candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0));
+    public List<Edge> allEdges() {
+        return edges;
     }
 
     public List<KnownComponent> options(BitSet edgeBits) {
         return enumerate(edgeBits);
-    }
-
-    List<KnownComponent> enumerateAll(BitSet edgeBits) {
-        return options(edgeBits);
     }
 
     private List<KnownComponent> enumerate(BitSet edgeBits) {
@@ -217,10 +207,11 @@ public final class ComponentCPQBuilder {
         String s = e.source();
         String t = e.target();
         String r = e.label();
+        String inverseLabel = r + "⁻";
 
         // --- single backtracks (anchored) ---
         // (r◦r⁻) ∩ id at source
-        String singleSStr = "(" + r + " ◦ (" + r + ")⁻) ∩ id";
+        String singleSStr = "(" + r + " ◦ " + inverseLabel + ") ∩ id";
         try {
             CPQ singleSCPQ = CPQ.parse(singleSStr);
             String derivation = "Single backtrack anchored at " + s + " via " + singleSStr;
@@ -230,7 +221,7 @@ public final class ComponentCPQBuilder {
         }
 
         // (r⁻◦r) ∩ id at target
-        String singleTStr = "((" + r + ")⁻ ◦ " + r + ") ∩ id";
+        String singleTStr = "(" + inverseLabel + " ◦ " + r + ") ∩ id";
         try {
             CPQ singleTCPQ = CPQ.parse(singleTStr);
             String derivation = "Single backtrack anchored at " + t + " via " + singleTStr;
@@ -276,11 +267,12 @@ public final class ComponentCPQBuilder {
                 String r = edge.label();
                 String s = edge.source();
                 String t = edge.target();
+                String inverseLabel = r + "⁻";
 
                 // Pattern: r ◦ q ◦ r⁻ anchored at source
                 // where q is anchored at target and uses remaining edges
                 if (component.source().equals(t) && component.target().equals(t)) {
-                    String backtrackStr = "(" + r + " ◦ " + component.cpq().toString() + " ◦ (" + r + ")⁻) ∩ id";
+                    String backtrackStr = "(" + r + " ◦ " + component.cpq().toString() + " ◦ " + inverseLabel + ") ∩ id";
                     try {
                         CPQ backtrackCPQ = CPQ.parse(backtrackStr);
                         String derivation = "Extended backtrack at " + s + " wrapping [" + component.cpqRule() + "]";
@@ -293,7 +285,7 @@ public final class ComponentCPQBuilder {
                 // Symmetric pattern: r⁻ ◦ q ◦ r anchored at target
                 // where q is anchored at source and uses remaining edges
                 if (component.source().equals(s) && component.target().equals(s)) {
-                    String backtrackStr = "((" + r + ")⁻ ◦ " + component.cpq().toString() + " ◦ " + r + ") ∩ id";
+                    String backtrackStr = "(" + inverseLabel + " ◦ " + component.cpq().toString() + " ◦ " + r + ") ∩ id";
                     try {
                         CPQ backtrackCPQ = CPQ.parse(backtrackStr);
                         String derivation = "Extended backtrack at " + t + " wrapping [" + component.cpqRule() + "]";
@@ -310,7 +302,7 @@ public final class ComponentCPQBuilder {
      * Lightweight detector to avoid ((...) ∩ id) ∩ id duplicates.
      * Checks if the CPQ is already anchored with identity based on its string representation.
      */
-    private boolean looksAnchored(CPQ cpq) {
+    private static boolean looksAnchored(CPQ cpq) {
         String str = cpq.toString().replace(" ", "");
         return str.endsWith("∩id") || str.endsWith("∩id)") || str.contains(")∩id");
     }
@@ -360,6 +352,7 @@ public final class ComponentCPQBuilder {
 
     private static final Comparator<KnownComponent> CANDIDATE_COMPARATOR =
             Comparator.comparingInt((KnownComponent kc) -> kc.edges().cardinality())
+                    .thenComparingInt(kc -> looksAnchored(kc.cpq()) ? 0 : 1)
                     .thenComparing(KnownComponent::source)
                     .thenComparing(KnownComponent::target)
                     .thenComparing(kc -> kc.cpq().toString());
@@ -381,6 +374,10 @@ public final class ComponentCPQBuilder {
         List<Edge> componentEdges = edgesFor(edgeBits);
         if (componentEdges.isEmpty()) {
             return false;
+        }
+
+        if (componentEdges.size() == 1 && isSingleEdgeBacktrackVariant(candidate, componentEdges.get(0))) {
+            return true;
         }
 
         LinkedHashSet<String> componentVertices = new LinkedHashSet<>();
@@ -512,186 +509,29 @@ public final class ComponentCPQBuilder {
         return false;
     }
 
+    private boolean isSingleEdgeBacktrackVariant(KnownComponent candidate, Edge edge) {
+        if (!candidate.derivation().startsWith("Single backtrack anchored at ")) {
+            return false;
+        }
+        if (!candidate.source().equals(candidate.target())) {
+            return false;
+        }
+
+        String anchor = candidate.source();
+        if (!anchor.equals(edge.source()) && !anchor.equals(edge.target())) {
+            return false;
+        }
+
+        String derivation = candidate.derivation();
+        if (!derivation.contains(edge.label()) || !derivation.contains("∩ id")) {
+            return false;
+        }
+        return true;
+    }
+
     private String canonicalKey(KnownComponent candidate) {
         String edgeSignature = BitsetUtils.signature(candidate.edges(), edges.size());
-        String normalizedCPQ = normalizeCPQ(candidate.cpq().toString());
+        String normalizedCPQ = CPQCanonicalizer.canonicalize(candidate.cpq().toString());
         return edgeSignature + "|" + candidate.source() + "|" + candidate.target() + "|" + normalizedCPQ;
-    }
-
-    /**
-     * Normalizes a CPQ string representation to eliminate semantic duplicates.
-     * Specifically handles conjunction commutativity: (a ∩ b) and (b ∩ a) become the same canonical form.
-     * Preserves composition order since composition is not commutative.
-     *
-     * Algorithm:
-     * 1. Parse the CPQ string into a tree structure
-     * 2. Recursively normalize nested expressions
-     * 3. For conjunction nodes, sort the operands alphabetically
-     * 4. Reconstruct the normalized string
-     */
-    private String normalizeCPQ(String cpqStr) {
-        // Remove all whitespace for consistent parsing
-        String normalized = cpqStr.replaceAll("\\s+", "");
-
-        // Recursively normalize the expression
-        return normalizeExpression(normalized);
-    }
-
-    /**
-     * Recursively normalizes a CPQ expression.
-     * Handles nested parentheses and operators.
-     */
-    private String normalizeExpression(String expr) {
-        // Base case: simple atom (no operators)
-        if (!expr.contains("∩") && !expr.contains("◦")) {
-            return expr;
-        }
-
-        // Handle parentheses
-        if (expr.startsWith("(") && expr.endsWith(")")) {
-            // Find the matching closing parenthesis
-            int depth = 0;
-            int matchingClose = -1;
-            for (int i = 0; i < expr.length(); i++) {
-                if (expr.charAt(i) == '(') depth++;
-                else if (expr.charAt(i) == ')') {
-                    depth--;
-                    if (depth == 0) {
-                        matchingClose = i;
-                        break;
-                    }
-                }
-            }
-
-            // If the outer parentheses wrap the whole expression, remove them and recurse
-            if (matchingClose == expr.length() - 1) {
-                String inner = expr.substring(1, expr.length() - 1);
-                return "(" + normalizeExpression(inner) + ")";
-            }
-        }
-
-        // Find the top-level operator (not inside parentheses)
-        int topLevelOp = findTopLevelOperator(expr);
-
-        if (topLevelOp == -1) {
-            // No operator at top level, just return as-is
-            return expr;
-        }
-
-        char op = expr.charAt(topLevelOp);
-
-        if (op == '∩') {
-            // Conjunction: normalize and sort operands
-            return normalizeConjunction(expr, topLevelOp);
-        } else if (op == '◦') {
-            // Composition: normalize operands but preserve order
-            return normalizeComposition(expr, topLevelOp);
-        }
-
-        return expr;
-    }
-
-    /**
-     * Finds the position of the top-level operator (not inside parentheses).
-     * Returns -1 if no top-level operator is found.
-     * Prioritizes finding ∩ first (lower precedence), then ◦.
-     */
-    private int findTopLevelOperator(String expr) {
-        int depth = 0;
-
-        // First pass: look for conjunction (∩)
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (depth == 0 && c == '∩') {
-                return i;
-            }
-        }
-
-        // Second pass: look for composition (◦)
-        depth = 0;
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (depth == 0 && c == '◦') {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    /**
-     * Normalizes a conjunction by sorting its operands.
-     * Handles nested conjunctions by flattening them first.
-     */
-    private String normalizeConjunction(String expr, int opPos) {
-        // Split by all top-level conjunctions
-        List<String> operands = splitByTopLevelOperator(expr, '∩');
-
-        // Normalize each operand
-        List<String> normalizedOperands = new ArrayList<>();
-        for (String operand : operands) {
-            normalizedOperands.add(normalizeExpression(operand.trim()));
-        }
-
-        // Sort the operands alphabetically for canonical form
-        normalizedOperands.sort(String::compareTo);
-
-        // Reconstruct with parentheses around the whole expression
-        if (normalizedOperands.size() == 1) {
-            return normalizedOperands.get(0);
-        }
-
-        StringBuilder result = new StringBuilder("(");
-        for (int i = 0; i < normalizedOperands.size(); i++) {
-            if (i > 0) result.append("∩");
-            result.append(normalizedOperands.get(i));
-        }
-        result.append(")");
-
-        return result.toString();
-    }
-
-    /**
-     * Normalizes a composition by normalizing operands but preserving order.
-     */
-    private String normalizeComposition(String expr, int opPos) {
-        String left = expr.substring(0, opPos);
-        String right = expr.substring(opPos + 1);
-
-        String normalizedLeft = normalizeExpression(left.trim());
-        String normalizedRight = normalizeExpression(right.trim());
-
-        return "(" + normalizedLeft + "◦" + normalizedRight + ")";
-    }
-
-    /**
-     * Splits an expression by a top-level operator (not inside parentheses).
-     * Returns all operands separated by that operator at the top level.
-     */
-    private List<String> splitByTopLevelOperator(String expr, char operator) {
-        List<String> operands = new ArrayList<>();
-        int depth = 0;
-        int start = 0;
-
-        for (int i = 0; i < expr.length(); i++) {
-            char c = expr.charAt(i);
-            if (c == '(') depth++;
-            else if (c == ')') depth--;
-            else if (depth == 0 && c == operator) {
-                operands.add(expr.substring(start, i));
-                start = i + 1;
-            }
-        }
-
-        // Add the last operand
-        if (start < expr.length()) {
-            operands.add(expr.substring(start));
-        }
-
-        return operands;
     }
 }

@@ -5,6 +5,8 @@ import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
+import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinNodeUtils.JoinNodeRole;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,7 +22,8 @@ public final class PartitionValidator {
 
     public boolean isValidCPQDecomposition(Partition partition,
                                            ComponentCPQBuilder builder,
-                                           Set<String> freeVariables) {
+                                           Set<String> freeVariables,
+                                           List<Edge> allEdges) {
         List<Component> components = partition.components();
         List<Set<String>> componentVariables = new ArrayList<>(components.size());
         for (Component component : components) {
@@ -30,9 +33,11 @@ public final class PartitionValidator {
         Set<String> joinNodes = computeJoinNodes(componentVariables, freeVariables);
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits());
+            Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
+            Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
+                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
                         .collect(Collectors.toList());
             }
             if (options.isEmpty()) {
@@ -58,9 +63,11 @@ public final class PartitionValidator {
         List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits());
+            Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
+            Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
+                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
                         .collect(Collectors.toList());
             }
             if (options.isEmpty()) {
@@ -77,7 +84,7 @@ public final class PartitionValidator {
             Partition partition,
             ComponentCPQBuilder builder,
             int limit) {
-        return enumerateDecompositions(partition, builder, limit, Set.of(), List.of());
+        return enumerateDecompositions(partition, builder, limit, Set.of(), builder.allEdges());
     }
 
     private List<List<KnownComponent>> cartesian(List<List<KnownComponent>> lists,
@@ -246,13 +253,17 @@ public final class PartitionValidator {
         return component.edgeCount() > 1;
     }
 
-    private boolean endpointsRespectJoinNodes(KnownComponent component, Set<String> joinNodes) {
+    private Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
         if (joinNodes == null || joinNodes.isEmpty()) {
-            return true;
+            return Set.of();
         }
-        if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
-            return false;
+        Set<String> local = new HashSet<>();
+        for (String vertex : component.vertices()) {
+            if (joinNodes.contains(vertex)) {
+                local.add(vertex);
+            }
         }
-        return true;
+        return local;
     }
+
 }

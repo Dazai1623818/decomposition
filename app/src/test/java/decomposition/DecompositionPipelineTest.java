@@ -10,6 +10,7 @@ import dev.roanh.gmark.type.schema.Predicate;
 import decomposition.cpq.KnownComponent;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 final class DecompositionPipelineTest {
@@ -90,7 +91,10 @@ final class DecompositionPipelineTest {
                         .anyMatch(kc -> kc.source().equals("C")
                                 && kc.target().equals("C")
                                 && kc.cpqRule().contains("∩ id")),
-                "Recognized catalogue should contain the anchored self-loop component at C");
+                () -> "Recognized catalogue should contain the anchored self-loop component at C but had: "
+                        + result.recognizedCatalogue().stream()
+                                .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "]")
+                                .collect(Collectors.joining(", ")));
 
         assertTrue(evaluation.decompositionTuples().stream()
                         .flatMap(tuple -> tuple.stream().map(KnownComponent::cpqRule))

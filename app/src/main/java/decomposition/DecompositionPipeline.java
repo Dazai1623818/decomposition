@@ -15,6 +15,8 @@ import decomposition.partitions.PartitionFilterSorter.FilterResult;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
+import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinNodeUtils.JoinNodeRole;
 import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -80,19 +82,26 @@ public final class DecompositionPipeline {
             partitionIndex++;
             List<Component> componentsInPartition = partition.components();
             Set<String> joinNodes = computeJoinNodes(componentsInPartition, extraction.freeVariables());
-            boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables());
+            boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables(), edges);
             if (valid) {
                 cpqPartitions.add(partition);
                 List<Integer> optionCounts = new ArrayList<>();
                 List<List<KnownComponent>> filteredOptionsPerComponent = new ArrayList<>();
+                Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
+                Map<Component, Map<String, JoinNodeRole>> joinNodeRoleCache = new HashMap<>();
                 int componentIndex = 0;
                 for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits);
+                    Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
+                            c -> localJoinNodes(c, joinNodes));
+                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
+                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
                     List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
-                                    .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
+                                    .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                                            kc, component, componentJoinNodes, componentJoinRoles))
                                     .collect(Collectors.toList())
                             : rawOptions;
 
@@ -110,27 +119,44 @@ public final class DecompositionPipeline {
 
                 if (!tuples.isEmpty()) {
                     for (KnownComponent kc : tuples.get(0)) {
-                        recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
+                        registerRecognized(recognizedCatalogueMap, kc, edgeCount);
                     }
                 } else {
                     for (List<KnownComponent> filteredOptions : filteredOptionsPerComponent) {
                         if (!filteredOptions.isEmpty()) {
                             KnownComponent kc = filteredOptions.get(0);
-                            recognizedCatalogueMap.putIfAbsent(kc.toKey(edgeCount), kc);
+                            registerRecognized(recognizedCatalogueMap, kc, edgeCount);
                         }
                     }
+                }
+
+                for (int i = 0; i < componentsInPartition.size(); i++) {
+                    Component component = componentsInPartition.get(i);
+                    Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
+                            c -> localJoinNodes(c, joinNodes));
+                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
+                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
+                    registerOptionVariants(filteredOptionsPerComponent.get(i), component,
+                            componentJoinNodes, componentJoinRoles, recognizedCatalogueMap, edgeCount);
                 }
 
                 partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
             } else {
                 int componentIndex = 0;
+                Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
+                Map<Component, Map<String, JoinNodeRole>> joinNodeRoleCache = new HashMap<>();
                 for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits);
+                    Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
+                            c -> localJoinNodes(c, joinNodes));
+                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
+                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
                     List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
-                                    .filter(kc -> endpointsRespectJoinNodes(kc, joinNodes))
+                                    .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                                            kc, component, componentJoinNodes, componentJoinRoles))
                                     .collect(Collectors.toList())
                             : rawOptions;
 
@@ -155,7 +181,7 @@ public final class DecompositionPipeline {
         if (terminationReason == null) {
             List<KnownComponent> globalCandidates = builder.options(fullBits);
             globalCatalogue = globalCandidates;
-            finalComponent = globalCandidates.isEmpty() ? null : globalCandidates.get(0);
+            finalComponent = selectPreferredFinalComponent(globalCandidates);
         }
 
         long elapsed = timing.elapsedMillis();
@@ -168,6 +194,71 @@ public final class DecompositionPipeline {
         return buildResult(extraction, vertices, partitions, filteredPartitions,
                 cpqPartitions, recognizedCatalogue, finalComponent, globalCatalogue,
                 partitionEvaluations, diagnostics, elapsed, terminationReason);
+    }
+
+    private void registerOptionVariants(List<KnownComponent> options,
+                                        Component component,
+                                        Set<String> componentJoinNodes,
+                                        Map<String, JoinNodeRole> joinNodeRoles,
+                                        Map<ComponentKey, KnownComponent> catalogue,
+                                        int edgeCount) {
+        if (options == null || options.isEmpty()) {
+            return;
+        }
+
+        KnownComponent first = options.get(0);
+        registerRecognized(catalogue, first, edgeCount);
+
+        options.stream()
+                .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                        kc, component, componentJoinNodes, joinNodeRoles) && isAnchored(kc))
+                .findFirst()
+                .ifPresent(kc -> registerRecognized(catalogue, kc, edgeCount));
+
+        options.stream()
+                .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                        kc, component, componentJoinNodes, joinNodeRoles) && !isAnchored(kc))
+                .findFirst()
+                .ifPresent(kc -> registerRecognized(catalogue, kc, edgeCount));
+    }
+
+    private void registerRecognized(Map<ComponentKey, KnownComponent> catalogue,
+                                    KnownComponent candidate,
+                                    int edgeCount) {
+        ComponentKey key = candidate.toKey(edgeCount);
+        catalogue.merge(key, candidate, this::preferRecognizedCandidate);
+    }
+
+    private KnownComponent preferRecognizedCandidate(KnownComponent existing,
+                                                     KnownComponent candidate) {
+        boolean existingAnchored = isAnchored(existing);
+        boolean candidateAnchored = isAnchored(candidate);
+        if (candidateAnchored && !existingAnchored) {
+            return candidate;
+        }
+        if (candidateAnchored == existingAnchored) {
+            int existingLength = existing.cpq().toString().length();
+            int candidateLength = candidate.cpq().toString().length();
+            if (candidateLength > existingLength) {
+                return candidate;
+            }
+        }
+        return existing;
+    }
+
+    private boolean isAnchored(KnownComponent component) {
+        String normalized = component.cpq().toString().replace(" ", "");
+        return normalized.endsWith("∩id") || normalized.contains(")∩id");
+    }
+
+    private KnownComponent selectPreferredFinalComponent(List<KnownComponent> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.stream()
+                .filter(kc -> !isAnchored(kc))
+                .findFirst()
+                .orElse(candidates.get(0));
     }
 
     private DecompositionResult buildResult(ExtractionResult extraction,
@@ -239,13 +330,17 @@ public final class DecompositionPipeline {
         return component.edgeCount() > 1;
     }
 
-    private boolean endpointsRespectJoinNodes(KnownComponent component, Set<String> joinNodes) {
+    private Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
         if (joinNodes == null || joinNodes.isEmpty()) {
-            return true;
+            return Set.of();
         }
-        if (!joinNodes.contains(component.source()) || !joinNodes.contains(component.target())) {
-            return false;
+        Set<String> local = new HashSet<>();
+        for (String vertex : component.vertices()) {
+            if (joinNodes.contains(vertex)) {
+                local.add(vertex);
+            }
         }
-        return true;
+        return local;
     }
+
 }
