@@ -130,6 +130,11 @@ public final class ComponentCPQBuilder {
             }
 
         } else {
+            List<KnownComponent> loopBacktracks = buildLoopBacktracks(edgeBits);
+            for (KnownComponent candidate : loopBacktracks) {
+                tryAdd(results, candidate);
+            }
+
             // unchanged: your existing composition logic
             List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
             int combos = 1 << indices.size();
@@ -275,6 +280,125 @@ public final class ComponentCPQBuilder {
 
         return matchEdges(0, cpqEdges, new ArrayList<>(componentEdges), variableMapping, usedNodes,
                 sourceVarName, targetVarName, candidate.source(), candidate.target());
+    }
+
+    private List<KnownComponent> buildLoopBacktracks(BitSet edgeBits) {
+        Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edgeBits);
+        if (adjacency.isEmpty()) {
+            return List.of();
+        }
+
+        List<KnownComponent> candidates = new ArrayList<>();
+        for (String root : adjacency.keySet()) {
+            Set<Integer> visited = new HashSet<>();
+            String expression = loopAt(root, null, adjacency, visited);
+            if (expression.isBlank()) {
+                continue;
+            }
+            if (visited.size() != edgeBits.cardinality()) {
+                continue;
+            }
+
+            String loop = expression;
+            try {
+                CPQ cpq = CPQ.parse(loop);
+                String derivation = "Loop via backtracking anchored at '" + root + "'";
+                candidates.add(new KnownComponent(
+                        cpq,
+                        BitsetUtils.copy(edgeBits),
+                        root,
+                        root,
+                        derivation));
+            } catch (RuntimeException ex) {
+                // ignore unparsable expressions
+            }
+        }
+        return candidates;
+    }
+
+    private Map<String, List<AdjacencyEdge>> buildAdjacency(BitSet edgeBits) {
+        Map<String, List<AdjacencyEdge>> adjacency = new LinkedHashMap<>();
+        for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
+            Edge edge = edges.get(idx);
+            adjacency.computeIfAbsent(edge.source(), k -> new ArrayList<>())
+                    .add(new AdjacencyEdge(idx, edge));
+            adjacency.computeIfAbsent(edge.target(), k -> new ArrayList<>())
+                    .add(new AdjacencyEdge(idx, edge));
+        }
+        return adjacency;
+    }
+
+    private String loopAt(String current,
+                          String parent,
+                          Map<String, List<AdjacencyEdge>> adjacency,
+                          Set<Integer> visited) {
+        List<String> loops = new ArrayList<>();
+        for (AdjacencyEdge edge : adjacency.getOrDefault(current, List.of())) {
+            String neighbour = edge.other(current);
+            if (parent != null && neighbour.equals(parent)) {
+                continue;
+            }
+            if (!visited.add(edge.index())) {
+                continue;
+            }
+
+            String forward = edge.tokenFrom(current);
+            String subtree = loopAt(neighbour, current, adjacency, visited);
+            String backward = edge.tokenFrom(neighbour);
+
+            StringBuilder builder = new StringBuilder();
+            builder.append(forward);
+            if (!subtree.isBlank()) {
+                builder.append(" ◦ ").append(subtree);
+            }
+            builder.append(" ◦ ").append(backward);
+            String segment = builder.toString();
+            loops.add("((" + segment + ") ∩ id)");
+        }
+
+        if (loops.isEmpty()) {
+            return "";
+        }
+        return composeSegments(loops);
+    }
+
+    private String composeSegments(List<String> segments) {
+        if (segments.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            if (i > 0) {
+                builder.append(" ◦ ");
+            }
+            String segment = segments.get(i);
+            if (segment.contains("◦")) {
+                builder.append("(").append(segment).append(")");
+            } else {
+                builder.append(segment);
+            }
+        }
+        String combined = builder.toString();
+        if (segments.size() > 1) {
+            combined = "(" + combined + ")";
+        }
+        return combined;
+    }
+
+    private record AdjacencyEdge(int index, Edge edge) {
+        String other(String vertex) {
+            if (edge.source().equals(vertex)) {
+                return edge.target();
+            }
+            return edge.source();
+        }
+
+        String tokenFrom(String vertex) {
+            if (edge.source().equals(vertex)) {
+                return edge.label();
+            }
+            return edge.label() + "⁻";
+        }
     }
 
     private List<Edge> edgesFor(BitSet bits) {
