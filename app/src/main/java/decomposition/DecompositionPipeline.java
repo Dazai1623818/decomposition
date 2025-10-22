@@ -10,8 +10,8 @@ import decomposition.partitions.PartitionValidator;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
-import decomposition.partitions.PartitionFilterSorter;
-import decomposition.partitions.PartitionFilterSorter.FilterResult;
+import decomposition.partitions.PartitionFilter;
+import decomposition.partitions.PartitionFilter.FilterResult;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
@@ -54,8 +54,8 @@ public final class DecompositionPipeline {
         List<Component> components = generator.enumerateConnectedComponents(edges);
         List<Partition> partitions = generator.enumeratePartitions(edges, components);
 
-        FilterResult filterResult = new PartitionFilterSorter(MAX_JOIN_NODES)
-                .filterAndSort(partitions, extraction.freeVariables());
+        FilterResult filterResult = new PartitionFilter(MAX_JOIN_NODES)
+                .filter(partitions, extraction.freeVariables());
         List<Partition> filteredPartitions = filterResult.partitions();
 
         List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());

@@ -3,7 +3,6 @@ package decomposition.partitions;
 import decomposition.model.Component;
 import decomposition.model.Partition;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,12 +10,12 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Applies structural filters on partitions and provides sorted order heuristics.
+ * Applies structural filters on partitions.
  */
-public final class PartitionFilterSorter {
+public final class PartitionFilter {
     private final int maxJoinNodesPerComponent;
 
-    public PartitionFilterSorter(int maxJoinNodesPerComponent) {
+    public PartitionFilter(int maxJoinNodesPerComponent) {
         this.maxJoinNodesPerComponent = maxJoinNodesPerComponent;
     }
 
@@ -25,7 +24,7 @@ public final class PartitionFilterSorter {
                                int consideredCount) {
     }
 
-    public FilterResult filterAndSort(List<Partition> partitions, Set<String> freeVariables) {
+    public FilterResult filter(List<Partition> partitions, Set<String> freeVariables) {
         Objects.requireNonNull(partitions, "partitions");
         Objects.requireNonNull(freeVariables, "freeVariables");
 
@@ -43,7 +42,6 @@ public final class PartitionFilterSorter {
             }
         }
 
-        accepted.sort(partitionComparator());
         return new FilterResult(List.copyOf(accepted), diagnostics, partitions.size());
     }
 
@@ -76,31 +74,5 @@ public final class PartitionFilterSorter {
             }
         }
         return counts;
-    }
-
-    private Comparator<Partition> partitionComparator() {
-        return Comparator
-                .comparingInt(this::largestComponentSize)
-                .thenComparingInt(this::largestComponentMultiplicity)
-                .thenComparingInt(Partition::size);
-    }
-
-    private int largestComponentSize(Partition partition) {
-        int max = 0;
-        for (Component component : partition.components()) {
-            max = Math.max(max, component.edgeCount());
-        }
-        return max;
-    }
-
-    private int largestComponentMultiplicity(Partition partition) {
-        int max = largestComponentSize(partition);
-        int count = 0;
-        for (Component component : partition.components()) {
-            if (component.edgeCount() == max) {
-                count++;
-            }
-        }
-        return count;
     }
 }
