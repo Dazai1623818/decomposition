@@ -22,31 +22,6 @@ public final class JoinNodeUtils {
     }
 
     /**
-     * Captures whether a join node can serve as the source and/or target endpoint
-     * based on the incident edges inside the component.
-     */
-    public static final class JoinNodeRole {
-        private boolean allowSource;
-        private boolean allowTarget;
-
-        public boolean allowSource() {
-            return allowSource;
-        }
-
-        public boolean allowTarget() {
-            return allowTarget;
-        }
-
-        private void markSource() {
-            this.allowSource = true;
-        }
-
-        private void markTarget() {
-            this.allowTarget = true;
-        }
-    }
-
-    /**
      * Computes the set of join nodes given a collection of components and optional free variables.
      * A vertex qualifies as a join node if it either appears in at least two components or is a free variable.
      */
@@ -75,6 +50,31 @@ public final class JoinNodeUtils {
             }
         }
         return computeJoinNodesFromCounts(counts, freeVariables);
+    }
+
+    /**
+     * Captures whether a join node can serve as the source and/or target endpoint
+     * based on the incident edges inside the component.
+     */
+    public static final class JoinNodeRole {
+        private boolean allowSource;
+        private boolean allowTarget;
+
+        public boolean allowSource() {
+            return allowSource;
+        }
+
+        public boolean allowTarget() {
+            return allowTarget;
+        }
+
+        private void markSource() {
+            this.allowSource = true;
+        }
+
+        private void markTarget() {
+            this.allowTarget = true;
+        }
     }
 
     private static Set<String> computeJoinNodesFromCounts(Map<String, Integer> counts, Set<String> freeVariables) {
