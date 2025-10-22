@@ -28,6 +28,7 @@ public final class PlotCPQ {
         try {
             CPQ cpq = CPQ.parse(cpqExpression);
             System.out.println("Parsed CPQ: " + cpq);
+            System.out.println("Diameter: " + cpq.getDiameter());
             GraphPanel.show(cpq);
         } catch (IllegalArgumentException ex) {
             System.err.println("Unable to parse CPQ: " + ex.getMessage());
