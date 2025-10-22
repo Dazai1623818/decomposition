@@ -1,10 +1,11 @@
 package decomposition.cpq;
 
-import decomposition.model.Edge;
-import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+
+import decomposition.model.Edge;
+import dev.roanh.gmark.lang.cpq.CPQ;
 
 /**
  * Generates the CPQ alternatives that arise from a single CQ edge.
@@ -54,8 +55,11 @@ final class SingleEdgeOptionFactory {
 
     private static void addBacktracks(Edge edge, BitSet bits, List<KnownComponent> out) {
         if (edge.source().equals(edge.target())) {
+            // CQ already a true self-loop (single vertex, src==target); no extra backtracking variants needed.
             return;
         }
+        // Backtracking loops revisit the start vertex via an inverse step, so the resulting CPQ still has src==target
+        // even though the underlying CQ edge connects two distinct nodes.
         addLoop(out,
                 "((" + edge.label() + " ◦ " + edge.label() + "⁻) ∩ id)",
                 bits,
