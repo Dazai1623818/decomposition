@@ -12,12 +12,12 @@ import java.util.Set;
 
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.QueryGraphCQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 
@@ -64,6 +64,7 @@ public final class ComponentCPQBuilder {
         }
 
         if (cardinality == 1) {
+            // first decomposition
             int edgeIndex = edgeBits.nextSetBit(0);
             Edge edge = edges.get(edgeIndex);
             BitSet bitsCopy = BitsetUtils.copy(edgeBits);
