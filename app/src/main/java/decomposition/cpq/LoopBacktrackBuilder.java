@@ -18,7 +18,7 @@ final class LoopBacktrackBuilder {
     private LoopBacktrackBuilder() {
     }
 
-    static List<KnownComponent> build(List<Edge> edges, BitSet edgeBits) {
+    static List<KnownComponent> build(List<Edge> edges, BitSet edgeBits, Set<String> allowedAnchors) {
         Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edges, edgeBits);
         if (adjacency.isEmpty()) {
             return List.of();
@@ -26,6 +26,9 @@ final class LoopBacktrackBuilder {
 
         List<KnownComponent> results = new ArrayList<>();
         for (String anchor : adjacency.keySet()) {
+            if (allowedAnchors != null && !allowedAnchors.isEmpty() && !allowedAnchors.contains(anchor)) {
+                continue;
+            }
             Set<Integer> visited = new HashSet<>();
             String expression = loopExpression(anchor, null, adjacency, visited);
             if (expression.isBlank()) {

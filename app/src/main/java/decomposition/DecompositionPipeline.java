@@ -81,7 +81,7 @@ public final class DecompositionPipeline {
         for (Partition partition : filteredPartitions) {
             partitionIndex++;
             List<Component> componentsInPartition = partition.components();
-            Set<String> joinNodes = computeJoinNodes(componentsInPartition, extraction.freeVariables());
+            Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(componentsInPartition, extraction.freeVariables());
             boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables(), edges);
             if (valid) {
                 cpqPartitions.add(partition);
@@ -93,7 +93,7 @@ public final class DecompositionPipeline {
                 for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
-                    List<KnownComponent> rawOptions = builder.options(componentBits);
+                    List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
                     Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
@@ -147,7 +147,7 @@ public final class DecompositionPipeline {
                 for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
-                    List<KnownComponent> rawOptions = builder.options(componentBits);
+                    List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
                     Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
@@ -178,7 +178,8 @@ public final class DecompositionPipeline {
         }
 
         if (terminationReason == null) {
-            List<KnownComponent> globalCandidates = builder.options(fullBits);
+            Set<String> globalJoinNodes = JoinNodeUtils.computeJoinNodes(List.of(new Component(fullBits, vertices)), extraction.freeVariables());
+            List<KnownComponent> globalCandidates = builder.options(fullBits, globalJoinNodes);
             globalCatalogue = globalCandidates;
             finalComponent = selectPreferredFinalComponent(globalCandidates);
         }
@@ -257,27 +258,6 @@ public final class DecompositionPipeline {
 
     private boolean timeExceeded(DecompositionOptions options, long elapsedMillis) {
         return options.timeBudgetMs() > 0 && elapsedMillis > options.timeBudgetMs();
-    }
-
-    private Set<String> computeJoinNodes(List<Component> components, Set<String> freeVariables) {
-        Map<String, Integer> counts = new HashMap<>();
-        for (Component component : components) {
-            for (String vertex : component.vertices()) {
-                counts.merge(vertex, 1, Integer::sum);
-            }
-        }
-
-        Set<String> joinNodes = new HashSet<>();
-        if (freeVariables != null) {
-            joinNodes.addAll(freeVariables);
-        }
-
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() >= 2) {
-                joinNodes.add(entry.getKey());
-            }
-        }
-        return joinNodes;
     }
 
     private boolean shouldEnforceJoinNodes(Set<String> joinNodes, int totalComponents, Component component) {

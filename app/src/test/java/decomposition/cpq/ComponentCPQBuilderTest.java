@@ -7,6 +7,7 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class ComponentCPQBuilderTest {

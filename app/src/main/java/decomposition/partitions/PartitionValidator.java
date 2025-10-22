@@ -30,9 +30,9 @@ public final class PartitionValidator {
             componentVariables.add(component.vertices());
         }
 
-        Set<String> joinNodes = computeJoinNodes(componentVariables, freeVariables);
+        Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
         for (Component component : components) {
-            List<KnownComponent> options = builder.options(component.edgeBits());
+            List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
             Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
@@ -59,10 +59,10 @@ public final class PartitionValidator {
             componentVariables.add(component.vertices());
         }
 
-        Set<String> joinNodes = computeJoinNodes(componentVariables, freeVariables);
+        Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
         List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
         for (Component component : components) {
-            List<KnownComponent> options = builder.options(component.edgeBits());
+            List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
             Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
@@ -162,7 +162,7 @@ public final class PartitionValidator {
         // Strategy: components are joined on shared variables
         // The final result should have endpoints in the free variables
 
-        Set<String> joinVariables = computeJoinNodes(componentVariables, freeVariables);
+        Set<String> joinVariables = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
 
         // Expected result endpoints based on free variables
         String expectedSource = null;
@@ -214,31 +214,6 @@ public final class PartitionValidator {
         }
 
         return true;
-    }
-
-    /**
-     * Computes join variables - variables that appear in more than one component.
-     */
-    private Set<String> computeJoinNodes(List<Set<String>> componentVariables,
-                                         Set<String> freeVariables) {
-        Map<String, Integer> counts = new HashMap<>();
-        for (Set<String> vars : componentVariables) {
-            for (String var : vars) {
-                counts.merge(var, 1, Integer::sum);
-            }
-        }
-
-        Set<String> joinNodes = new HashSet<>();
-        if (freeVariables != null) {
-            joinNodes.addAll(freeVariables);
-        }
-
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() >= 2) {
-                joinNodes.add(entry.getKey());
-            }
-        }
-        return joinNodes;
     }
 
     private boolean shouldEnforceJoinNodes(Set<String> joinNodes, int totalComponents, Component component) {

@@ -1,25 +1,16 @@
 package decomposition.cpq;
 
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
-import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
-import dev.roanh.gmark.lang.cq.AtomCQ;
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.QueryGraphCQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 
 /**
  * Builds CPQ expressions for connected components using gMark's CPQ model.
@@ -34,10 +25,12 @@ import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
  */
 public final class ComponentCPQBuilder {
     private final List<Edge> edges;
-    private final Map<String, List<KnownComponent>> memo = new HashMap<>();
+    private final Map<MemoKey, List<KnownComponent>> memo = new HashMap<>();
+    private final ComponentCandidateValidator candidateValidator;
 
     public ComponentCPQBuilder(List<Edge> edges) {
         this.edges = List.copyOf(edges);
+        this.candidateValidator = new ComponentCandidateValidator(this.edges);
     }
 
     public List<Edge> allEdges() {
@@ -45,13 +38,22 @@ public final class ComponentCPQBuilder {
     }
 
     public List<KnownComponent> options(BitSet edgeBits) {
-        return enumerate(edgeBits);
+        return options(edgeBits, Set.of());
     }
 
-    private List<KnownComponent> enumerate(BitSet edgeBits) {
+    public List<KnownComponent> options(BitSet edgeBits, Set<String> joinNodes) {
+        Objects.requireNonNull(edgeBits, "edgeBits");
+        Set<String> normalizedJoinNodes = joinNodes == null ? Set.of() : joinNodes;
+        return enumerate(edgeBits, normalizedJoinNodes);
+    }
+
+    private List<KnownComponent> enumerate(BitSet edgeBits, Set<String> joinNodes) {
         String signature = BitsetUtils.signature(edgeBits, edges.size());
-        if (memo.containsKey(signature)) {
-            return memo.get(signature);
+        Set<String> localJoinNodes = collectLocalJoinNodes(edgeBits, joinNodes);
+        JoinMode joinMode = JoinMode.fromCount(localJoinNodes.size());
+        MemoKey key = new MemoKey(signature, joinMode);
+        if (memo.containsKey(key)) {
+            return memo.get(key);
         }
 
         Map<ComponentKey, KnownComponent> results = new LinkedHashMap<>();
@@ -59,435 +61,107 @@ public final class ComponentCPQBuilder {
 
         if (cardinality == 0) {
             List<KnownComponent> emptyList = List.of();
-            memo.put(signature, emptyList);
+            memo.put(key, emptyList);
             return emptyList;
         }
 
         if (cardinality == 1) {
-            // first decomposition
             int edgeIndex = edgeBits.nextSetBit(0);
             Edge edge = edges.get(edgeIndex);
-            BitSet bitsCopy = BitsetUtils.copy(edgeBits);
-
-            // 0) Plain forward atom: s --r--> t
-            CPQ forwardCPQ = CPQ.parse(edge.label());
-            KnownComponent forward = derived(
-                forwardCPQ,
-                bitsCopy,
-                edge.source(),
-                edge.target(),
-                "Forward atom on label '" + edge.label() + "' (" + edge.source() + "→" + edge.target() + ")"
-            );
-            tryAdd(results, forward);
-
-            // 0a) Inverse atom: t --r⁻--> s (only when endpoints differ)
-            if (!edge.source().equals(edge.target())) {
-                String inverseStr = edge.label() + "⁻";
-                try {
-                    CPQ inverseCPQ = CPQ.parse(inverseStr);
-                    KnownComponent inverse = derived(
-                        inverseCPQ,
-                        bitsCopy,
-                        edge.target(),
-                        edge.source(),
-                        "Inverse atom on label '" + edge.label() + "' (" + edge.target() + "→" + edge.source() + ")"
-                    );
-                    tryAdd(results, inverse);
-                } catch (RuntimeException ex) {
-                    // Skip if inverse parsing fails
-                }
-
-                // 0b) Backtrack at source: s --r--> t --r⁻--> s anchored with id
-                String backtrackSourceStr = "((" + edge.label() + " ◦ " + edge.label() + "⁻) ∩ id)";
-                try {
-                    CPQ backtrackSource = CPQ.parse(backtrackSourceStr);
-                    KnownComponent loopSource = derived(
-                        backtrackSource,
-                        bitsCopy,
-                        edge.source(),
-                        edge.source(),
-                        "Backtrack loop via '" + edge.label() + "' at " + edge.source()
-                    );
-                    tryAdd(results, loopSource);
-                } catch (RuntimeException ex) {
-                    // Ignore unparsable backtrack variants
-                }
-
-                // 0c) Backtrack at target: t --r⁻--> s --r--> t anchored with id
-                String backtrackTargetStr = "((" + edge.label() + "⁻ ◦ " + edge.label() + ") ∩ id)";
-                try {
-                    CPQ backtrackTarget = CPQ.parse(backtrackTargetStr);
-                    KnownComponent loopTarget = derived(
-                        backtrackTarget,
-                        bitsCopy,
-                        edge.target(),
-                        edge.target(),
-                        "Backtrack loop via '" + edge.label() + "' at " + edge.target()
-                    );
-                    tryAdd(results, loopTarget);
-                } catch (RuntimeException ex) {
-                    // Ignore unparsable backtrack variants
-                }
+            for (KnownComponent option : SingleEdgeOptionFactory.build(edge, edgeBits)) {
+                tryAdd(results, option);
             }
-
         } else {
-            List<KnownComponent> loopBacktracks = buildLoopBacktracks(edgeBits);
-            for (KnownComponent candidate : loopBacktracks) {
-                tryAdd(results, candidate);
-            }
-
-            // unchanged: your existing composition logic
-            List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
-            int combos = 1 << indices.size();
-            for (int mask = 1; mask < combos - 1; mask++) {
-                BitSet subsetA = new BitSet(edges.size());
-                for (int i = 0; i < indices.size(); i++) {
-                    if ((mask & (1 << i)) != 0) {
-                        subsetA.set(indices.get(i));
-                    }
-                }
-
-                BitSet subsetB = BitsetUtils.copy(edgeBits);
-                subsetB.andNot(subsetA);
-
-                List<KnownComponent> leftList = enumerate(subsetA);
-                List<KnownComponent> rightList = enumerate(subsetB);
-                if (leftList.isEmpty() || rightList.isEmpty()) {
-                    continue;
-                }
-
-                for (KnownComponent left : leftList) {
-                    for (KnownComponent right : rightList) {
-                        // concatenation: shared middle
-                        if (left.target().equals(right.source())) {
-                            String concatStr = "(" + left.cpq().toString() + " ◦ " + right.cpq().toString() + ")";
-                            CPQ concatCPQ = CPQ.parse(concatStr);
-                            String derivation = "Concatenation: [" + left.cpqRule() + "] then [" + right.cpqRule()
-                                    + "] via " + left.target();
-                            KnownComponent combined = derived(
-                                concatCPQ, BitsetUtils.copy(edgeBits), left.source(), right.target(), derivation
-                            );
-                            tryAdd(results, combined);
-                        }
-                        // conjunction: same endpoints
-                        if (left.source().equals(right.source()) && left.target().equals(right.target())) {
-                            String conjStr = "(" + left.cpq().toString() + " ∩ " + right.cpq().toString() + ")";
-                            CPQ conjCPQ = CPQ.parse(conjStr);
-                            String derivation = "Intersection: [" + left.cpqRule() + "] ∩ [" + right.cpqRule()
-                                    + "] at " + left.source() + "→" + left.target();
-                            KnownComponent combined = derived(
-                                conjCPQ, BitsetUtils.copy(edgeBits), left.source(), left.target(), derivation
-                            );
-                            tryAdd(results, combined);
-                        }
-                    }
+            if (joinMode.allowBacktracks()) {
+                for (KnownComponent option : LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes)) {
+                    tryAdd(results, option);
                 }
             }
-
+            CompositeOptionFactory.build(
+                    edgeBits,
+                    edges.size(),
+                    subset -> enumerate(subset, joinNodes),
+                    candidate -> tryAdd(results, candidate));
         }
 
         List<KnownComponent> finalList = List.copyOf(results.values());
-        memo.put(signature, finalList);
+        memo.put(key, finalList);
         return finalList;
     }
 
-    private KnownComponent derived(CPQ cpq, BitSet bits, String source, String target, String derivation) {
-        return new KnownComponent(cpq, bits, source, target, derivation);
-    }
-
     private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
-        KnownComponent adjusted = ensureLoopAnchored(candidate);
-        try {
-            adjusted.cpq().toString();
-        } catch (RuntimeException ex) {
-            return;
-        }
-        if (!matchesComponent(adjusted)) {
+        KnownComponent adjusted = candidateValidator.ensureLoopAnchored(candidate);
+        if (!candidateValidator.matchesComponent(adjusted)) {
             return;
         }
         ComponentKey key = adjusted.toKey(edges.size());
         results.putIfAbsent(key, adjusted);
     }
 
-    private KnownComponent ensureLoopAnchored(KnownComponent candidate) {
-        if (!candidate.source().equals(candidate.target())) {
-            return candidate;
+    private Set<String> collectLocalJoinNodes(BitSet edgeBits, Set<String> joinNodes) {
+        if (joinNodes == null || joinNodes.isEmpty()) {
+            return Set.of();
         }
-        try {
-            QueryGraphCPQ graph = candidate.cpq().toQueryGraph();
-            if (graph.isLoop()) {
-                return candidate;
-            }
-        } catch (RuntimeException ex) {
-            return candidate;
-        }
-        try {
-            CPQ anchored = CPQ.parse("(" + candidate.cpq().toString() + " ∩ id)");
-            String derivation = candidate.derivation() + " + anchored with id";
-            return new KnownComponent(anchored, candidate.edges(), candidate.source(), candidate.target(), derivation);
-        } catch (RuntimeException ex) {
-            return candidate;
-        }
-    }
-
-    private boolean matchesComponent(KnownComponent candidate) {
-        BitSet edgeBits = candidate.edges();
-        List<Edge> componentEdges = edgesFor(edgeBits);
-        if (componentEdges.isEmpty()) {
-            return false;
-        }
-
-        LinkedHashSet<String> componentVertices = new LinkedHashSet<>();
-        for (Edge edge : componentEdges) {
-            componentVertices.add(edge.source());
-            componentVertices.add(edge.target());
-        }
-
-        if (!componentVertices.contains(candidate.source()) || !componentVertices.contains(candidate.target())) {
-            return false;
-        }
-
-        CQ cqPattern;
-        QueryGraphCQ queryGraph;
-        UniqueGraph<VarCQ, AtomCQ> graph;
-        try {
-            cqPattern = candidate.cpq().toCQ();
-            queryGraph = cqPattern.toQueryGraph();
-            graph = queryGraph.toUniqueGraph();
-        } catch (RuntimeException ex) {
-            return false;
-        }
-
-        List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
-        if (cpqEdges.size() != componentEdges.size()) {
-            return false;
-        }
-
-        QueryGraphCPQ cpqGraph = candidate.cpq().toQueryGraph();
-        boolean cpqEnforcesLoop = cpqGraph.isLoop();
-        boolean candidateIsLoop = candidate.source().equals(candidate.target());
-        if (cpqEnforcesLoop != candidateIsLoop) {
-            return false;
-        }
-        String sourceVarName = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
-        String targetVarName = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
-
-        Map<String, String> variableMapping = new HashMap<>();
-        Set<String> usedNodes = new HashSet<>();
-        variableMapping.put(sourceVarName, candidate.source());
-        variableMapping.put(targetVarName, candidate.target());
-        usedNodes.add(candidate.source());
-        usedNodes.add(candidate.target());
-
-        return matchEdges(0, cpqEdges, new ArrayList<>(componentEdges), variableMapping, usedNodes,
-                sourceVarName, targetVarName, candidate.source(), candidate.target());
-    }
-
-    private List<KnownComponent> buildLoopBacktracks(BitSet edgeBits) {
-        Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edgeBits);
-        if (adjacency.isEmpty()) {
-            return List.of();
-        }
-
-        List<KnownComponent> candidates = new ArrayList<>();
-        for (String root : adjacency.keySet()) {
-            Set<Integer> visited = new HashSet<>();
-            String expression = loopAt(root, null, adjacency, visited);
-            if (expression.isBlank()) {
-                continue;
-            }
-            if (visited.size() != edgeBits.cardinality()) {
-                continue;
-            }
-
-            String loop = expression;
-            try {
-                CPQ cpq = CPQ.parse(loop);
-                String derivation = "Loop via backtracking anchored at '" + root + "'";
-                candidates.add(new KnownComponent(
-                        cpq,
-                        BitsetUtils.copy(edgeBits),
-                        root,
-                        root,
-                        derivation));
-            } catch (RuntimeException ex) {
-                // ignore unparsable expressions
-            }
-        }
-        return candidates;
-    }
-
-    private Map<String, List<AdjacencyEdge>> buildAdjacency(BitSet edgeBits) {
-        Map<String, List<AdjacencyEdge>> adjacency = new LinkedHashMap<>();
+        Set<String> present = new HashSet<>();
         for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
             Edge edge = edges.get(idx);
-            adjacency.computeIfAbsent(edge.source(), k -> new ArrayList<>())
-                    .add(new AdjacencyEdge(idx, edge));
-            adjacency.computeIfAbsent(edge.target(), k -> new ArrayList<>())
-                    .add(new AdjacencyEdge(idx, edge));
+            if (joinNodes.contains(edge.source())) {
+                present.add(edge.source());
+            }
+            if (joinNodes.contains(edge.target())) {
+                present.add(edge.target());
+            }
+            if (present.size() > 1) {
+                // No need to continue once we exceed the backtrack-eligible threshold.
+                break;
+            }
         }
-        return adjacency;
+        return present.isEmpty() ? Set.of() : Set.copyOf(present);
     }
 
-    private String loopAt(String current,
-                          String parent,
-                          Map<String, List<AdjacencyEdge>> adjacency,
-                          Set<Integer> visited) {
-        List<String> loops = new ArrayList<>();
-        for (AdjacencyEdge edge : adjacency.getOrDefault(current, List.of())) {
-            String neighbour = edge.other(current);
-            if (parent != null && neighbour.equals(parent)) {
-                continue;
-            }
-            if (!visited.add(edge.index())) {
-                continue;
-            }
+    private static final class MemoKey {
+        private final String signature;
+        private final JoinMode joinMode;
 
-            String forward = edge.tokenFrom(current);
-            String subtree = loopAt(neighbour, current, adjacency, visited);
-            String backward = edge.tokenFrom(neighbour);
-
-            StringBuilder builder = new StringBuilder();
-            builder.append(forward);
-            if (!subtree.isBlank()) {
-                builder.append(" ◦ ").append(subtree);
-            }
-            builder.append(" ◦ ").append(backward);
-            String segment = builder.toString();
-            loops.add("((" + segment + ") ∩ id)");
+        MemoKey(String signature, JoinMode joinMode) {
+            this.signature = signature;
+            this.joinMode = joinMode;
         }
 
-        if (loops.isEmpty()) {
-            return "";
-        }
-        return composeSegments(loops);
-    }
-
-    private String composeSegments(List<String> segments) {
-        if (segments.isEmpty()) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < segments.size(); i++) {
-            if (i > 0) {
-                builder.append(" ◦ ");
-            }
-            String segment = segments.get(i);
-            if (segment.contains("◦")) {
-                builder.append("(").append(segment).append(")");
-            } else {
-                builder.append(segment);
-            }
-        }
-        String combined = builder.toString();
-        if (segments.size() > 1) {
-            combined = "(" + combined + ")";
-        }
-        return combined;
-    }
-
-    private record AdjacencyEdge(int index, Edge edge) {
-        String other(String vertex) {
-            if (edge.source().equals(vertex)) {
-                return edge.target();
-            }
-            return edge.source();
-        }
-
-        String tokenFrom(String vertex) {
-            if (edge.source().equals(vertex)) {
-                return edge.label();
-            }
-            return edge.label() + "⁻";
-        }
-    }
-
-    private List<Edge> edgesFor(BitSet bits) {
-        List<Edge> selected = new ArrayList<>(bits.cardinality());
-        for (int idx = bits.nextSetBit(0); idx >= 0; idx = bits.nextSetBit(idx + 1)) {
-            selected.add(edges.get(idx));
-        }
-        return selected;
-    }
-
-    private boolean matchEdges(int index,
-                               List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
-                               List<Edge> remaining,
-                               Map<String, String> variableMapping,
-                               Set<String> usedNodes,
-                               String sourceVarName,
-                               String targetVarName,
-                               String expectedSource,
-                               String expectedTarget) {
-        if (index == cpqEdges.size()) {
-            String mappedSource = variableMapping.get(sourceVarName);
-            String mappedTarget = variableMapping.get(targetVarName);
-            return remaining.isEmpty()
-                    && expectedSource.equals(mappedSource)
-                    && expectedTarget.equals(mappedTarget);
-        }
-
-        GraphEdge<VarCQ, AtomCQ> cpqEdge = cpqEdges.get(index);
-        AtomCQ atom = cpqEdge.getData();
-        String label = atom.getLabel().getAlias();
-        String cpqSrcName = cpqEdge.getSourceNode().getData().getName();
-        String cpqTrgName = cpqEdge.getTargetNode().getData().getName();
-
-        for (int i = 0; i < remaining.size(); i++) {
-            Edge edge = remaining.get(i);
-            if (!label.equals(edge.label())) {
-                continue;
-            }
-            String componentSource = edge.source();
-            String componentTarget = edge.target();
-
-            String mappedSrc = variableMapping.get(cpqSrcName);
-            String mappedTrg = variableMapping.get(cpqTrgName);
-
-            if (mappedSrc != null && !mappedSrc.equals(componentSource)) {
-                continue;
-            }
-            if (mappedTrg != null && !mappedTrg.equals(componentTarget)) {
-                continue;
-            }
-            if (mappedSrc == null && usedNodes.contains(componentSource)) {
-                continue;
-            }
-            if (mappedTrg == null && usedNodes.contains(componentTarget)) {
-                continue;
-            }
-
-            boolean addedSrc = false;
-            boolean addedTrg = false;
-            if (mappedSrc == null) {
-                variableMapping.put(cpqSrcName, componentSource);
-                usedNodes.add(componentSource);
-                addedSrc = true;
-            }
-            if (mappedTrg == null) {
-                variableMapping.put(cpqTrgName, componentTarget);
-                usedNodes.add(componentTarget);
-                addedTrg = true;
-            }
-
-            Edge removed = remaining.remove(i);
-            if (matchEdges(index + 1, cpqEdges, remaining, variableMapping, usedNodes,
-                    sourceVarName, targetVarName, expectedSource, expectedTarget)) {
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
                 return true;
             }
-
-            remaining.add(i, removed);
-            if (addedSrc) {
-                variableMapping.remove(cpqSrcName);
-                usedNodes.remove(componentSource);
+            if (!(obj instanceof MemoKey other)) {
+                return false;
             }
-            if (addedTrg) {
-                variableMapping.remove(cpqTrgName);
-                usedNodes.remove(componentTarget);
-            }
+            return joinMode == other.joinMode && signature.equals(other.signature);
         }
 
-        return false;
+        @Override
+        public int hashCode() {
+            return Objects.hash(signature, joinMode);
+        }
+    }
+
+    private enum JoinMode {
+        SINGLE(true),
+        OTHER(false);
+
+        private final boolean allowBacktracks;
+
+        JoinMode(boolean allowBacktracks) {
+            this.allowBacktracks = allowBacktracks;
+        }
+
+        static JoinMode fromCount(int joinNodeCount) {
+            return joinNodeCount == 1 ? SINGLE : OTHER;
+        }
+
+        boolean allowBacktracks() {
+            return allowBacktracks;
+        }
     }
 
 }
