@@ -8,7 +8,6 @@ import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.JoinNodeUtils.JoinNodeRole;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +22,7 @@ public final class PartitionValidator {
     public boolean isValidCPQDecomposition(Partition partition,
                                            ComponentCPQBuilder builder,
                                            Set<String> freeVariables,
+                                           List<String> freeVariableOrder,
                                            List<Edge> allEdges) {
         List<Component> components = partition.components();
         List<Set<String>> componentVariables = new ArrayList<>(components.size());
@@ -31,6 +31,7 @@ public final class PartitionValidator {
         }
 
         Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
+        boolean singleComponent = components.size() == 1;
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
@@ -39,6 +40,9 @@ public final class PartitionValidator {
                 options = options.stream()
                         .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
                         .collect(Collectors.toList());
+            }
+            if (singleComponent) {
+                options = enforceFreeVariableOrdering(options, component, freeVariableOrder);
             }
             if (options.isEmpty()) {
                 return false;
@@ -52,6 +56,7 @@ public final class PartitionValidator {
             ComponentCPQBuilder builder,
             int limit,
             Set<String> freeVariables,
+            List<String> freeVariableOrder,
             List<Edge> allEdges) {
         List<Component> components = partition.components();
         List<Set<String>> componentVariables = new ArrayList<>();
@@ -61,6 +66,7 @@ public final class PartitionValidator {
 
         Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
         List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
+        boolean singleComponent = components.size() == 1;
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
@@ -69,6 +75,9 @@ public final class PartitionValidator {
                 options = options.stream()
                         .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
                         .collect(Collectors.toList());
+            }
+            if (singleComponent) {
+                options = enforceFreeVariableOrdering(options, component, freeVariableOrder);
             }
             if (options.isEmpty()) {
                 return List.of();
@@ -84,7 +93,7 @@ public final class PartitionValidator {
             Partition partition,
             ComponentCPQBuilder builder,
             int limit) {
-        return enumerateDecompositions(partition, builder, limit, Set.of(), builder.allEdges());
+        return enumerateDecompositions(partition, builder, limit, Set.of(), List.of(), builder.allEdges());
     }
 
     private List<List<KnownComponent>> cartesian(List<List<KnownComponent>> lists,
@@ -239,4 +248,37 @@ public final class PartitionValidator {
         return local;
     }
 
+    private List<KnownComponent> enforceFreeVariableOrdering(List<KnownComponent> options,
+                                                             Component component,
+                                                             List<String> freeVariableOrder) {
+        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
+            return options;
+        }
+        String expectedSource = freeVariableOrder.get(0);
+        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
+
+        if (expectedSource == null) {
+            return options;
+        }
+
+        Set<String> componentVertices = component.vertices();
+        if (!componentVertices.contains(expectedSource)) {
+            return options;
+        }
+        return options.stream()
+                .filter(option -> matchesOrderedFreeVariables(option, expectedSource, expectedTarget))
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchesOrderedFreeVariables(KnownComponent option,
+                                                String expectedSource,
+                                                String expectedTarget) {
+        if (!expectedSource.equals(option.source())) {
+            return false;
+        }
+        if (expectedTarget == null) {
+            return true;
+        }
+        return expectedTarget.equals(option.target());
+    }
 }

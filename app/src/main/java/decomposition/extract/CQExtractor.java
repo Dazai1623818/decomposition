@@ -19,7 +19,14 @@ import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphNode;
  */
 public final class CQExtractor {
 
-    public record ExtractionResult(List<Edge> edges, Set<String> freeVariables) {
+    public record ExtractionResult(List<Edge> edges,
+                                   Set<String> freeVariables,
+                                   List<String> freeVariableOrder) {
+        public ExtractionResult {
+            edges = List.copyOf(edges);
+            freeVariables = Set.copyOf(freeVariables);
+            freeVariableOrder = List.copyOf(freeVariableOrder);
+        }
     }
 
     public ExtractionResult extract(CQ cq, Set<String> explicitFreeVariables) {
@@ -45,7 +52,9 @@ public final class CQExtractor {
                 ? validateFreeVariables(explicitFreeVariables, cq)
                 : deriveFreeVariables(cq);
 
-        return new ExtractionResult(List.copyOf(edges), freeVariables);
+        List<String> freeVariableOrder = deriveFreeVariableOrder(cq, freeVariables);
+
+        return new ExtractionResult(edges, freeVariables, freeVariableOrder);
     }
 
     private Set<String> deriveFreeVariables(CQ cq) {
@@ -70,5 +79,28 @@ public final class CQExtractor {
                 .map(GraphNode::getData)
                 .map(VarCQ::getName)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private List<String> deriveFreeVariableOrder(CQ cq, Set<String> freeVariables) {
+        if (freeVariables == null || freeVariables.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+
+        cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .filter(freeVariables::contains)
+                .forEach(ordered::add);
+
+        deriveAllVariables(cq).stream()
+                .filter(freeVariables::contains)
+                .forEach(ordered::add);
+
+        for (String explicit : freeVariables) {
+            ordered.add(explicit);
+        }
+
+        return List.copyOf(ordered);
     }
 }

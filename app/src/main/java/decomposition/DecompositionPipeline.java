@@ -45,6 +45,7 @@ public final class DecompositionPipeline {
         ExtractionResult extraction = extractor.extract(cq, explicitFreeVariables);
         List<Edge> edges = extraction.edges();
         int edgeCount = edges.size();
+        List<String> freeVariableOrder = extraction.freeVariableOrder();
 
         BitSet fullBits = new BitSet(edgeCount);
         fullBits.set(0, edgeCount);
@@ -82,7 +83,12 @@ public final class DecompositionPipeline {
             partitionIndex++;
             List<Component> componentsInPartition = partition.components();
             Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(componentsInPartition, extraction.freeVariables());
-            boolean valid = validator.isValidCPQDecomposition(partition, builder, extraction.freeVariables(), edges);
+            boolean valid = validator.isValidCPQDecomposition(
+                    partition,
+                    builder,
+                    extraction.freeVariables(),
+                    freeVariableOrder,
+                    edges);
             if (valid) {
                 cpqPartitions.add(partition);
                 List<Integer> optionCounts = new ArrayList<>();
@@ -98,12 +104,17 @@ public final class DecompositionPipeline {
                             c -> localJoinNodes(c, joinNodes));
                     Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
                             c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
-                    List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
+                    List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
                                             kc, component, componentJoinNodes, componentJoinRoles))
                                     .collect(Collectors.toList())
                             : rawOptions;
+                    List<KnownComponent> filteredOptions = enforceFreeVariableOrdering(
+                            joinFilteredOptions,
+                            component,
+                            componentsInPartition,
+                            freeVariableOrder);
 
                     optionCounts.add(filteredOptions.size());
                     filteredOptionsPerComponent.add(filteredOptions);
@@ -114,6 +125,7 @@ public final class DecompositionPipeline {
                                 builder,
                                 effectiveOptions.enumerationLimit() == 0 ? 1 : Math.min(1, effectiveOptions.enumerationLimit()),
                                 extraction.freeVariables(),
+                                freeVariableOrder,
                                 edges)
                         : List.of();
 
@@ -152,21 +164,30 @@ public final class DecompositionPipeline {
                             c -> localJoinNodes(c, joinNodes));
                     Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
                             c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
-                    List<KnownComponent> filteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
+                    List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
                                             kc, component, componentJoinNodes, componentJoinRoles))
                                     .collect(Collectors.toList())
                             : rawOptions;
+                    List<KnownComponent> orientationFilteredOptions = enforceFreeVariableOrdering(
+                            joinFilteredOptions,
+                            component,
+                            componentsInPartition,
+                            freeVariableOrder);
 
                     if (rawOptions.isEmpty()) {
                         String signature = BitsetUtils.signature(componentBits, edgeCount);
                         diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
                                 + " rejected: no CPQ candidates for bits " + signature);
-                    } else if (filteredOptions.isEmpty()) {
+                    } else if (joinFilteredOptions.isEmpty()) {
                         String signature = BitsetUtils.signature(componentBits, edgeCount);
                         diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
                                 + " rejected: endpoints not on join nodes for bits " + signature);
+                    } else if (orientationFilteredOptions.isEmpty()) {
+                        String signature = BitsetUtils.signature(componentBits, edgeCount);
+                        diagnostics.add("Partition#" + partitionIndex + " component#" + componentIndex
+                                + " rejected: endpoints violate free-variable ordering for bits " + signature);
                     }
                 }
             }
@@ -181,7 +202,8 @@ public final class DecompositionPipeline {
             Set<String> globalJoinNodes = JoinNodeUtils.computeJoinNodes(List.of(new Component(fullBits, vertices)), extraction.freeVariables());
             List<KnownComponent> globalCandidates = builder.options(fullBits, globalJoinNodes);
             globalCatalogue = globalCandidates;
-            finalComponent = selectPreferredFinalComponent(globalCandidates);
+            List<KnownComponent> orderedGlobalCandidates = filterGlobalCandidates(globalCandidates, freeVariableOrder);
+            finalComponent = selectPreferredFinalComponent(orderedGlobalCandidates);
         }
 
         long elapsed = timing.elapsedMillis();
@@ -194,6 +216,63 @@ public final class DecompositionPipeline {
         return buildResult(extraction, vertices, partitions, filteredPartitions,
                 cpqPartitions, recognizedCatalogue, finalComponent, globalCatalogue,
                 partitionEvaluations, diagnostics, elapsed, terminationReason);
+    }
+
+    private List<KnownComponent> enforceFreeVariableOrdering(List<KnownComponent> options,
+                                                             Component component,
+                                                             List<Component> componentsInPartition,
+                                                             List<String> freeVariableOrder) {
+        if (options == null || options.isEmpty()) {
+            return options;
+        }
+        if (componentsInPartition.size() != 1) {
+            return options;
+        }
+        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
+            return options;
+        }
+        String expectedSource = freeVariableOrder.get(0);
+        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
+        if (expectedSource == null) {
+            return options;
+        }
+        Set<String> componentVertices = component.vertices();
+        if (!componentVertices.contains(expectedSource)) {
+            return options;
+        }
+        return options.stream()
+                .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
+                .collect(Collectors.toList());
+    }
+
+    private List<KnownComponent> filterGlobalCandidates(List<KnownComponent> candidates,
+                                                        List<String> freeVariableOrder) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
+            return candidates;
+        }
+        String expectedSource = freeVariableOrder.get(0);
+        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
+        if (expectedSource == null) {
+            return candidates;
+        }
+        return candidates.stream()
+                .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
+                .collect(Collectors.toList());
+    }
+
+    private boolean matchesFreeVariableOrdering(KnownComponent option,
+                                                String expectedSource,
+                                                String expectedTarget) {
+        if (!expectedSource.equals(option.source())) {
+            return false;
+        }
+        if (expectedTarget == null) {
+            return true;
+        }
+        return expectedTarget.equals(option.target());
     }
 
     private void registerOptionVariants(List<KnownComponent> options,

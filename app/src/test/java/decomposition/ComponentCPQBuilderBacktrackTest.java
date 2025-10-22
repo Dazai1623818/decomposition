@@ -81,7 +81,7 @@ final class ComponentCPQBuilderBacktrackTest {
                 .orElseThrow();
 
         PartitionValidator validator = new PartitionValidator();
-        assertTrue(validator.isValidCPQDecomposition(singleEdgePartition, builder, extraction.freeVariables(), edges),
+        assertTrue(validator.isValidCPQDecomposition(singleEdgePartition, builder, extraction.freeVariables(), extraction.freeVariableOrder(), edges),
                 "Single-edge partition should now be a valid CPQ decomposition");
     }
 

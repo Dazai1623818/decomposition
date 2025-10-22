@@ -8,6 +8,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import decomposition.DecompositionOptions;
 import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
+import decomposition.extract.CQExtractor;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -151,7 +153,19 @@ final class RandomCPQDecompositionTest {
             return new ReconstructionResult(false, false);
         }
 
-        CPQ reconstructed = tuples.get(0).get(0).cpq();
+        CQExtractor.ExtractionResult extraction = new CQExtractor().extract(cq, freeVars);
+        List<String> freeVariableOrder = extraction.freeVariableOrder();
+        KnownComponent representative = tuples.get(0).get(0);
+        if (!freeVariableOrder.isEmpty()) {
+            String expectedSource = freeVariableOrder.get(0);
+            String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : expectedSource;
+            assertEquals(expectedSource, representative.source(),
+                    () -> "Representative component source, expected free-variable order " + freeVariableOrder);
+            assertEquals(expectedTarget, representative.target(),
+                    () -> "Representative component target, expected free-variable order " + freeVariableOrder);
+        }
+
+        CPQ reconstructed = representative.cpq();
         boolean equivalent = areEquivalentUnderAlphabet(original, reconstructed, alphabet);
         System.out.println("[Analyse] reconstructed=" + reconstructed
                 + " equivalent=" + equivalent);
@@ -162,26 +176,10 @@ final class RandomCPQDecompositionTest {
         try {
             CPQ normalizedOriginal = CPQ.parse(sanitize(original.toString()), alphabet);
             CPQ normalizedReconstructed = CPQ.parse(sanitize(reconstructed.toString()), alphabet);
-            boolean forward = normalizedOriginal.isHomomorphicTo(normalizedReconstructed);
-            boolean backward = normalizedReconstructed.isHomomorphicTo(normalizedOriginal);
-
-            QueryGraphCPQ core1 = normalizedOriginal.computeCore();
-            QueryGraphCPQ core2 = normalizedReconstructed.computeCore();
-            boolean coresForward = core1.isHomomorphicTo(core2);
-            boolean coresBackward = core2.isHomomorphicTo(core1);
-
-            System.out.println("[Analyse] forward=" + forward
-                    + " backward=" + backward
-                    + " coreForward=" + coresForward
-                    + " coreBackward=" + coresBackward);
-            return forward && backward && coresForward && coresBackward;
+            return reportEquivalence(normalizedOriginal, normalizedReconstructed);
         } catch (IllegalArgumentException ex) {
             System.out.println("[Analyse] normalization failed: " + ex.getMessage());
-            QueryGraphCPQ originalGraph = original.toQueryGraph();
-            QueryGraphCPQ reconstructedGraph = reconstructed.toQueryGraph();
-            boolean forward = originalGraph.isHomomorphicTo(reconstructedGraph);
-            boolean backward = reconstructedGraph.isHomomorphicTo(originalGraph);
-            return forward && backward;
+            return reportEquivalence(original, reconstructed);
         }
     }
 
@@ -198,5 +196,68 @@ final class RandomCPQDecompositionTest {
     }
 
     private record ReconstructionResult(boolean hasSingleComponent, boolean isEquivalent) {
+    }
+
+    private static boolean reportEquivalence(CPQ original, CPQ reconstructed) {
+        EquivalenceResult direct = evaluateEquivalence(original, reconstructed, Orientation.DIRECT);
+        EquivalenceResult reconstructedReversed =
+                evaluateEquivalence(original, reconstructed, Orientation.RECONSTRUCTED_REVERSED);
+        EquivalenceResult originalReversed =
+                evaluateEquivalence(original, reconstructed, Orientation.ORIGINAL_REVERSED);
+
+        System.out.println("[Analyse] direct=" + direct.equivalent()
+                + " forward=" + direct.forward()
+                + " backward=" + direct.backward()
+                + " coreForward=" + direct.coreForward()
+                + " coreBackward=" + direct.coreBackward()
+                + " reconstructedReversed=" + reconstructedReversed.equivalent()
+                + " originalReversed=" + originalReversed.equivalent());
+        return direct.equivalent();
+    }
+
+    private static EquivalenceResult evaluateEquivalence(CPQ original,
+                                                         CPQ reconstructed,
+                                                         Orientation orientation) {
+        GraphState originalState = toGraphState(original, orientation == Orientation.ORIGINAL_REVERSED);
+        GraphState reconstructedState = toGraphState(reconstructed, orientation == Orientation.RECONSTRUCTED_REVERSED);
+
+        boolean forward = originalState.graph().isHomomorphicTo(reconstructedState.graph());
+        boolean backward = reconstructedState.graph().isHomomorphicTo(originalState.graph());
+        boolean coreForward = originalState.core().isHomomorphicTo(reconstructedState.core());
+        boolean coreBackward = reconstructedState.core().isHomomorphicTo(originalState.core());
+
+        return new EquivalenceResult(
+                forward && backward && coreForward && coreBackward,
+                forward,
+                backward,
+                coreForward,
+                coreBackward,
+                orientation);
+    }
+
+    private static GraphState toGraphState(CPQ cpq, boolean reversed) {
+        QueryGraphCPQ graph = cpq.toQueryGraph();
+        if (reversed) {
+            graph.reverse();
+        }
+        QueryGraphCPQ core = graph.computeCore();
+        return new GraphState(graph, core);
+    }
+
+    private enum Orientation {
+        DIRECT,
+        RECONSTRUCTED_REVERSED,
+        ORIGINAL_REVERSED
+    }
+
+    private record GraphState(QueryGraphCPQ graph, QueryGraphCPQ core) {
+    }
+
+    private record EquivalenceResult(boolean equivalent,
+                                     boolean forward,
+                                     boolean backward,
+                                     boolean coreForward,
+                                     boolean coreBackward,
+                                     Orientation orientation) {
     }
 }
