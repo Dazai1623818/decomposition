@@ -105,12 +105,10 @@ public final class DecompositionPipeline {
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
-                    List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
-                            ? rawOptions.stream()
-                                    .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                                            kc, component, componentJoinNodes))
-                                    .collect(Collectors.toList())
-                            : rawOptions;
+                    List<KnownComponent> joinFilteredOptions = rawOptions.stream()
+                            .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                                    kc, component, componentJoinNodes))
+                            .collect(Collectors.toList());
                     List<KnownComponent> filteredOptions = enforceFreeVariableOrdering(
                             joinFilteredOptions,
                             component,
@@ -158,12 +156,10 @@ public final class DecompositionPipeline {
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
-                    List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
-                            ? rawOptions.stream()
-                                    .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                                            kc, component, componentJoinNodes))
-                                    .collect(Collectors.toList())
-                            : rawOptions;
+                    List<KnownComponent> joinFilteredOptions = rawOptions.stream()
+                            .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
+                                    kc, component, componentJoinNodes))
+                            .collect(Collectors.toList());
                     List<KnownComponent> orientationFilteredOptions = enforceFreeVariableOrdering(
                             joinFilteredOptions,
                             component,
@@ -335,16 +331,6 @@ public final class DecompositionPipeline {
 
     private boolean timeExceeded(DecompositionOptions options, long elapsedMillis) {
         return options.timeBudgetMs() > 0 && elapsedMillis > options.timeBudgetMs();
-    }
-
-    private boolean shouldEnforceJoinNodes(Set<String> joinNodes, int totalComponents, Component component) {
-        if (joinNodes.isEmpty()) {
-            return false;
-        }
-        if (totalComponents > 1) {
-            return true;
-        }
-        return component.edgeCount() > 1;
     }
 
     private Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
