@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashSet;
 
 /**
  * Synthesizes loop-shaped CPQs that cover every edge in a component via backtracking.
@@ -26,15 +25,15 @@ final class LoopBacktrackBuilder {
 
         List<KnownComponent> results = new ArrayList<>();
         for (String anchor : adjacency.keySet()) {
-            if (allowedAnchors != null && !allowedAnchors.isEmpty() && !allowedAnchors.contains(anchor)) {
+            if (!isAnchorAllowed(anchor, allowedAnchors)) {
                 continue;
             }
-            Set<Integer> visited = new HashSet<>();
+            BitSet visited = new BitSet(edgeBits.length());
             String expression = loopExpression(anchor, null, adjacency, visited);
             if (expression.isBlank()) {
                 continue;
             }
-            if (visited.size() != edgeBits.cardinality()) {
+            if (visited.cardinality() != edgeBits.cardinality()) {
                 continue;
             }
             try {
@@ -52,6 +51,10 @@ final class LoopBacktrackBuilder {
         return results;
     }
 
+    private static boolean isAnchorAllowed(String anchor, Set<String> allowedAnchors) {
+        return allowedAnchors == null || allowedAnchors.isEmpty() || allowedAnchors.contains(anchor);
+    }
+
     private static Map<String, List<AdjacencyEdge>> buildAdjacency(List<Edge> edges, BitSet bits) {
         Map<String, List<AdjacencyEdge>> adjacency = new LinkedHashMap<>();
         for (int idx = bits.nextSetBit(0); idx >= 0; idx = bits.nextSetBit(idx + 1)) {
@@ -67,16 +70,19 @@ final class LoopBacktrackBuilder {
     private static String loopExpression(String current,
                                          String parent,
                                          Map<String, List<AdjacencyEdge>> adjacency,
-                                         Set<Integer> visited) {
+                                         BitSet visited) {
         List<String> segments = new ArrayList<>();
         for (AdjacencyEdge edge : adjacency.getOrDefault(current, List.of())) {
             String neighbor = edge.other(current);
             if (parent != null && neighbor.equals(parent)) {
                 continue;
             }
-            if (!visited.add(edge.index())) {
+            if (visited.get(edge.index())) {
                 continue;
             }
+            // Edges are marked globally per anchor; we do not backtrack the bit because every edge
+            // must be consumed exactly once in the synthetic loop.
+            visited.set(edge.index());
 
             String forward = edge.tokenFrom(current);
             String nested = loopExpression(neighbor, current, adjacency, visited);
@@ -101,19 +107,12 @@ final class LoopBacktrackBuilder {
         if (segments.isEmpty()) {
             return "";
         }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < segments.size(); i++) {
-            if (i > 0) {
-                builder.append(" ◦ ");
-            }
-            String segment = segments.get(i);
-            builder.append(segment.contains("◦") ? "(" + segment + ")" : segment);
+        List<String> normalized = new ArrayList<>(segments.size());
+        for (String segment : segments) {
+            normalized.add(segment.contains("◦") ? "(" + segment + ")" : segment);
         }
-        String combined = builder.toString();
-        if (segments.size() > 1) {
-            combined = "(" + combined + ")";
-        }
-        return combined;
+        String combined = String.join(" ◦ ", normalized);
+        return segments.size() > 1 ? "(" + combined + ")" : combined;
     }
 
     private record AdjacencyEdge(int index, Edge edge) {

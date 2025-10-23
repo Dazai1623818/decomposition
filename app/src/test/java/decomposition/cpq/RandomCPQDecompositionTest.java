@@ -21,7 +21,7 @@ import dev.roanh.gmark.type.schema.Predicate;
 final class RandomCPQDecompositionTest {
 
     private static final int ITERATIONS = 100;
-    private static final int MAX_DEPTH = 3;
+    private static final int MAX_DEPTH = 6;
     private static final int LABEL_COUNT = 4;
     private static final List<Predicate> PREDICATE_ALPHABET = buildAlphabet(LABEL_COUNT);
 

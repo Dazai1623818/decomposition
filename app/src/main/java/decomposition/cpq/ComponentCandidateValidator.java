@@ -1,6 +1,7 @@
 package decomposition.cpq;
 
 import decomposition.model.Edge;
+import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.QueryGraphCQ;
@@ -181,98 +182,80 @@ final class ComponentCandidateValidator {
     }
 
     boolean matchesComponent(KnownComponent candidate) {
-        BitSet edgeBits = candidate.edges();
-        List<Edge> componentEdges = edgesFor(edgeBits);
-        if (componentEdges.isEmpty()) {
+        List<Edge> componentEdges = edgesFor(candidate.edges());
+        if (componentEdges.isEmpty() || !coversEndpoints(candidate, componentEdges)) {
             return false;
         }
 
+        ParsedCandidate parsed = parseCandidate(candidate);
+        if (parsed == null || parsed.cpqEdges().size() != componentEdges.size()) {
+            return false;
+        }
+
+        boolean candidateIsLoop = candidate.source().equals(candidate.target());
+        if (parsed.cpqGraph().isLoop() != candidateIsLoop) {
+            return false;
+        }
+
+        MatchContext context = MatchContext.create(parsed, componentEdges, candidate);
+        return matchEdges(0, context);
+    }
+
+    private boolean coversEndpoints(KnownComponent candidate, List<Edge> componentEdges) {
         LinkedHashSet<String> vertices = new LinkedHashSet<>();
         for (Edge edge : componentEdges) {
             vertices.add(edge.source());
             vertices.add(edge.target());
         }
-        if (!vertices.contains(candidate.source()) || !vertices.contains(candidate.target())) {
-            return false;
-        }
+        return vertices.contains(candidate.source()) && vertices.contains(candidate.target());
+    }
 
-        CQ cqPattern;
-        QueryGraphCQ cqGraph;
-        UniqueGraph<VarCQ, AtomCQ> graph;
+    private ParsedCandidate parseCandidate(KnownComponent candidate) {
         try {
-            cqPattern = candidate.cpq().toCQ();
-            cqGraph = cqPattern.toQueryGraph();
-            graph = cqGraph.toUniqueGraph();
+            CPQ cpq = candidate.cpq();
+            CQ cqPattern = cpq.toCQ();
+            QueryGraphCQ cqGraph = cqPattern.toQueryGraph();
+            UniqueGraph<VarCQ, AtomCQ> graph = cqGraph.toUniqueGraph();
+            QueryGraphCPQ cpqGraph = cpq.toQueryGraph();
+            String sourceVarName = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
+            String targetVarName = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
+            return new ParsedCandidate(graph.getEdges(), cpqGraph, sourceVarName, targetVarName);
         } catch (RuntimeException ex) {
-            return false;
+            return null;
         }
-
-        List<GraphEdge<VarCQ, AtomCQ>> cpqEdges = graph.getEdges();
-        if (cpqEdges.size() != componentEdges.size()) {
-            return false;
-        }
-
-        QueryGraphCPQ cpqGraph = candidate.cpq().toQueryGraph();
-        boolean cpqEnforcesLoop = cpqGraph.isLoop();
-        boolean candidateIsLoop = candidate.source().equals(candidate.target());
-        if (cpqEnforcesLoop != candidateIsLoop) {
-            return false;
-        }
-        String sourceVarName = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
-        String targetVarName = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
-
-        Map<String, String> variableMapping = new HashMap<>();
-        Set<String> usedNodes = new HashSet<>();
-        variableMapping.put(sourceVarName, candidate.source());
-        variableMapping.put(targetVarName, candidate.target());
-        usedNodes.add(candidate.source());
-        usedNodes.add(candidate.target());
-
-        return matchEdges(0, cpqEdges, new ArrayList<>(componentEdges), variableMapping, usedNodes,
-                sourceVarName, targetVarName, candidate.source(), candidate.target());
     }
 
     private List<Edge> edgesFor(BitSet bits) {
         List<Edge> selected = new ArrayList<>(bits.cardinality());
-        for (int idx = bits.nextSetBit(0); idx >= 0; idx = bits.nextSetBit(idx + 1)) {
-            selected.add(edges.get(idx));
-        }
+        BitsetUtils.stream(bits).forEach(idx -> selected.add(edges.get(idx)));
         return selected;
     }
 
-    private boolean matchEdges(int index,
-                               List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
-                               List<Edge> remaining,
-                               Map<String, String> variableMapping,
-                               Set<String> usedNodes,
-                               String sourceVarName,
-                               String targetVarName,
-                               String expectedSource,
-                               String expectedTarget) {
-        if (index == cpqEdges.size()) {
-            String mappedSource = variableMapping.get(sourceVarName);
-            String mappedTarget = variableMapping.get(targetVarName);
-            return remaining.isEmpty()
-                    && expectedSource.equals(mappedSource)
-                    && expectedTarget.equals(mappedTarget);
+    private boolean matchEdges(int index, MatchContext context) {
+        if (index == context.cpqEdges().size()) {
+            String mappedSource = context.variableMapping().get(context.sourceVarName());
+            String mappedTarget = context.variableMapping().get(context.targetVarName());
+            return context.remaining().isEmpty()
+                    && context.expectedSource().equals(mappedSource)
+                    && context.expectedTarget().equals(mappedTarget);
         }
 
-        GraphEdge<VarCQ, AtomCQ> cpqEdge = cpqEdges.get(index);
+        GraphEdge<VarCQ, AtomCQ> cpqEdge = context.cpqEdges().get(index);
         AtomCQ atom = cpqEdge.getData();
         String label = atom.getLabel().getAlias();
         String cpqSrcName = cpqEdge.getSourceNode().getData().getName();
         String cpqTrgName = cpqEdge.getTargetNode().getData().getName();
 
-        for (int i = 0; i < remaining.size(); i++) {
-            Edge edge = remaining.get(i);
+        for (int i = 0; i < context.remaining().size(); i++) {
+            Edge edge = context.remaining().get(i);
             if (!label.equals(edge.label())) {
                 continue;
             }
             String componentSource = edge.source();
             String componentTarget = edge.target();
 
-            String mappedSrc = variableMapping.get(cpqSrcName);
-            String mappedTrg = variableMapping.get(cpqTrgName);
+            String mappedSrc = context.variableMapping().get(cpqSrcName);
+            String mappedTrg = context.variableMapping().get(cpqTrgName);
 
             if (mappedSrc != null && !mappedSrc.equals(componentSource)) {
                 continue;
@@ -280,43 +263,82 @@ final class ComponentCandidateValidator {
             if (mappedTrg != null && !mappedTrg.equals(componentTarget)) {
                 continue;
             }
-            if (mappedSrc == null && usedNodes.contains(componentSource)) {
+            if (mappedSrc == null && context.usedNodes().contains(componentSource)) {
                 continue;
             }
-            if (mappedTrg == null && usedNodes.contains(componentTarget)) {
+            if (mappedTrg == null && context.usedNodes().contains(componentTarget)) {
                 continue;
             }
 
             boolean addedSrc = false;
             boolean addedTrg = false;
             if (mappedSrc == null) {
-                variableMapping.put(cpqSrcName, componentSource);
-                usedNodes.add(componentSource);
+                context.variableMapping().put(cpqSrcName, componentSource);
+                context.usedNodes().add(componentSource);
                 addedSrc = true;
             }
             if (mappedTrg == null) {
-                variableMapping.put(cpqTrgName, componentTarget);
-                usedNodes.add(componentTarget);
+                context.variableMapping().put(cpqTrgName, componentTarget);
+                context.usedNodes().add(componentTarget);
                 addedTrg = true;
             }
 
-            Edge removed = remaining.remove(i);
-            if (matchEdges(index + 1, cpqEdges, remaining, variableMapping, usedNodes,
-                    sourceVarName, targetVarName, expectedSource, expectedTarget)) {
+            Edge removed = context.remaining().remove(i);
+            if (matchEdges(index + 1, context)) {
                 return true;
             }
 
-            remaining.add(i, removed);
+            context.remaining().add(i, removed);
             if (addedSrc) {
-                variableMapping.remove(cpqSrcName);
-                usedNodes.remove(componentSource);
+                context.variableMapping().remove(cpqSrcName);
+                context.usedNodes().remove(componentSource);
             }
             if (addedTrg) {
-                variableMapping.remove(cpqTrgName);
-                usedNodes.remove(componentTarget);
+                context.variableMapping().remove(cpqTrgName);
+                context.usedNodes().remove(componentTarget);
             }
         }
 
         return false;
+    }
+
+    private record ParsedCandidate(List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
+                                   QueryGraphCPQ cpqGraph,
+                                   String sourceVarName,
+                                   String targetVarName) {
+    }
+
+    /**
+     * Mutable traversal state for validating a candidate against the component edges.
+     * The data structure mirrors the recursive backtracking expectation and keeps parameter lists short.
+     */
+    private record MatchContext(List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
+                                List<Edge> remaining,
+                                Map<String, String> variableMapping,
+                                Set<String> usedNodes,
+                                String sourceVarName,
+                                String targetVarName,
+                                String expectedSource,
+                                String expectedTarget) {
+
+        static MatchContext create(ParsedCandidate parsed,
+                                   List<Edge> componentEdges,
+                                   KnownComponent candidate) {
+            Map<String, String> variables = new HashMap<>();
+            Set<String> used = new HashSet<>();
+            variables.put(parsed.sourceVarName(), candidate.source());
+            variables.put(parsed.targetVarName(), candidate.target());
+            used.add(candidate.source());
+            used.add(candidate.target());
+            return new MatchContext(
+                    parsed.cpqEdges(),
+                    new ArrayList<>(componentEdges),
+                    variables,
+                    used,
+                    parsed.sourceVarName(),
+                    parsed.targetVarName(),
+                    candidate.source(),
+                    candidate.target());
+        }
     }
 }

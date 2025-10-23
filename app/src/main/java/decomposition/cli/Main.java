@@ -1,19 +1,5 @@
 package decomposition.cli;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionOptions.Mode;
-import decomposition.DecompositionPipeline;
-import decomposition.DecompositionResult;
-import decomposition.Example;
-import decomposition.cpq.KnownComponent;
-import decomposition.model.Partition;
-import decomposition.model.Component;
-import decomposition.PartitionEvaluation;
-import decomposition.util.BitsetUtils;
-import decomposition.util.VisualizationExporter;
-import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.util.graph.GraphPanel;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +9,20 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import decomposition.DecompositionOptions;
+import decomposition.DecompositionOptions.Mode;
+import decomposition.DecompositionPipeline;
+import decomposition.DecompositionResult;
+import decomposition.Example;
+import decomposition.PartitionEvaluation;
+import decomposition.cpq.KnownComponent;
+import decomposition.model.Component;
+import decomposition.util.BitsetUtils;
+import decomposition.util.VisualizationExporter;
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.util.graph.GraphPanel;
 
 /**
  * CLI entry point for the CQ to CPQ decomposition pipeline.
@@ -77,7 +77,7 @@ public final class Main {
         } catch (IllegalArgumentException | IOException ex) {
             System.err.println("Error: " + ex.getMessage());
             return 2;
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             ex.printStackTrace(System.err);
             return 4;
         }
@@ -325,12 +325,15 @@ public final class Main {
             String sanitized = options.cpqExpression().replaceAll("\\s+", "");
             return CPQ.parse(sanitized).toCQ();
         }
-        Path path = Path.of(options.queryFile());
-        if (!Files.exists(path)) {
-            throw new IllegalArgumentException("Query file not found: " + path);
+        if (options.hasQueryFile()) {
+            Path path = Path.of(options.queryFile());
+            if (!Files.exists(path)) {
+                throw new IllegalArgumentException("Query file not found: " + path);
+            }
+            String content = Files.readString(path);
+            return CQ.parse(content);
         }
-        String content = Files.readString(path);
-        return CQ.parse(content);
+        throw new IllegalStateException("Missing query input.");
     }
 
     private CQ loadExample(String exampleName) {

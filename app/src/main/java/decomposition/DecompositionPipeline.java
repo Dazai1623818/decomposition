@@ -1,6 +1,4 @@
 package decomposition;
-
-import decomposition.PartitionEvaluation;
 import decomposition.cpq.ComponentCPQBuilder;
 import decomposition.cpq.ComponentKey;
 import decomposition.cpq.KnownComponent;
@@ -150,13 +148,8 @@ public final class DecompositionPipeline {
                     }
                 }
 
-                for (int i = 0; i < componentsInPartition.size(); i++) {
-                    Component component = componentsInPartition.get(i);
-                    Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
-                            c -> localJoinNodes(c, joinNodes));
-                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
-                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
-                    registerOptionVariants(filteredOptionsPerComponent.get(i), recognizedCatalogueMap, edgeCount);
+                for (List<KnownComponent> filteredOptions : filteredOptionsPerComponent) {
+                    registerOptionVariants(filteredOptions, recognizedCatalogueMap, edgeCount);
                 }
 
                 partitionEvaluations.add(new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));

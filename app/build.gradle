@@ -34,6 +34,7 @@ tasks.register('runPlot', JavaExec) {
     description = 'Launches the CPQ plotting utility'
     mainClass = 'decomposition.PlotCPQ'
     classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }

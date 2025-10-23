@@ -180,13 +180,12 @@ public final class JoinNodeUtils {
             if (!source.equals(join) || !target.equals(join) || !allowSource) {
                 return false;
             }
-            boolean loopEnforced = false;
             try {
-                loopEnforced = option.cpq().toQueryGraph().isLoop();
+                boolean loopEnforced = option.cpq().toQueryGraph().isLoop();
+                return allowTarget || loopEnforced;
             } catch (RuntimeException ex) {
-                loopEnforced = false;
+                return allowTarget;
             }
-            return allowTarget || loopEnforced;
         }
 
         if (localJoinNodes.size() == 2) {

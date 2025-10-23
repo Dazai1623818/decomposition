@@ -35,44 +35,63 @@ public final class ComponentCPQBuilder {
 
     public List<KnownComponent> options(BitSet edgeBits, Set<String> joinNodes) {
         Objects.requireNonNull(edgeBits, "edgeBits");
-        Set<String> normalizedJoinNodes = joinNodes == null ? Set.of() : joinNodes;
+        Set<String> normalizedJoinNodes = joinNodes == null || joinNodes.isEmpty()
+                ? Set.of()
+                : Set.copyOf(joinNodes);
         return enumerate(edgeBits, normalizedJoinNodes);
     }
 
     private List<KnownComponent> enumerate(BitSet edgeBits, Set<String> joinNodes) {
         Set<String> localJoinNodes = collectLocalJoinNodes(edgeBits, joinNodes);
         MemoKey key = new MemoKey(BitsetUtils.signature(edgeBits, edges.size()), localJoinNodes);
-        if (memo.containsKey(key)) {
-            return memo.get(key);
+        List<KnownComponent> cached = memo.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        List<KnownComponent> computed = collectOptions(edgeBits, joinNodes, localJoinNodes);
+        memo.put(key, computed);
+        return computed;
+    }
+
+    private List<KnownComponent> collectOptions(BitSet edgeBits,
+                                                Set<String> originalJoinNodes,
+                                                Set<String> localJoinNodes) {
+        int cardinality = edgeBits.cardinality();
+        if (cardinality == 0) {
+            return List.of();
         }
 
         Map<ComponentKey, KnownComponent> results = new LinkedHashMap<>();
-        int cardinality = edgeBits.cardinality();
-
-        if (cardinality == 0) {
-            List<KnownComponent> emptyList = List.of();
-            memo.put(key, emptyList);
-            return emptyList;
-        }
-
         if (cardinality == 1) {
-            int edgeIndex = edgeBits.nextSetBit(0);
-            Edge edge = edges.get(edgeIndex);
-            SingleEdgeOptionFactory.build(edge, edgeBits)
-                    .forEach(option -> tryAdd(results, option));
+            addSingleEdgeOptions(edgeBits, results);
         } else {
-            if (localJoinNodes.size() <= 1) {
-                LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes)
-                        .forEach(option -> tryAdd(results, option));
-            }
-
-            Function<BitSet, List<KnownComponent>> lookup = subset -> enumerate(subset, joinNodes);
-            CompositeOptionFactory.build(edgeBits, edges.size(), lookup, candidate -> tryAdd(results, candidate));
+            addLoopBacktrackOptions(edgeBits, localJoinNodes, results);
+            addCompositeOptions(edgeBits, originalJoinNodes, results);
         }
+        return List.copyOf(results.values());
+    }
 
-        List<KnownComponent> finalList = List.copyOf(results.values());
-        memo.put(key, finalList);
-        return finalList;
+    private void addSingleEdgeOptions(BitSet edgeBits,
+                                      Map<ComponentKey, KnownComponent> results) {
+        int edgeIndex = edgeBits.nextSetBit(0);
+        Edge edge = edges.get(edgeIndex);
+        SingleEdgeOptionFactory.build(edge, edgeBits).forEach(option -> tryAdd(results, option));
+    }
+
+    private void addLoopBacktrackOptions(BitSet edgeBits,
+                                         Set<String> localJoinNodes,
+                                         Map<ComponentKey, KnownComponent> results) {
+        if (localJoinNodes.size() > 1) {
+            return;
+        }
+        LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes).forEach(option -> tryAdd(results, option));
+    }
+
+    private void addCompositeOptions(BitSet edgeBits,
+                                     Set<String> originalJoinNodes,
+                                     Map<ComponentKey, KnownComponent> results) {
+        Function<BitSet, List<KnownComponent>> lookup = subset -> enumerate(subset, originalJoinNodes);
+        CompositeOptionFactory.build(edgeBits, edges.size(), lookup, candidate -> tryAdd(results, candidate));
     }
 
     private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
@@ -96,6 +115,7 @@ public final class ComponentCPQBuilder {
                 present.add(edge.target());
             }
         }
+        // We only care about anchors that the subset of edges can actually touch.
         return present.isEmpty() ? Set.of() : Set.copyOf(present);
     }
 

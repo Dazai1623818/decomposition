@@ -1,14 +1,14 @@
 package decomposition.cpq;
 
+import java.util.BitSet;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
-import java.util.BitSet;
-import java.util.List;
-import java.util.Set;
-import org.junit.jupiter.api.Test;
 
 final class ComponentCPQBuilderTest {
 

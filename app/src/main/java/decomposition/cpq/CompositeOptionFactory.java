@@ -4,6 +4,7 @@ import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -20,6 +21,28 @@ final class CompositeOptionFactory {
                       int totalEdgeCount,
                       Function<BitSet, List<KnownComponent>> optionLookup,
                       Consumer<KnownComponent> sink) {
+        forEachSplit(edgeBits, totalEdgeCount, (subsetA, subsetB) -> {
+            List<KnownComponent> left = optionLookup.apply(subsetA);
+            List<KnownComponent> right = optionLookup.apply(subsetB);
+            if (left.isEmpty() || right.isEmpty()) {
+                return;
+            }
+            for (KnownComponent lhs : left) {
+                for (KnownComponent rhs : right) {
+                    tryConcat(edgeBits, lhs, rhs, sink);
+                    tryIntersect(edgeBits, lhs, rhs, sink);
+                }
+            }
+        });
+    }
+
+    /**
+     * Enumerates all two-way partitions of the given bitset (excluding empty/full subsets) and hands
+     * each pair to the visitor.
+     */
+    private static void forEachSplit(BitSet edgeBits,
+                                     int totalEdgeCount,
+                                     BiConsumer<BitSet, BitSet> visitor) {
         List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
         int combos = 1 << indices.size();
         for (int mask = 1; mask < combos - 1; mask++) {
@@ -32,19 +55,7 @@ final class CompositeOptionFactory {
 
             BitSet subsetB = BitsetUtils.copy(edgeBits);
             subsetB.andNot(subsetA);
-
-            List<KnownComponent> left = optionLookup.apply(subsetA);
-            List<KnownComponent> right = optionLookup.apply(subsetB);
-            if (left.isEmpty() || right.isEmpty()) {
-                continue;
-            }
-
-            for (KnownComponent lhs : left) {
-                for (KnownComponent rhs : right) {
-                    tryConcat(edgeBits, lhs, rhs, sink);
-                    tryIntersect(edgeBits, lhs, rhs, sink);
-                }
-            }
+            visitor.accept(subsetA, subsetB);
         }
     }
 
@@ -56,18 +67,9 @@ final class CompositeOptionFactory {
             return;
         }
         String expression = "(" + left.cpq() + " ◦ " + right.cpq() + ")";
-        try {
-            CPQ cpq = CPQ.parse(expression);
-            String derivation = "Concatenation: [" + left.cpqRule() + "] then [" + right.cpqRule()
-                    + "] via " + left.target();
-            sink.accept(KnownComponentFactory.create(cpq,
-                    edgeBits,
-                    left.source(),
-                    right.target(),
-                    derivation));
-        } catch (RuntimeException ex) {
-            // Ignore unparsable concatenation.
-        }
+        String derivation = "Concatenation: [" + left.cpqRule() + "] then [" + right.cpqRule()
+                + "] via " + left.target();
+        emitIfParsable(edgeBits, expression, left.source(), right.target(), derivation, sink);
     }
 
     private static void tryIntersect(BitSet edgeBits,
@@ -78,17 +80,22 @@ final class CompositeOptionFactory {
             return;
         }
         String expression = "(" + left.cpq() + " ∩ " + right.cpq() + ")";
+        String derivation = "Intersection: [" + left.cpqRule() + "] ∩ [" + right.cpqRule()
+                + "] at " + left.source() + "→" + left.target();
+        emitIfParsable(edgeBits, expression, left.source(), left.target(), derivation, sink);
+    }
+
+    private static void emitIfParsable(BitSet edgeBits,
+                                       String expression,
+                                       String source,
+                                       String target,
+                                       String derivation,
+                                       Consumer<KnownComponent> sink) {
         try {
             CPQ cpq = CPQ.parse(expression);
-            String derivation = "Intersection: [" + left.cpqRule() + "] ∩ [" + right.cpqRule()
-                    + "] at " + left.source() + "→" + left.target();
-            sink.accept(KnownComponentFactory.create(cpq,
-                    edgeBits,
-                    left.source(),
-                    left.target(),
-                    derivation));
+            sink.accept(KnownComponentFactory.create(cpq, edgeBits, source, target, derivation));
         } catch (RuntimeException ex) {
-            // Ignore unparsable intersection.
+            // Ignore unparsable synthesized expression.
         }
     }
 }

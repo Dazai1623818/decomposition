@@ -15,15 +15,19 @@ public record PartitionEvaluation(
         List<Integer> componentOptionCounts,
         List<List<KnownComponent>> decompositionTuples) {
 
-    public PartitionEvaluation {
-        Objects.requireNonNull(partition, "partition");
-        Objects.requireNonNull(componentOptionCounts, "componentOptionCounts");
-        Objects.requireNonNull(decompositionTuples, "decompositionTuples");
+    public PartitionEvaluation(Partition partition,
+                               int partitionIndex,
+                               List<Integer> componentOptionCounts,
+                               List<List<KnownComponent>> decompositionTuples) {
+        this.partition = Objects.requireNonNull(partition, "partition");
         if (partitionIndex < 1) {
             throw new IllegalArgumentException("partitionIndex must be >= 1");
         }
-        componentOptionCounts = List.copyOf(componentOptionCounts);
-        decompositionTuples = deepCopy(decompositionTuples);
+        this.partitionIndex = partitionIndex;
+        this.componentOptionCounts = List.copyOf(
+                Objects.requireNonNull(componentOptionCounts, "componentOptionCounts"));
+        this.decompositionTuples = deepCopy(
+                Objects.requireNonNull(decompositionTuples, "decompositionTuples"));
     }
 
     public int componentCount() {
