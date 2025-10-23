@@ -11,6 +11,7 @@ import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.partitions.PartitionFilter;
+import decomposition.partitions.PartitionFilter.FilteredPartition;
 import decomposition.partitions.PartitionFilter.FilterResult;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.util.BitsetUtils;
@@ -57,7 +58,11 @@ public final class DecompositionPipeline {
 
         FilterResult filterResult = new PartitionFilter(MAX_JOIN_NODES)
                 .filter(partitions, extraction.freeVariables());
-        List<Partition> filteredPartitions = filterResult.partitions();
+        List<FilteredPartition> filteredPartitionsWithJoins = filterResult.partitions();
+        List<Partition> filteredPartitions = List.copyOf(
+                filteredPartitionsWithJoins.stream()
+                        .map(FilteredPartition::partition)
+                        .collect(Collectors.toList()));
 
         List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
         Map<ComponentKey, KnownComponent> recognizedCatalogueMap = new LinkedHashMap<>();
@@ -79,12 +84,14 @@ public final class DecompositionPipeline {
         List<KnownComponent> globalCatalogue = List.of();
 
         int partitionIndex = 0;
-        for (Partition partition : filteredPartitions) {
+        for (FilteredPartition filteredPartition : filteredPartitionsWithJoins) {
+            Partition partition = filteredPartition.partition();
+            Set<String> joinNodes = filteredPartition.joinNodes();
             partitionIndex++;
             List<Component> componentsInPartition = partition.components();
-            Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(componentsInPartition, extraction.freeVariables());
             boolean valid = validator.isValidCPQDecomposition(
                     partition,
+                    joinNodes,
                     builder,
                     extraction.freeVariables(),
                     freeVariableOrder,
@@ -122,6 +129,7 @@ public final class DecompositionPipeline {
                 List<List<KnownComponent>> tuples = effectiveOptions.mode().enumerateTuples()
                         ? validator.enumerateDecompositions(
                                 partition,
+                                joinNodes,
                                 builder,
                                 effectiveOptions.enumerationLimit() == 0 ? 1 : Math.min(1, effectiveOptions.enumerationLimit()),
                                 extraction.freeVariables(),

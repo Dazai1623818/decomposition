@@ -4,6 +4,7 @@ import decomposition.model.Component;
 import decomposition.model.Partition;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,24 +20,29 @@ public final class PartitionFilter {
         this.maxJoinNodesPerComponent = maxJoinNodesPerComponent;
     }
 
-    public record FilterResult(List<Partition> partitions,
+    public record FilterResult(List<FilteredPartition> partitions,
                                List<String> diagnostics,
                                int consideredCount) {
+    }
+
+    public record FilteredPartition(Partition partition, Set<String> joinNodes) {
     }
 
     public FilterResult filter(List<Partition> partitions, Set<String> freeVariables) {
         Objects.requireNonNull(partitions, "partitions");
         Objects.requireNonNull(freeVariables, "freeVariables");
 
-        List<Partition> accepted = new ArrayList<>();
+        List<FilteredPartition> accepted = new ArrayList<>();
         List<String> diagnostics = new ArrayList<>();
 
         int index = 0;
         for (Partition partition : partitions) {
             index++;
-            String failure = violatesConstraints(partition, freeVariables);
+            Map<String, Integer> multiplicity = vertexMultiplicity(partition);
+            String failure = violatesConstraints(partition, freeVariables, multiplicity);
             if (failure == null) {
-                accepted.add(partition);
+                Set<String> joinNodes = computeJoinNodes(multiplicity, freeVariables);
+                accepted.add(new FilteredPartition(partition, joinNodes));
             } else {
                 diagnostics.add("Partition#" + index + " rejected: " + failure);
             }
@@ -45,8 +51,9 @@ public final class PartitionFilter {
         return new FilterResult(List.copyOf(accepted), diagnostics, partitions.size());
     }
 
-    private String violatesConstraints(Partition partition, Set<String> freeVariables) {
-        Map<String, Integer> multiplicity = vertexMultiplicity(partition);
+    private String violatesConstraints(Partition partition,
+                                       Set<String> freeVariables,
+                                       Map<String, Integer> multiplicity) {
         if (partition.components().size() > 1) {
             int requiredMultiplicity = freeVariables.size() <= 1 ? 2 : 1;
             for (String freeVar : freeVariables) {
@@ -69,6 +76,19 @@ public final class PartitionFilter {
             }
         }
         return null;
+    }
+
+    private Set<String> computeJoinNodes(Map<String, Integer> multiplicity, Set<String> freeVariables) {
+        Set<String> joinNodes = new HashSet<>();
+        if (!freeVariables.isEmpty()) {
+            joinNodes.addAll(freeVariables);
+        }
+        for (Map.Entry<String, Integer> entry : multiplicity.entrySet()) {
+            if (entry.getValue() >= 2) {
+                joinNodes.add(entry.getKey());
+            }
+        }
+        return joinNodes.isEmpty() ? Set.of() : Set.copyOf(joinNodes);
     }
 
     private Map<String, Integer> vertexMultiplicity(Partition partition) {

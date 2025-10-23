@@ -20,17 +20,12 @@ import java.util.stream.Collectors;
 public final class PartitionValidator {
 
     public boolean isValidCPQDecomposition(Partition partition,
+                                           Set<String> joinNodes,
                                            ComponentCPQBuilder builder,
                                            Set<String> freeVariables,
                                            List<String> freeVariableOrder,
                                            List<Edge> allEdges) {
         List<Component> components = partition.components();
-        List<Set<String>> componentVariables = new ArrayList<>(components.size());
-        for (Component component : components) {
-            componentVariables.add(component.vertices());
-        }
-
-        Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
         boolean singleComponent = components.size() == 1;
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
@@ -58,13 +53,30 @@ public final class PartitionValidator {
             Set<String> freeVariables,
             List<String> freeVariableOrder,
             List<Edge> allEdges) {
+        return enumerateDecompositions(
+                partition,
+                JoinNodeUtils.computeJoinNodes(partition.components(), freeVariables),
+                builder,
+                limit,
+                freeVariables,
+                freeVariableOrder,
+                allEdges);
+    }
+
+    public List<List<KnownComponent>> enumerateDecompositions(
+            Partition partition,
+            Set<String> joinNodes,
+            ComponentCPQBuilder builder,
+            int limit,
+            Set<String> freeVariables,
+            List<String> freeVariableOrder,
+            List<Edge> allEdges) {
         List<Component> components = partition.components();
         List<Set<String>> componentVariables = new ArrayList<>();
         for (Component component : components) {
             componentVariables.add(component.vertices());
         }
 
-        Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromVariables(componentVariables, freeVariables);
         List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
         boolean singleComponent = components.size() == 1;
         for (Component component : components) {
@@ -93,7 +105,8 @@ public final class PartitionValidator {
             Partition partition,
             ComponentCPQBuilder builder,
             int limit) {
-        return enumerateDecompositions(partition, builder, limit, Set.of(), List.of(), builder.allEdges());
+        Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(partition.components(), Set.of());
+        return enumerateDecompositions(partition, joinNodes, builder, limit, Set.of(), List.of(), builder.allEdges());
     }
 
     private List<List<KnownComponent>> cartesian(List<List<KnownComponent>> lists,

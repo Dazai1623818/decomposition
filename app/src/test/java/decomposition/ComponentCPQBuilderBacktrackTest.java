@@ -12,6 +12,7 @@ import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.partitions.PartitionValidator;
+import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.BitSet;
 import java.util.List;
@@ -81,7 +82,8 @@ final class ComponentCPQBuilderBacktrackTest {
                 .orElseThrow();
 
         PartitionValidator validator = new PartitionValidator();
-        assertTrue(validator.isValidCPQDecomposition(singleEdgePartition, builder, extraction.freeVariables(), extraction.freeVariableOrder(), edges),
+        Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(singleEdgePartition.components(), extraction.freeVariables());
+        assertTrue(validator.isValidCPQDecomposition(singleEdgePartition, joinNodes, builder, extraction.freeVariables(), extraction.freeVariableOrder(), edges),
                 "Single-edge partition should now be a valid CPQ decomposition");
     }
 
