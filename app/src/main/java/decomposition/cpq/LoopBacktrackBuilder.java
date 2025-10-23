@@ -29,24 +29,16 @@ final class LoopBacktrackBuilder {
                 continue;
             }
             BitSet visited = new BitSet(edgeBits.length());
-            String expression = loopExpression(anchor, null, adjacency, visited);
-            if (expression.isBlank()) {
+            CPQ loopCpq = buildLoop(anchor, adjacency, visited);
+            if (loopCpq == null) {
                 continue;
             }
-            if (visited.cardinality() != edgeBits.cardinality()) {
-                continue;
-            }
-            try {
-                CPQ cpq = CPQ.parse(expression);
-                results.add(KnownComponentFactory.create(
-                        cpq,
-                        edgeBits,
-                        anchor,
-                        anchor,
-                        "Loop via backtracking anchored at '" + anchor + "'"));
-            } catch (RuntimeException ex) {
-                // Ignore unparsable synthesized expressions.
-            }
+            results.add(KnownComponentFactory.create(
+                    loopCpq,
+                    edgeBits,
+                    anchor,
+                    anchor,
+                    "Loop via backtracking anchored at '" + anchor + "'"));
         }
         return results;
     }
@@ -67,52 +59,50 @@ final class LoopBacktrackBuilder {
         return adjacency;
     }
 
-    private static String loopExpression(String current,
-                                         String parent,
-                                         Map<String, List<AdjacencyEdge>> adjacency,
-                                         BitSet visited) {
-        List<String> segments = new ArrayList<>();
+    private static CPQ buildLoop(String anchor,
+                                 Map<String, List<AdjacencyEdge>> adjacency,
+                                 BitSet visited) {
+        CPQ loopBody = loopForVertex(anchor, adjacency, visited);
+        if (loopBody == null) {
+            return null;
+        }
+        return CPQ.intersect(List.of(loopBody, CPQ.id()));
+    }
+
+    private static CPQ loopForVertex(String current,
+                                     Map<String, List<AdjacencyEdge>> adjacency,
+                                     BitSet visited) {
+        List<CPQ> segments = new ArrayList<>();
         for (AdjacencyEdge edge : adjacency.getOrDefault(current, List.of())) {
             String neighbor = edge.other(current);
-            if (parent != null && neighbor.equals(parent)) {
-                continue;
-            }
             if (visited.get(edge.index())) {
                 continue;
             }
-            // Edges are marked globally per anchor; we do not backtrack the bit because every edge
-            // must be consumed exactly once in the synthetic loop.
             visited.set(edge.index());
 
-            String forward = edge.tokenFrom(current);
-            String nested = loopExpression(neighbor, current, adjacency, visited);
-            String backward = edge.tokenFrom(neighbor);
-
-            StringBuilder builder = new StringBuilder();
-            builder.append(forward);
-            if (!nested.isBlank()) {
-                builder.append(" ◦ ").append(nested);
+            CPQ segment;
+            if (edge.isSelfLoop()) {
+                segment = CPQ.intersect(List.of(edge.forwardCpq(current), CPQ.id()));
+            } else {
+                CPQ forward = edge.forwardCpq(current);
+                CPQ nested = loopForVertex(neighbor, adjacency, visited);
+                CPQ backward = edge.forwardCpq(neighbor);
+                List<CPQ> path = new ArrayList<>();
+                path.add(forward);
+                if (nested != null && nested != CPQ.id()) {
+                    path.add(nested);
+                }
+                path.add(backward);
+                CPQ concat = path.size() == 1 ? path.get(0) : CPQ.concat(path);
+                segment = CPQ.intersect(List.of(concat, CPQ.id()));
             }
-            builder.append(" ◦ ").append(backward);
-            segments.add("((" + builder + ") ∩ id)");
+            segments.add(segment);
         }
 
         if (segments.isEmpty()) {
-            return "";
+            return CPQ.id();
         }
-        return composeSegments(segments);
-    }
-
-    private static String composeSegments(List<String> segments) {
-        if (segments.isEmpty()) {
-            return "";
-        }
-        List<String> normalized = new ArrayList<>(segments.size());
-        for (String segment : segments) {
-            normalized.add(segment.contains("◦") ? "(" + segment + ")" : segment);
-        }
-        String combined = String.join(" ◦ ", normalized);
-        return segments.size() > 1 ? "(" + combined + ")" : combined;
+        return segments.size() == 1 ? segments.get(0) : CPQ.concat(segments);
     }
 
     private record AdjacencyEdge(int index, Edge edge) {
@@ -120,8 +110,15 @@ final class LoopBacktrackBuilder {
             return edge.source().equals(vertex) ? edge.target() : edge.source();
         }
 
-        String tokenFrom(String vertex) {
-            return edge.source().equals(vertex) ? edge.label() : edge.label() + "⁻";
+        boolean isSelfLoop() {
+            return edge.source().equals(edge.target());
+        }
+
+        CPQ forwardCpq(String vertex) {
+            if (edge.source().equals(vertex)) {
+                return CPQ.label(edge.predicate());
+            }
+            return CPQ.label(edge.predicate().getInverse());
         }
     }
 }

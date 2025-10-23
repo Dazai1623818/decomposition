@@ -6,11 +6,9 @@ import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
-import decomposition.util.JoinNodeUtils.JoinNodeRole;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -30,10 +28,9 @@ public final class PartitionValidator {
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
-            Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
+                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                         .collect(Collectors.toList());
             }
             if (singleComponent) {
@@ -82,10 +79,9 @@ public final class PartitionValidator {
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
             Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
-            Map<String, JoinNodeRole> joinNodeRoles = JoinNodeUtils.computeJoinNodeRoles(component, joinNodes, allEdges);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
-                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes, joinNodeRoles))
+                        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                         .collect(Collectors.toList());
             }
             if (singleComponent) {

@@ -15,7 +15,6 @@ import decomposition.partitions.PartitionGenerator;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
-import decomposition.util.JoinNodeUtils.JoinNodeRole;
 import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -99,7 +98,6 @@ public final class DecompositionPipeline {
                 List<Integer> optionCounts = new ArrayList<>();
                 List<List<KnownComponent>> filteredOptionsPerComponent = new ArrayList<>();
                 Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
-                Map<Component, Map<String, JoinNodeRole>> joinNodeRoleCache = new HashMap<>();
                 int componentIndex = 0;
                 for (Component component : componentsInPartition) {
                     componentIndex++;
@@ -107,12 +105,10 @@ public final class DecompositionPipeline {
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
-                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
-                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
                     List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                                            kc, component, componentJoinNodes, componentJoinRoles))
+                                            kc, component, componentJoinNodes))
                                     .collect(Collectors.toList())
                             : rawOptions;
                     List<KnownComponent> filteredOptions = enforceFreeVariableOrdering(
@@ -156,19 +152,16 @@ public final class DecompositionPipeline {
             } else {
                 int componentIndex = 0;
                 Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
-                Map<Component, Map<String, JoinNodeRole>> joinNodeRoleCache = new HashMap<>();
                 for (Component component : componentsInPartition) {
                     componentIndex++;
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
                             c -> localJoinNodes(c, joinNodes));
-                    Map<String, JoinNodeRole> componentJoinRoles = joinNodeRoleCache.computeIfAbsent(component,
-                            c -> JoinNodeUtils.computeJoinNodeRoles(c, joinNodes, edges));
                     List<KnownComponent> joinFilteredOptions = shouldEnforceJoinNodes(joinNodes, componentsInPartition.size(), component)
                             ? rawOptions.stream()
                                     .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                                            kc, component, componentJoinNodes, componentJoinRoles))
+                                            kc, component, componentJoinNodes))
                                     .collect(Collectors.toList())
                             : rawOptions;
                     List<KnownComponent> orientationFilteredOptions = enforceFreeVariableOrdering(
