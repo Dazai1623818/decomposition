@@ -11,6 +11,7 @@ import decomposition.model.Component;
 import decomposition.PartitionEvaluation;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
+import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.util.graph.GraphPanel;
 import java.io.IOException;
@@ -173,6 +174,7 @@ public final class Main {
         }
 
         String queryText = null;
+        String cpqText = null;
         String queryFile = null;
         String exampleName = null;
         String freeVarsRaw = null;
@@ -185,29 +187,44 @@ public final class Main {
         boolean show = false;
 
         for (int i = 1; i < args.length; i++) {
-            String arg = args[i];
-            switch (arg) {
-                case "--cq" -> queryText = nextValue(args, ++i, arg);
-                case "--file" -> queryFile = nextValue(args, ++i, arg);
-                case "--example" -> exampleName = nextValue(args, ++i, arg);
-                case "--free-vars" -> freeVarsRaw = nextValue(args, ++i, arg);
-                case "--mode" -> modeRaw = nextValue(args, ++i, arg);
-                case "--max-partitions" -> maxPartitionsRaw = nextValue(args, ++i, arg);
-                case "--max-covers" -> maxCoversRaw = nextValue(args, ++i, arg);
-                case "--time-budget-ms" -> timeBudgetRaw = nextValue(args, ++i, arg);
-                case "--limit" -> limitRaw = nextValue(args, ++i, arg);
-                case "--out" -> outputPath = nextValue(args, ++i, arg);
+            String rawArg = args[i];
+            String option = rawArg;
+            String inlineValue = null;
+            if (rawArg.startsWith("--")) {
+                int equalsIndex = rawArg.indexOf('=');
+                if (equalsIndex > 0) {
+                    option = rawArg.substring(0, equalsIndex);
+                    inlineValue = rawArg.substring(equalsIndex + 1);
+                    if (inlineValue.isEmpty()) {
+                        inlineValue = null;
+                    }
+                }
+            }
+
+            switch (option) {
+                case "--cq" -> queryText = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--cpq" -> cpqText = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--file" -> queryFile = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--example" -> exampleName = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--free-vars" -> freeVarsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--mode" -> modeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--max-partitions" -> maxPartitionsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--max-covers" -> maxCoversRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--time-budget-ms" -> timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--limit" -> limitRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+                case "--out" -> outputPath = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
                 case "--show" -> show = true;
-                default -> throw new IllegalArgumentException("Unknown option: " + arg);
+                default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
             }
         }
 
         int sources = 0;
         if (queryText != null) sources++;
+        if (cpqText != null) sources++;
         if (queryFile != null) sources++;
         if (exampleName != null) sources++;
         if (sources != 1) {
-            throw new IllegalArgumentException("Provide exactly one of --cq, --file, or --example");
+            throw new IllegalArgumentException("Provide exactly one of --cq, --cpq, --file, or --example");
         }
 
         Set<String> freeVars = parseFreeVariables(freeVarsRaw);
@@ -235,7 +252,7 @@ public final class Main {
         long timeBudget = parseLong(timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
         int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
 
-        return new CliOptions(queryText, queryFile, exampleName, freeVars, mode,
+        return new CliOptions(queryText, cpqText, queryFile, exampleName, freeVars, mode,
                 maxPartitions, maxCovers, timeBudget, limit, show, outputPath);
     }
 
@@ -303,6 +320,10 @@ public final class Main {
         }
         if (options.hasQueryText()) {
             return CQ.parse(options.queryText());
+        }
+        if (options.hasCpqExpression()) {
+            String sanitized = options.cpqExpression().replaceAll("\\s+", "");
+            return CPQ.parse(sanitized).toCQ();
         }
         Path path = Path.of(options.queryFile());
         if (!Files.exists(path)) {

@@ -6,6 +6,7 @@ import java.util.Set;
 
 record CliOptions(
         String queryText,
+        String cpqExpression,
         String queryFile,
         String exampleName,
         Set<String> freeVariables,
@@ -27,6 +28,10 @@ record CliOptions(
 
     boolean hasQueryText() {
         return queryText != null && !queryText.isBlank();
+    }
+
+    boolean hasCpqExpression() {
+        return cpqExpression != null && !cpqExpression.isBlank();
     }
 
     boolean hasQueryFile() {

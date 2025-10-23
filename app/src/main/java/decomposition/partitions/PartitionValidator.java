@@ -273,12 +273,16 @@ public final class PartitionValidator {
     private boolean matchesOrderedFreeVariables(KnownComponent option,
                                                 String expectedSource,
                                                 String expectedTarget) {
-        if (!expectedSource.equals(option.source())) {
-            return false;
-        }
-        if (expectedTarget == null) {
-            return true;
-        }
-        return expectedTarget.equals(option.target());
+        // Check forward orientation: option matches (expectedSource → expectedTarget)
+        boolean forwardMatch = expectedSource.equals(option.source())
+                && (expectedTarget == null || expectedTarget.equals(option.target()));
+
+        // Check reverse orientation: option matches (expectedTarget → expectedSource)
+        // This is valid because the query graph homomorphism can work in either direction
+        boolean reverseMatch = (expectedTarget != null)
+                && expectedTarget.equals(option.source())
+                && expectedSource.equals(option.target());
+
+        return forwardMatch || reverseMatch;
     }
 }

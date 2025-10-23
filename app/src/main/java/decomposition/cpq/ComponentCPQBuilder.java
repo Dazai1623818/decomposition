@@ -76,12 +76,10 @@ public final class ComponentCPQBuilder {
     }
 
     private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
-        KnownComponent adjusted = candidateValidator.ensureLoopAnchored(candidate);
-        if (!candidateValidator.matchesComponent(adjusted)) {
-            return;
+        for (KnownComponent variant : candidateValidator.validateAndExpand(candidate)) {
+            ComponentKey key = variant.toKey(edges.size());
+            results.putIfAbsent(key, variant);
         }
-        ComponentKey key = adjusted.toKey(edges.size());
-        results.putIfAbsent(key, adjusted);
     }
 
     private Set<String> collectLocalJoinNodes(BitSet edgeBits, Set<String> joinNodes) {

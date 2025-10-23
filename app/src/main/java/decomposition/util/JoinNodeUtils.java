@@ -128,10 +128,14 @@ public final class JoinNodeUtils {
             JoinNodeRole srcRole = roles.get(edge.source());
             if (srcRole != null) {
                 srcRole.markSource();
+                // The presence of the edge also allows reaching the join node via its inverse.
+                srcRole.markTarget();
             }
             JoinNodeRole tgtRole = roles.get(edge.target());
             if (tgtRole != null) {
                 tgtRole.markTarget();
+                // Likewise, the inverse enables using the node as a source.
+                tgtRole.markSource();
             }
         }
 

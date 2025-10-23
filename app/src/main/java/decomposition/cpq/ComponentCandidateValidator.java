@@ -6,16 +6,26 @@ import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.QueryGraphCQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.ConcatCPQ;
+import dev.roanh.gmark.lang.cpq.EdgeCPQ;
+import dev.roanh.gmark.lang.cpq.IdentityCPQ;
+import dev.roanh.gmark.lang.cpq.IntersectionCPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
+import dev.roanh.gmark.lang.generic.GenericConcatenation;
+import dev.roanh.gmark.lang.generic.GenericEdge;
+import dev.roanh.gmark.type.schema.Predicate;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -24,9 +34,43 @@ import java.util.Set;
 final class ComponentCandidateValidator {
 
     private final List<Edge> edges;
+    private static final Field EDGE_SYMBOL_FIELD;
+    private static final Field CONCAT_ELEMENTS_FIELD;
+    private static final Field INTERSECTION_ELEMENTS_FIELD;
+
+    static {
+        try {
+            EDGE_SYMBOL_FIELD = GenericEdge.class.getDeclaredField("symbol");
+            EDGE_SYMBOL_FIELD.setAccessible(true);
+            CONCAT_ELEMENTS_FIELD = GenericConcatenation.class.getDeclaredField("elements");
+            CONCAT_ELEMENTS_FIELD.setAccessible(true);
+            INTERSECTION_ELEMENTS_FIELD = IntersectionCPQ.class.getDeclaredField("cpq");
+            INTERSECTION_ELEMENTS_FIELD.setAccessible(true);
+        } catch (NoSuchFieldException ex) {
+            throw new ExceptionInInitializerError(ex);
+        }
+    }
 
     ComponentCandidateValidator(List<Edge> edges) {
         this.edges = edges;
+    }
+
+    List<KnownComponent> validateAndExpand(KnownComponent candidate) {
+        KnownComponent anchored = ensureLoopAnchored(candidate);
+        List<KnownComponent> variants = new ArrayList<>();
+        if (matchesComponent(anchored)) {
+            variants.add(anchored);
+        }
+        if (!anchored.source().equals(anchored.target())) {
+            Optional<KnownComponent> reversed = reverseCandidate(anchored);
+            if (reversed.isPresent()) {
+                KnownComponent reversedAnchored = ensureLoopAnchored(reversed.get());
+                if (matchesComponent(reversedAnchored)) {
+                    variants.add(reversedAnchored);
+                }
+            }
+        }
+        return Collections.unmodifiableList(variants);
     }
 
     KnownComponent ensureLoopAnchored(KnownComponent candidate) {
@@ -52,6 +96,87 @@ final class ComponentCandidateValidator {
                     derivation);
         } catch (RuntimeException ex) {
             return candidate;
+        }
+    }
+
+    private Optional<KnownComponent> reverseCandidate(KnownComponent candidate) {
+        try {
+            CPQ reversedCpq = reverse(candidate.cpq());
+            if (reversedCpq == null) {
+                return Optional.empty();
+            }
+            String derivation = candidate.derivation() + " + reversed orientation";
+            return Optional.of(
+                    KnownComponentFactory.create(
+                            reversedCpq,
+                            candidate.edges(),
+                            candidate.target(),
+                            candidate.source(),
+                            derivation));
+        } catch (UnsupportedOperationException | IllegalStateException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private CPQ reverse(CPQ cpq) {
+        if (cpq == null) {
+            return null;
+        }
+        if (cpq instanceof IdentityCPQ) {
+            return cpq;
+        }
+        if (cpq instanceof EdgeCPQ edge) {
+            return reverseEdge(edge);
+        }
+        if (cpq instanceof ConcatCPQ concat) {
+            List<CPQ> elements = concatElements(concat);
+            List<CPQ> reversedElements = new ArrayList<>(elements.size());
+            for (int i = elements.size() - 1; i >= 0; i--) {
+                reversedElements.add(reverse(elements.get(i)));
+            }
+            return CPQ.concat(reversedElements);
+        }
+        if (cpq instanceof IntersectionCPQ intersection) {
+            List<CPQ> operands = intersectionElements(intersection);
+            List<CPQ> reversedOperands = new ArrayList<>(operands.size());
+            for (CPQ operand : operands) {
+                reversedOperands.add(reverse(operand));
+            }
+            return CPQ.intersect(reversedOperands);
+        }
+        throw new UnsupportedOperationException("Unsupported CPQ type: " + cpq.getClass().getName());
+    }
+
+    private CPQ reverseEdge(EdgeCPQ edge) {
+        Predicate label = edgePredicate(edge);
+        return CPQ.label(label.getInverse());
+    }
+
+    private Predicate edgePredicate(EdgeCPQ edge) {
+        try {
+            return (Predicate) EDGE_SYMBOL_FIELD.get(edge);
+        } catch (IllegalAccessException ex) {
+            throw new IllegalStateException("Failed to access edge predicate", ex);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<CPQ> concatElements(ConcatCPQ concat) {
+        try {
+            List<CPQ> raw = (List<CPQ>) CONCAT_ELEMENTS_FIELD.get(concat);
+            return new ArrayList<>(raw);
+        } catch (IllegalAccessException ex) {
+            throw new IllegalStateException("Failed to access concatenation elements", ex);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<CPQ> intersectionElements(IntersectionCPQ intersection) {
+        try {
+            List<CPQ> raw = (List<CPQ>) INTERSECTION_ELEMENTS_FIELD.get(intersection);
+            return new ArrayList<>(raw);
+        } catch (IllegalAccessException ex) {
+            throw new IllegalStateException("Failed to access intersection elements", ex);
         }
     }
 

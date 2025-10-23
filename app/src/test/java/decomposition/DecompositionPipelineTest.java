@@ -106,4 +106,65 @@ final class DecompositionPipelineTest {
                         .allMatch(kc -> kc.cpqRule().contains("∩ id")),
                 "Self-loop catalogue entries must enforce equality via id");
     }
+
+    @Test
+    void singleComponentAcceptsReversedOrientationHomomorphism() {
+        // Regression test: query graph homomorphism can work in either direction
+        // The query (1⁻ ∩ ((2⁻ ∩ 3⁻)◦0⁻)) should find a single-component decomposition
+        // even though its natural orientation (src→trg) is reversed from the free variable order (src,trg)
+        CQ cq = CQ.empty();
+        VarCQ src = cq.addFreeVariable("src");
+        VarCQ trg = cq.addFreeVariable("trg");
+        VarCQ v0 = cq.addBoundVariable("0");
+
+        cq.addAtom(v0, new Predicate(2, "2"), src);
+        cq.addAtom(v0, new Predicate(3, "3"), src);
+        cq.addAtom(trg, new Predicate(1, "1"), src);
+        cq.addAtom(trg, new Predicate(0, "0"), v0);
+
+        DecompositionOptions defaults = DecompositionOptions.defaults();
+        DecompositionOptions options = new DecompositionOptions(
+                DecompositionOptions.Mode.ENUMERATE,
+                defaults.maxPartitions(),
+                defaults.maxCovers(),
+                defaults.timeBudgetMs(),
+                defaults.enumerationLimit());
+
+        DecompositionPipeline pipeline = new DecompositionPipeline();
+        DecompositionResult result = pipeline.execute(cq, Set.of("src", "trg"), options);
+
+        // Find the single-component partition
+        Optional<PartitionEvaluation> singleComponent = result.partitionEvaluations().stream()
+                .filter(eval -> eval.partition().components().size() == 1)
+                .findFirst();
+
+        assertTrue(singleComponent.isPresent(),
+                "Should find a single-component partition for this query");
+
+        PartitionEvaluation evaluation = singleComponent.orElseThrow();
+        assertTrue(evaluation.componentOptionCounts().get(0) >= 1,
+                "Single component should have at least one CPQ option");
+
+        assertFalse(evaluation.decompositionTuples().isEmpty(),
+                "Single component should produce at least one decomposition tuple");
+
+        // Verify the single component is recognized in the catalogue
+        assertTrue(result.recognizedCatalogue().stream()
+                        .anyMatch(kc -> kc.edges().cardinality() == 4),
+                "Recognized catalogue should include the full 4-edge component");
+
+        // Verify the decomposition is valid regardless of orientation
+        KnownComponent fullComponent = evaluation.decompositionTuples().get(0).get(0);
+        assertEquals(4, fullComponent.edges().cardinality(),
+                "Single component should cover all 4 edges");
+
+        // The component should match one of these patterns (forward or reversed):
+        // (1 ∩ (0◦(2 ∩ 3))) from trg→src, or
+        // (1⁻ ∩ ((2⁻ ∩ 3⁻)◦0⁻)) from src→trg
+        String rule = fullComponent.cpqRule();
+        boolean hasValidPattern = rule.contains("1") && rule.contains("0") &&
+                rule.contains("2") && rule.contains("3") && rule.contains("∩");
+        assertTrue(hasValidPattern,
+                "Component CPQ should contain all labels in intersection pattern, got: " + rule);
+    }
 }

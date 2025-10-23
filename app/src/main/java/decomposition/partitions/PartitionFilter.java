@@ -48,8 +48,13 @@ public final class PartitionFilter {
     private String violatesConstraints(Partition partition, Set<String> freeVariables) {
         Map<String, Integer> multiplicity = vertexMultiplicity(partition);
         if (partition.components().size() > 1) {
+            int requiredMultiplicity = freeVariables.size() <= 1 ? 2 : 1;
             for (String freeVar : freeVariables) {
-                if (multiplicity.getOrDefault(freeVar, 0) < 2) {
+                int count = multiplicity.getOrDefault(freeVar, 0);
+                if (count < requiredMultiplicity) {
+                    if (count == 0) {
+                        return "free var " + freeVar + " absent from partition";
+                    }
                     return "free var " + freeVar + " not a join node";
                 }
             }
