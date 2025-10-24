@@ -148,15 +148,16 @@ final class ComponentKeyTest {
     }
 
     @Test
-    void differentTotalEdgesAffectsEquality() {
+    void totalEdgesDoesNotAffectEquality() {
         BitSet bits = new BitSet(3);
         bits.set(0);
 
         ComponentKey key1 = new ComponentKey(bits, 3, "a", "b");
         ComponentKey key2 = new ComponentKey(bits, 10, "a", "b");
 
-        // Currently totalEdges is part of the ComponentKey record, affecting equality
-        // After refactoring to ComponentSignature, this parameter may be removed
-        assertNotEquals(key1, key2, "totalEdges is part of the key (current behavior)");
+        // After refactoring to ComponentSignature, totalEdges is ignored per domain specification:
+        // component equivalence depends only on (edgeBits, source, target)
+        assertEquals(key1, key2, "totalEdges parameter is ignored for component identity");
+        assertEquals(key1.hashCode(), key2.hashCode(), "Equal keys must have same hash");
     }
 }
