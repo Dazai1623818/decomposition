@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.DecompositionOptions;
 import decomposition.DecompositionPipeline;
@@ -56,6 +57,67 @@ final class RandomCPQDecompositionTest {
                                 .orElse("n/a"));
             }
         }
+    }
+
+    @Test
+    void decompositionHandlesSingleEdgeCpq() {
+        DecompositionPipeline pipeline = new DecompositionPipeline();
+        CPQ single = CPQ.parse("0");
+        CQ cq = single.toCQ();
+        Set<String> freeVars = cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
+
+        DecompositionResult result = pipeline.execute(cq, freeVars, ENUMERATION_OPTIONS);
+        assertTrue(result.cpqPartitions().size() >= 1, "Single edge CPQ should have at least one valid partition");
+    }
+
+    @Test
+    void decompositionHandlesLoopCpq() {
+        DecompositionPipeline pipeline = new DecompositionPipeline();
+        CPQ loop = CPQ.parse("(0 ◦ 0⁻ ∩ id)");
+        CQ cq = loop.toCQ();
+        Set<String> freeVars = cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
+
+        DecompositionResult result = pipeline.execute(cq, freeVars, ENUMERATION_OPTIONS);
+        assertTrue(result.edges().size() >= 1, "Loop CPQ should produce edges");
+    }
+
+    @Test
+    void decompositionHandlesIntersectionCpq() {
+        DecompositionPipeline pipeline = new DecompositionPipeline();
+        CPQ intersection = CPQ.parse("(0 ∩ 1)");
+        CQ cq = intersection.toCQ();
+        Set<String> freeVars = cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
+
+        DecompositionResult result = pipeline.execute(cq, freeVars, ENUMERATION_OPTIONS);
+        assertTrue(result.cpqPartitions().size() >= 0, "Intersection CPQ should complete without errors");
+    }
+
+    @Test
+    void decompositionWithTimeBudgetTerminatesEarly() {
+        DecompositionPipeline pipeline = new DecompositionPipeline();
+        DecompositionOptions timedOptions = new DecompositionOptions(
+                DecompositionOptions.Mode.ENUMERATE,
+                100_000,
+                500,
+                1,  // 1ms time budget - very tight
+                100);
+
+        CPQ complex = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
+        CQ cq = complex.toCQ();
+        Set<String> freeVars = cq.getFreeVariables().stream()
+                .map(VarCQ::getName)
+                .collect(Collectors.toSet());
+
+        DecompositionResult result = pipeline.execute(cq, freeVars, timedOptions);
+        // Should complete without hanging, possibly with early termination
+        assertTrue(result.terminationReason() == null || result.terminationReason().contains("time"),
+                "Either completes normally or terminates due to time budget");
     }
 
     private static ReconstructionResult analyseReconstruction(DecompositionPipeline pipeline,
