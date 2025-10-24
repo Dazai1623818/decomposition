@@ -7,7 +7,6 @@ import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -27,14 +26,14 @@ public final class PartitionValidator {
         boolean singleComponent = components.size() == 1;
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
-            Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
+            Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
                         .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                         .collect(Collectors.toList());
             }
             if (singleComponent) {
-                options = enforceFreeVariableOrdering(options, component, freeVariableOrder);
+                options = JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
             }
             if (options.isEmpty()) {
                 return false;
@@ -78,14 +77,14 @@ public final class PartitionValidator {
         boolean singleComponent = components.size() == 1;
         for (Component component : components) {
             List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
-            Set<String> localJoinNodes = localJoinNodes(component, joinNodes);
+            Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
             if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
                 options = options.stream()
                         .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                         .collect(Collectors.toList());
             }
             if (singleComponent) {
-                options = enforceFreeVariableOrdering(options, component, freeVariableOrder);
+                options = JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
             }
             if (options.isEmpty()) {
                 return List.of();
@@ -150,54 +149,4 @@ public final class PartitionValidator {
         return component.edgeCount() > 1;
     }
 
-    private Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
-        if (joinNodes == null || joinNodes.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> local = new HashSet<>();
-        for (String vertex : component.vertices()) {
-            if (joinNodes.contains(vertex)) {
-                local.add(vertex);
-            }
-        }
-        return local;
-    }
-
-    private List<KnownComponent> enforceFreeVariableOrdering(List<KnownComponent> options,
-                                                             Component component,
-                                                             List<String> freeVariableOrder) {
-        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
-            return options;
-        }
-        String expectedSource = freeVariableOrder.get(0);
-        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
-
-        if (expectedSource == null) {
-            return options;
-        }
-
-        Set<String> componentVertices = component.vertices();
-        if (!componentVertices.contains(expectedSource)) {
-            return options;
-        }
-        return options.stream()
-                .filter(option -> matchesOrderedFreeVariables(option, expectedSource, expectedTarget))
-                .collect(Collectors.toList());
-    }
-
-    private boolean matchesOrderedFreeVariables(KnownComponent option,
-                                                String expectedSource,
-                                                String expectedTarget) {
-        // Check forward orientation: option matches (expectedSource → expectedTarget)
-        boolean forwardMatch = expectedSource.equals(option.source())
-                && (expectedTarget == null || expectedTarget.equals(option.target()));
-
-        // Check reverse orientation: option matches (expectedTarget → expectedSource)
-        // This is valid because the query graph homomorphism can work in either direction
-        boolean reverseMatch = (expectedTarget != null)
-                && expectedTarget.equals(option.source())
-                && expectedSource.equals(option.target());
-
-        return forwardMatch || reverseMatch;
-    }
 }

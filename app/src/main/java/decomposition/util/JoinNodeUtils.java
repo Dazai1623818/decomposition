@@ -6,9 +6,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Utilities for reasoning about join nodes within components and CPQ options.
@@ -60,6 +62,68 @@ public final class JoinNodeUtils {
             }
         }
         return Collections.unmodifiableSet(joinNodes);
+    }
+
+    /**
+     * Computes the subset of join nodes that are present within the given component.
+     */
+    public static Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
+        Objects.requireNonNull(component, "component");
+        if (joinNodes == null || joinNodes.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> local = new HashSet<>();
+        for (String vertex : component.vertices()) {
+            if (joinNodes.contains(vertex)) {
+                local.add(vertex);
+            }
+        }
+        return local.isEmpty() ? Set.of() : Collections.unmodifiableSet(local);
+    }
+
+    /**
+     * Filters candidate components so their endpoints respect the desired free-variable ordering.
+     */
+    public static List<KnownComponent> filterByFreeVariableOrdering(List<KnownComponent> options,
+                                                                    Component component,
+                                                                    List<String> freeVariableOrder) {
+        if (options == null || options.isEmpty()) {
+            return options;
+        }
+        Objects.requireNonNull(component, "component");
+        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
+            return options;
+        }
+        String expectedSource = freeVariableOrder.get(0);
+        if (expectedSource == null) {
+            return options;
+        }
+        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
+        if (!component.vertices().contains(expectedSource)) {
+            return options;
+        }
+        return options.stream()
+                .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Checks whether a candidate component's endpoints match the expected free-variable orientation.
+     */
+    public static boolean matchesFreeVariableOrdering(KnownComponent option,
+                                                      String expectedSource,
+                                                      String expectedTarget) {
+        Objects.requireNonNull(option, "option");
+        Objects.requireNonNull(expectedSource, "expectedSource");
+
+        boolean forwardMatch = expectedSource.equals(option.source())
+                && (expectedTarget == null || expectedTarget.equals(option.target()));
+
+        boolean reverseMatch = (expectedTarget != null)
+                && expectedTarget.equals(option.source())
+                && expectedSource.equals(option.target());
+
+        return forwardMatch || reverseMatch;
     }
 
     /**

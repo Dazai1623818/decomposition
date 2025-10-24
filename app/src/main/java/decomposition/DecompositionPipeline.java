@@ -19,7 +19,6 @@ import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +103,7 @@ public final class DecompositionPipeline {
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
-                            c -> localJoinNodes(c, joinNodes));
+                            c -> JoinNodeUtils.localJoinNodes(c, joinNodes));
                     List<KnownComponent> joinFilteredOptions = rawOptions.stream()
                             .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
                                     kc, component, componentJoinNodes))
@@ -155,7 +154,7 @@ public final class DecompositionPipeline {
                     BitSet componentBits = component.edgeBits();
                     List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
                     Set<String> componentJoinNodes = localJoinNodeCache.computeIfAbsent(component,
-                            c -> localJoinNodes(c, joinNodes));
+                            c -> JoinNodeUtils.localJoinNodes(c, joinNodes));
                     List<KnownComponent> joinFilteredOptions = rawOptions.stream()
                             .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(
                                     kc, component, componentJoinNodes))
@@ -218,21 +217,7 @@ public final class DecompositionPipeline {
         if (componentsInPartition.size() != 1) {
             return options;
         }
-        if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
-            return options;
-        }
-        String expectedSource = freeVariableOrder.get(0);
-        String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
-        if (expectedSource == null) {
-            return options;
-        }
-        Set<String> componentVertices = component.vertices();
-        if (!componentVertices.contains(expectedSource)) {
-            return options;
-        }
-        return options.stream()
-                .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
-                .collect(Collectors.toList());
+        return JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
     }
 
     private List<KnownComponent> filterGlobalCandidates(List<KnownComponent> candidates,
@@ -249,24 +234,8 @@ public final class DecompositionPipeline {
             return candidates;
         }
         return candidates.stream()
-                .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
+                .filter(option -> JoinNodeUtils.matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
                 .collect(Collectors.toList());
-    }
-
-    private boolean matchesFreeVariableOrdering(KnownComponent option,
-                                                String expectedSource,
-                                                String expectedTarget) {
-        // Check forward orientation: option matches (expectedSource → expectedTarget)
-        boolean forwardMatch = expectedSource.equals(option.source())
-                && (expectedTarget == null || expectedTarget.equals(option.target()));
-
-        // Check reverse orientation: option matches (expectedTarget → expectedSource)
-        // This is valid because the query graph homomorphism can work in either direction
-        boolean reverseMatch = (expectedTarget != null)
-                && expectedTarget.equals(option.source())
-                && expectedSource.equals(option.target());
-
-        return forwardMatch || reverseMatch;
     }
 
     private void registerOptionVariants(List<KnownComponent> options,
@@ -331,19 +300,6 @@ public final class DecompositionPipeline {
 
     private boolean timeExceeded(DecompositionOptions options, long elapsedMillis) {
         return options.timeBudgetMs() > 0 && elapsedMillis > options.timeBudgetMs();
-    }
-
-    private Set<String> localJoinNodes(Component component, Set<String> joinNodes) {
-        if (joinNodes == null || joinNodes.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> local = new HashSet<>();
-        for (String vertex : component.vertices()) {
-            if (joinNodes.contains(vertex)) {
-                local.add(vertex);
-            }
-        }
-        return local;
     }
 
 }
