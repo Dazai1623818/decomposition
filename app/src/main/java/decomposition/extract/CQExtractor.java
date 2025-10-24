@@ -1,106 +1,103 @@
 package decomposition.extract;
 
 import decomposition.model.Edge;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphNode;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/**
- * Extracts a neutral intermediate representation from a gMark CQ.
- */
+/** Extracts a neutral intermediate representation from a gMark CQ. */
 public final class CQExtractor {
 
-    public record ExtractionResult(List<Edge> edges,
-                                   Set<String> freeVariables,
-                                   List<String> freeVariableOrder) {
-        public ExtractionResult {
-            edges = List.copyOf(edges);
-            freeVariables = Set.copyOf(freeVariables);
-            freeVariableOrder = List.copyOf(freeVariableOrder);
-        }
+  public record ExtractionResult(
+      List<Edge> edges, Set<String> freeVariables, List<String> freeVariableOrder) {
+    public ExtractionResult {
+      edges = List.copyOf(edges);
+      freeVariables = Set.copyOf(freeVariables);
+      freeVariableOrder = List.copyOf(freeVariableOrder);
+    }
+  }
+
+  public ExtractionResult extract(CQ cq, Set<String> explicitFreeVariables) {
+    Objects.requireNonNull(cq, "cq");
+
+    UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+
+    List<Edge> edges = new ArrayList<>();
+    long nextSyntheticId = 0L;
+    for (GraphEdge<VarCQ, AtomCQ> edge : graph.getEdges()) {
+      AtomCQ atom = edge.getData();
+      if (atom.getSource() == null || atom.getTarget() == null) {
+        throw new IllegalArgumentException("Non-binary CQ atom encountered: " + atom);
+      }
+      edges.add(
+          new Edge(
+              atom.getSource().getName(),
+              atom.getTarget().getName(),
+              atom.getLabel(),
+              nextSyntheticId++));
     }
 
-    public ExtractionResult extract(CQ cq, Set<String> explicitFreeVariables) {
-        Objects.requireNonNull(cq, "cq");
+    Set<String> freeVariables =
+        explicitFreeVariables != null && !explicitFreeVariables.isEmpty()
+            ? validateFreeVariables(explicitFreeVariables, cq)
+            : deriveFreeVariables(cq);
 
-        UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+    List<String> freeVariableOrder = deriveFreeVariableOrder(cq, freeVariables);
 
-        List<Edge> edges = new ArrayList<>();
-        long nextSyntheticId = 0L;
-        for (GraphEdge<VarCQ, AtomCQ> edge : graph.getEdges()) {
-            AtomCQ atom = edge.getData();
-            if (atom.getSource() == null || atom.getTarget() == null) {
-                throw new IllegalArgumentException("Non-binary CQ atom encountered: " + atom);
-            }
-            edges.add(new Edge(
-                    atom.getSource().getName(),
-                    atom.getTarget().getName(),
-                    atom.getLabel(),
-                    nextSyntheticId++));
-        }
+    return new ExtractionResult(edges, freeVariables, freeVariableOrder);
+  }
 
-        Set<String> freeVariables = explicitFreeVariables != null && !explicitFreeVariables.isEmpty()
-                ? validateFreeVariables(explicitFreeVariables, cq)
-                : deriveFreeVariables(cq);
+  private Set<String> deriveFreeVariables(CQ cq) {
+    return cq.getFreeVariables().stream()
+        .map(VarCQ::getName)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
 
-        List<String> freeVariableOrder = deriveFreeVariableOrder(cq, freeVariables);
+  private Set<String> validateFreeVariables(Set<String> explicit, CQ cq) {
+    Set<String> extracted = deriveAllVariables(cq);
+    for (String candidate : explicit) {
+      if (!extracted.contains(candidate)) {
+        throw new IllegalArgumentException("Unknown free variable: " + candidate);
+      }
+    }
+    return Set.copyOf(explicit);
+  }
 
-        return new ExtractionResult(edges, freeVariables, freeVariableOrder);
+  private Set<String> deriveAllVariables(CQ cq) {
+    UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+    return graph.getNodes().stream()
+        .map(GraphNode::getData)
+        .map(VarCQ::getName)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  private List<String> deriveFreeVariableOrder(CQ cq, Set<String> freeVariables) {
+    if (freeVariables == null || freeVariables.isEmpty()) {
+      return List.of();
     }
 
-    private Set<String> deriveFreeVariables(CQ cq) {
-        return cq.getFreeVariables().stream()
-                .map(VarCQ::getName)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+    LinkedHashSet<String> ordered = new LinkedHashSet<>();
+
+    cq.getFreeVariables().stream()
+        .map(VarCQ::getName)
+        .filter(freeVariables::contains)
+        .forEach(ordered::add);
+
+    deriveAllVariables(cq).stream().filter(freeVariables::contains).forEach(ordered::add);
+
+    for (String explicit : freeVariables) {
+      ordered.add(explicit);
     }
 
-    private Set<String> validateFreeVariables(Set<String> explicit, CQ cq) {
-        Set<String> extracted = deriveAllVariables(cq);
-        for (String candidate : explicit) {
-            if (!extracted.contains(candidate)) {
-                throw new IllegalArgumentException("Unknown free variable: " + candidate);
-            }
-        }
-        return Set.copyOf(explicit);
-    }
-
-    private Set<String> deriveAllVariables(CQ cq) {
-        UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
-        return graph.getNodes().stream()
-                .map(GraphNode::getData)
-                .map(VarCQ::getName)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private List<String> deriveFreeVariableOrder(CQ cq, Set<String> freeVariables) {
-        if (freeVariables == null || freeVariables.isEmpty()) {
-            return List.of();
-        }
-
-        LinkedHashSet<String> ordered = new LinkedHashSet<>();
-
-        cq.getFreeVariables().stream()
-                .map(VarCQ::getName)
-                .filter(freeVariables::contains)
-                .forEach(ordered::add);
-
-        deriveAllVariables(cq).stream()
-                .filter(freeVariables::contains)
-                .forEach(ordered::add);
-
-        for (String explicit : freeVariables) {
-            ordered.add(explicit);
-        }
-
-        return List.copyOf(ordered);
-    }
+    return List.copyOf(ordered);
+  }
 }

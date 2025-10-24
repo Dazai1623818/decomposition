@@ -11,20 +11,20 @@ import org.junit.jupiter.api.Test;
 
 final class CQExtractorTest {
 
-    @Test
-    void extractsEdgesAndFreeVariables() {
-        CQ cq = CQ.empty();
-        VarCQ x = cq.addFreeVariable("x");
-        VarCQ y = cq.addBoundVariable("y");
-        VarCQ z = cq.addBoundVariable("z");
+  @Test
+  void extractsEdgesAndFreeVariables() {
+    CQ cq = CQ.empty();
+    VarCQ x = cq.addFreeVariable("x");
+    VarCQ y = cq.addBoundVariable("y");
+    VarCQ z = cq.addBoundVariable("z");
 
-        cq.addAtom(x, new Predicate(1, "r1"), y);
-        cq.addAtom(y, new Predicate(2, "r2"), z);
+    cq.addAtom(x, new Predicate(1, "r1"), y);
+    cq.addAtom(y, new Predicate(2, "r2"), z);
 
-        CQExtractor extractor = new CQExtractor();
-        ExtractionResult result = extractor.extract(cq, null);
+    CQExtractor extractor = new CQExtractor();
+    ExtractionResult result = extractor.extract(cq, null);
 
-        assertEquals(2, result.edges().size(), "Expected two edges");
-        assertTrue(result.freeVariables().contains("x"), "Free variables should include x");
-    }
+    assertEquals(2, result.edges().size(), "Expected two edges");
+    assertTrue(result.freeVariables().contains("x"), "Free variables should include x");
+  }
 }

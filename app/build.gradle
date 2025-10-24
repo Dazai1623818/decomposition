@@ -1,5 +1,7 @@
 plugins {
     id 'application'
+    id 'com.diffplug.spotless' version '6.25.0'
+    id 'net.ltgt.errorprone' version '3.1.0'
 }
 
 repositories {
@@ -17,6 +19,9 @@ dependencies {
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Error Prone for static analysis
+    errorprone 'com.google.errorprone:error_prone_core:2.24.1'
 }
 
 tasks.test {
@@ -28,6 +33,31 @@ java {
         languageVersion = JavaLanguageVersion.of(21)  
     }
 }
+
+// Spotless: code formatting with Google Java Format
+spotless {
+    java {
+        target 'src/**/*.java'
+        googleJavaFormat('1.19.1')
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+// Error Prone: static analysis (stable checks only)
+tasks.withType(JavaCompile).configureEach {
+    options.errorprone {
+        // Disable checks that conflict with code style or are too noisy
+        disable('UnusedVariable', 'UnusedMethod')  // Covered by IDE warnings
+        // Enable useful checks
+        error('ReferenceEquality')  // Prefer .equals() over ==
+        warn('MissingOverride')     // Warn on missing @Override
+    }
+}
+
+// Make test depend on spotless check
+tasks.test.dependsOn tasks.spotlessCheck
 
 tasks.register('runPlot', JavaExec) {
     group = 'application'
