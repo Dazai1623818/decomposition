@@ -2,6 +2,9 @@ package decomposition.util;
 
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
+import decomposition.model.Edge;
+import decomposition.model.Partition;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,17 +54,48 @@ public final class JoinNodeUtils {
         return computeJoinNodesFromCounts(counts, freeVariables);
     }
 
-    private static Set<String> computeJoinNodesFromCounts(Map<String, Integer> counts, Set<String> freeVariables) {
+    /**
+     * Computes the set of join nodes from a vertex multiplicity map and optional free variables.
+     * A vertex qualifies as a join node if it either appears at least twice or is a free variable.
+     *
+     * @param vertexMultiplicity map from vertex to its occurrence count across components
+     * @param freeVariables      optional set of free variables (always treated as join nodes)
+     * @return immutable set of join nodes
+     */
+    public static Set<String> computeJoinNodesFromMultiplicity(Map<String, Integer> vertexMultiplicity,
+                                                                 Set<String> freeVariables) {
+        Objects.requireNonNull(vertexMultiplicity, "vertexMultiplicity");
         Set<String> joinNodes = new HashSet<>();
-        if (freeVariables != null) {
+        if (freeVariables != null && !freeVariables.isEmpty()) {
             joinNodes.addAll(freeVariables);
         }
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+        for (Map.Entry<String, Integer> entry : vertexMultiplicity.entrySet()) {
             if (entry.getValue() >= 2) {
                 joinNodes.add(entry.getKey());
             }
         }
-        return Collections.unmodifiableSet(joinNodes);
+        return joinNodes.isEmpty() ? Set.of() : Collections.unmodifiableSet(joinNodes);
+    }
+
+    /**
+     * Computes vertex multiplicity for a partition: how many components each vertex appears in.
+     *
+     * @param partition the partition to analyze
+     * @return map from vertex name to occurrence count
+     */
+    public static Map<String, Integer> computeVertexMultiplicity(Partition partition) {
+        Objects.requireNonNull(partition, "partition");
+        Map<String, Integer> counts = new HashMap<>();
+        for (Component component : partition.components()) {
+            for (String vertex : component.vertices()) {
+                counts.merge(vertex, 1, Integer::sum);
+            }
+        }
+        return counts;
+    }
+
+    private static Set<String> computeJoinNodesFromCounts(Map<String, Integer> counts, Set<String> freeVariables) {
+        return computeJoinNodesFromMultiplicity(counts, freeVariables);
     }
 
     /**
@@ -79,6 +113,34 @@ public final class JoinNodeUtils {
             }
         }
         return local.isEmpty() ? Set.of() : Collections.unmodifiableSet(local);
+    }
+
+    /**
+     * Computes the subset of join nodes that are present within the specified edge subset.
+     * This is useful when working with BitSet-based edge representations.
+     *
+     * @param edgeBits  the subset of edges to consider
+     * @param edges     the full edge list
+     * @param joinNodes the global set of join nodes
+     * @return immutable set of join nodes present in the edge subset
+     */
+    public static Set<String> localJoinNodes(BitSet edgeBits, List<Edge> edges, Set<String> joinNodes) {
+        Objects.requireNonNull(edgeBits, "edgeBits");
+        Objects.requireNonNull(edges, "edges");
+        if (joinNodes == null || joinNodes.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> present = new HashSet<>();
+        for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
+            Edge edge = edges.get(idx);
+            if (joinNodes.contains(edge.source())) {
+                present.add(edge.source());
+            }
+            if (joinNodes.contains(edge.target())) {
+                present.add(edge.target());
+            }
+        }
+        return present.isEmpty() ? Set.of() : Collections.unmodifiableSet(present);
     }
 
     /**

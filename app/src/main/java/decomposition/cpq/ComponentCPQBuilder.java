@@ -2,9 +2,9 @@ package decomposition.cpq;
 
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
+import decomposition.util.JoinNodeUtils;
 import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +42,7 @@ public final class ComponentCPQBuilder {
     }
 
     private List<KnownComponent> enumerate(BitSet edgeBits, Set<String> joinNodes) {
-        Set<String> localJoinNodes = collectLocalJoinNodes(edgeBits, joinNodes);
+        Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(edgeBits, edges, joinNodes);
         MemoKey key = new MemoKey(BitsetUtils.signature(edgeBits, edges.size()), localJoinNodes);
         List<KnownComponent> cached = memo.get(key);
         if (cached != null) {
@@ -99,24 +99,6 @@ public final class ComponentCPQBuilder {
             ComponentKey key = variant.toKey(edges.size());
             results.putIfAbsent(key, variant);
         }
-    }
-
-    private Set<String> collectLocalJoinNodes(BitSet edgeBits, Set<String> joinNodes) {
-        if (joinNodes == null || joinNodes.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> present = new HashSet<>();
-        for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
-            Edge edge = edges.get(idx);
-            if (joinNodes.contains(edge.source())) {
-                present.add(edge.source());
-            }
-            if (joinNodes.contains(edge.target())) {
-                present.add(edge.target());
-            }
-        }
-        // We only care about anchors that the subset of edges can actually touch.
-        return present.isEmpty() ? Set.of() : Set.copyOf(present);
     }
 
     private static final class MemoKey {

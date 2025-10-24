@@ -2,9 +2,8 @@ package decomposition.partitions;
 
 import decomposition.model.Component;
 import decomposition.model.Partition;
+import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,10 +37,10 @@ public final class PartitionFilter {
         int index = 0;
         for (Partition partition : partitions) {
             index++;
-            Map<String, Integer> multiplicity = vertexMultiplicity(partition);
+            Map<String, Integer> multiplicity = JoinNodeUtils.computeVertexMultiplicity(partition);
             String failure = violatesConstraints(partition, freeVariables, multiplicity);
             if (failure == null) {
-                Set<String> joinNodes = computeJoinNodes(multiplicity, freeVariables);
+                Set<String> joinNodes = JoinNodeUtils.computeJoinNodesFromMultiplicity(multiplicity, freeVariables);
                 accepted.add(new FilteredPartition(partition, joinNodes));
             } else {
                 diagnostics.add("Partition#" + index + " rejected: " + failure);
@@ -78,26 +77,4 @@ public final class PartitionFilter {
         return null;
     }
 
-    private Set<String> computeJoinNodes(Map<String, Integer> multiplicity, Set<String> freeVariables) {
-        Set<String> joinNodes = new HashSet<>();
-        if (!freeVariables.isEmpty()) {
-            joinNodes.addAll(freeVariables);
-        }
-        for (Map.Entry<String, Integer> entry : multiplicity.entrySet()) {
-            if (entry.getValue() >= 2) {
-                joinNodes.add(entry.getKey());
-            }
-        }
-        return joinNodes.isEmpty() ? Set.of() : Set.copyOf(joinNodes);
-    }
-
-    private Map<String, Integer> vertexMultiplicity(Partition partition) {
-        Map<String, Integer> counts = new HashMap<>();
-        for (Component component : partition.components()) {
-            for (String vertex : component.vertices()) {
-                counts.merge(vertex, 1, Integer::sum);
-            }
-        }
-        return counts;
-    }
 }
