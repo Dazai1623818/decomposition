@@ -55,7 +55,7 @@ public final class GraphUtils {
             }
         }
 
-        return visited.containsAll(allVertices(edgeBits, edges));
+        return visited.containsAll(vertices(edgeBits, edges));
     }
 
     public static Component buildComponent(BitSet edgeBits, List<Edge> edges) {
@@ -80,15 +80,5 @@ public final class GraphUtils {
         Edge startEdge = edges.get(firstIndex);
         return startEdge.source();
     }
-
-    private static Set<String> allVertices(BitSet edgeBits, List<Edge> edges) {
-        Set<String> vertices = new HashSet<>();
-        for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
-            Edge edge = edges.get(idx);
-            vertices.add(edge.source());
-            vertices.add(edge.target());
-        }
-        return vertices;
-    }
-
 }
+

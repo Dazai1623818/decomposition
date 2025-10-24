@@ -33,7 +33,7 @@ final class LoopBacktrackBuilder {
             if (loopCpq == null) {
                 continue;
             }
-            results.add(KnownComponentFactory.create(
+            results.add(new KnownComponent(
                     loopCpq,
                     edgeBits,
                     anchor,

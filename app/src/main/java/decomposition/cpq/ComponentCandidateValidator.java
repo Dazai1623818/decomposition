@@ -89,7 +89,7 @@ final class ComponentCandidateValidator {
         try {
             CPQ anchored = CPQ.parse("(" + candidate.cpq().toString() + " ∩ id)");
             String derivation = candidate.derivation() + " + anchored with id";
-            return KnownComponentFactory.create(
+            return new KnownComponent(
                     anchored,
                     candidate.edges(),
                     candidate.source(),
@@ -108,7 +108,7 @@ final class ComponentCandidateValidator {
             }
             String derivation = candidate.derivation() + " + reversed orientation";
             return Optional.of(
-                    KnownComponentFactory.create(
+                    new KnownComponent(
                             reversedCpq,
                             candidate.edges(),
                             candidate.target(),

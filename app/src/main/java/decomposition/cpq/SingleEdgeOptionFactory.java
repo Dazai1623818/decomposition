@@ -27,7 +27,7 @@ final class SingleEdgeOptionFactory {
 
     private static void addForward(Edge edge, BitSet bits, List<KnownComponent> out) {
         CPQ forward = CPQ.parse(edge.label());
-        out.add(KnownComponentFactory.create(
+        out.add(new KnownComponent(
                 forward,
                 bits,
                 edge.source(),
@@ -42,7 +42,7 @@ final class SingleEdgeOptionFactory {
         String inverseLabel = edge.label() + "⁻";
         try {
             CPQ inverse = CPQ.parse(inverseLabel);
-            out.add(KnownComponentFactory.create(
+            out.add(new KnownComponent(
                     inverse,
                     bits,
                     edge.target(),
@@ -80,7 +80,7 @@ final class SingleEdgeOptionFactory {
                                 String derivation) {
         try {
             CPQ cpq = CPQ.parse(expression);
-            out.add(KnownComponentFactory.create(cpq, bits, anchor, anchor, derivation));
+            out.add(new KnownComponent(cpq, bits, anchor, anchor, derivation));
         } catch (RuntimeException ex) {
             // Skip unparsable backtrack form.
         }

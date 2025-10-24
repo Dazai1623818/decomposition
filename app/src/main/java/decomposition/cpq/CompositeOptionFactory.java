@@ -93,7 +93,7 @@ final class CompositeOptionFactory {
                                        Consumer<KnownComponent> sink) {
         try {
             CPQ cpq = CPQ.parse(expression);
-            sink.accept(KnownComponentFactory.create(cpq, edgeBits, source, target, derivation));
+            sink.accept(new KnownComponent(cpq, edgeBits, source, target, derivation));
         } catch (RuntimeException ex) {
             // Ignore unparsable synthesized expression.
         }
