@@ -3,6 +3,10 @@ package decomposition;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 
 public class Example {
 
@@ -143,6 +147,34 @@ public class Example {
     cq.addAtom(e, new Predicate(6, "r6"), a);
     cq.addAtom(e, new Predicate(7, "r7"), a); // Multiple edge E->A
     cq.addAtom(c, new Predicate(8, "r8"), a);
+
+    return cq;
+  }
+
+  public static CQ random(RandomExampleConfig config) {
+    Objects.requireNonNull(config, "config");
+    Random rng = config.createRandom();
+
+    CQ cq = CQ.empty();
+    List<VarCQ> variables = new ArrayList<>();
+
+    for (int i = 0; i < config.freeVariableCount(); i++) {
+      variables.add(cq.addFreeVariable("F" + i));
+    }
+    for (int i = 0; i < config.boundVariableCount(); i++) {
+      variables.add(cq.addBoundVariable("B" + i));
+    }
+
+    if (variables.isEmpty()) {
+      throw new IllegalStateException("Random example requires at least one variable");
+    }
+
+    for (int i = 0; i < config.edgeCount(); i++) {
+      VarCQ source = variables.get(rng.nextInt(variables.size()));
+      VarCQ target = variables.get(rng.nextInt(variables.size()));
+      int predicateId = rng.nextInt(config.predicateLabelCount()) + 1;
+      cq.addAtom(source, new Predicate(predicateId, "r" + predicateId), target);
+    }
 
     return cq;
   }

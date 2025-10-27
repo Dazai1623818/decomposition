@@ -1,6 +1,7 @@
 package decomposition.cli;
 
 import decomposition.DecompositionOptions.Mode;
+import decomposition.RandomExampleConfig;
 import java.util.Objects;
 import java.util.Set;
 
@@ -16,7 +17,8 @@ record CliOptions(
     long timeBudgetMs,
     int enumerationLimit,
     boolean showVisualization,
-    String outputPath) {
+    String outputPath,
+    RandomExampleConfig randomExampleConfig) {
 
   CliOptions {
     freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);

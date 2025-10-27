@@ -6,6 +6,7 @@ import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.PartitionEvaluation;
+import decomposition.RandomExampleConfig;
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
 import decomposition.util.BitsetUtils;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /** CLI entry point for the CQ to CPQ decomposition pipeline. */
@@ -192,6 +194,11 @@ public final class Main {
     String outputPath = null;
     String limitRaw = null;
     boolean show = false;
+    String randomFreeRaw = null;
+    String randomBoundRaw = null;
+    String randomEdgesRaw = null;
+    String randomLabelsRaw = null;
+    String randomSeedRaw = null;
 
     for (int i = 1; i < args.length; i++) {
       String rawArg = args[i];
@@ -229,6 +236,16 @@ public final class Main {
         case "--out" ->
             outputPath = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--show" -> show = true;
+        case "--random-free-vars" ->
+            randomFreeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-bound-vars" ->
+            randomBoundRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-edges" ->
+            randomEdgesRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-labels" ->
+            randomLabelsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-seed" ->
+            randomSeedRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
       }
     }
@@ -247,7 +264,7 @@ public final class Main {
 
     Mode mode = Mode.VALIDATE;
     if (modeRaw != null) {
-      String normalized = modeRaw.toLowerCase();
+      String normalized = modeRaw.toLowerCase(Locale.ROOT);
       switch (normalized) {
         case "validate" -> mode = Mode.VALIDATE;
         case "enumerate" -> mode = Mode.ENUMERATE;
@@ -274,6 +291,32 @@ public final class Main {
         parseLong(
             timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
     int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
+    boolean randomOptionsProvided =
+        randomFreeRaw != null
+            || randomBoundRaw != null
+            || randomEdgesRaw != null
+            || randomLabelsRaw != null
+            || randomSeedRaw != null;
+    if (randomOptionsProvided && !isRandomExampleName(exampleName)) {
+      throw new IllegalArgumentException("--random-* options require --example random");
+    }
+
+    RandomExampleConfig randomExampleConfig = null;
+    if (isRandomExampleName(exampleName)) {
+      int freeVariables =
+          parseInt(randomFreeRaw, RandomExampleConfig.DEFAULT_FREE_VARIABLES, "--random-free-vars");
+      int boundVariables =
+          parseInt(
+              randomBoundRaw, RandomExampleConfig.DEFAULT_BOUND_VARIABLES, "--random-bound-vars");
+      int edges =
+          parseInt(randomEdgesRaw, RandomExampleConfig.DEFAULT_EDGE_COUNT, "--random-edges");
+      int labels =
+          parseInt(
+              randomLabelsRaw, RandomExampleConfig.DEFAULT_PREDICATE_LABELS, "--random-labels");
+      Long seed = randomSeedRaw != null ? parseLong(randomSeedRaw, 0L, "--random-seed") : null;
+      randomExampleConfig =
+          new RandomExampleConfig(freeVariables, boundVariables, edges, labels, seed);
+    }
 
     return new CliOptions(
         queryText,
@@ -287,15 +330,24 @@ public final class Main {
         timeBudget,
         limit,
         show,
-        outputPath);
+        outputPath,
+        randomExampleConfig);
   }
 
   private boolean isExampleAlias(String command) {
     if (command == null) {
       return false;
     }
-    String normalized = command.trim().toLowerCase();
+    String normalized = command.trim().toLowerCase(Locale.ROOT);
     return normalized.startsWith("example") && normalized.length() > "example".length();
+  }
+
+  private boolean isRandomExampleName(String exampleName) {
+    if (exampleName == null) {
+      return false;
+    }
+    String normalized = exampleName.trim().toLowerCase(Locale.ROOT);
+    return normalized.equals("random") || normalized.equals("examplerandom");
   }
 
   private String[] remapExampleArgs(String exampleName, String[] remaining) {
@@ -347,7 +399,7 @@ public final class Main {
 
   private CQ loadQuery(CliOptions options) throws IOException {
     if (options.hasExample()) {
-      return loadExample(options.exampleName());
+      return loadExample(options);
     }
     if (options.hasQueryText()) {
       return CQ.parse(options.queryText());
@@ -367,8 +419,9 @@ public final class Main {
     throw new IllegalStateException("Missing query input.");
   }
 
-  private CQ loadExample(String exampleName) {
-    String normalized = exampleName.trim().toLowerCase();
+  private CQ loadExample(CliOptions options) {
+    String exampleName = options.exampleName();
+    String normalized = exampleName.trim().toLowerCase(Locale.ROOT);
     return switch (normalized) {
       case "example1" -> Example.example1();
       case "example2" -> Example.example2();
@@ -378,6 +431,13 @@ public final class Main {
       case "example6" -> Example.example6();
       case "example7" -> Example.example7();
       case "example8" -> Example.example8();
+      case "random", "examplerandom" -> {
+        RandomExampleConfig config =
+            options.randomExampleConfig() != null
+                ? options.randomExampleConfig()
+                : RandomExampleConfig.defaults();
+        yield Example.random(config);
+      }
       default -> throw new IllegalArgumentException("Unknown example: " + exampleName);
     };
   }
