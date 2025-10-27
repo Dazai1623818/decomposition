@@ -20,11 +20,8 @@ public final class PartitionValidator {
       Set<String> joinNodes,
       ComponentCPQBuilder builder,
       Set<String> freeVariables,
-      List<String> freeVariableOrder,
       List<Edge> allEdges) {
-    return componentOptions(
-            partition, joinNodes, builder, freeVariables, freeVariableOrder, allEdges)
-        .stream()
+    return componentOptions(partition, joinNodes, builder, freeVariables, allEdges).stream()
         .allMatch(ComponentOptions::hasCandidates);
   }
 
@@ -33,7 +30,6 @@ public final class PartitionValidator {
       ComponentCPQBuilder builder,
       int limit,
       Set<String> freeVariables,
-      List<String> freeVariableOrder,
       List<Edge> allEdges) {
     return enumerateDecompositions(
         partition,
@@ -41,7 +37,6 @@ public final class PartitionValidator {
         builder,
         limit,
         freeVariables,
-        freeVariableOrder,
         allEdges);
   }
 
@@ -51,10 +46,9 @@ public final class PartitionValidator {
       ComponentCPQBuilder builder,
       int limit,
       Set<String> freeVariables,
-      List<String> freeVariableOrder,
       List<Edge> allEdges) {
     List<ComponentOptions> perComponent =
-        componentOptions(partition, joinNodes, builder, freeVariables, freeVariableOrder, allEdges);
+        componentOptions(partition, joinNodes, builder, freeVariables, allEdges);
     return enumerateDecompositions(perComponent, limit);
   }
 
@@ -63,7 +57,7 @@ public final class PartitionValidator {
       Partition partition, ComponentCPQBuilder builder, int limit) {
     Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(partition.components(), Set.of());
     return enumerateDecompositions(
-        partition, joinNodes, builder, limit, Set.of(), List.of(), builder.allEdges());
+        partition, joinNodes, builder, limit, Set.of(), builder.allEdges());
   }
 
   public List<List<KnownComponent>> enumerateDecompositions(
@@ -81,17 +75,14 @@ public final class PartitionValidator {
       Set<String> joinNodes,
       ComponentCPQBuilder builder,
       Set<String> freeVariables,
-      List<String> freeVariableOrder,
       List<Edge> allEdges) {
     Objects.requireNonNull(partition, "partition");
     Objects.requireNonNull(joinNodes, "joinNodes");
     Objects.requireNonNull(builder, "builder");
     Objects.requireNonNull(freeVariables, "freeVariables");
-    Objects.requireNonNull(freeVariableOrder, "freeVariableOrder");
     Objects.requireNonNull(allEdges, "allEdges");
 
     List<Component> components = partition.components();
-    boolean singleComponent = components.size() == 1;
     List<ComponentOptions> results = new ArrayList<>(components.size());
 
     for (Component component : components) {
@@ -106,12 +97,7 @@ public final class PartitionValidator {
                         JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                 .collect(Collectors.toList());
       }
-      List<KnownComponent> ordered = joinFiltered;
-      if (singleComponent) {
-        ordered =
-            JoinNodeUtils.filterByFreeVariableOrdering(joinFiltered, component, freeVariableOrder);
-      }
-      results.add(new ComponentOptions(component, raw, joinFiltered, ordered));
+      results.add(new ComponentOptions(component, raw, joinFiltered, joinFiltered));
     }
     return List.copyOf(results);
   }

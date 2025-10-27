@@ -41,7 +41,6 @@ public final class DecompositionPipeline {
     ExtractionResult extraction = extractor.extract(cq, explicitFreeVariables);
     List<Edge> edges = extraction.edges();
     int edgeCount = edges.size();
-    List<String> freeVariableOrder = extraction.freeVariableOrder();
 
     BitSet fullBits = new BitSet(edgeCount);
     fullBits.set(0, edgeCount);
@@ -97,7 +96,7 @@ public final class DecompositionPipeline {
 
       List<ComponentOptions> componentOptions =
           validator.componentOptions(
-              partition, joinNodes, builder, extraction.freeVariables(), freeVariableOrder, edges);
+              partition, joinNodes, builder, extraction.freeVariables(), edges);
 
       boolean valid = componentOptions.stream().allMatch(ComponentOptions::hasCandidates);
       if (valid) {
@@ -164,14 +163,6 @@ public final class DecompositionPipeline {
                     + componentIndex
                     + " rejected: endpoints not on join nodes for bits "
                     + signature);
-          } else if (componentOption.finalOptions().isEmpty()) {
-            diagnostics.add(
-                "Partition#"
-                    + partitionIndex
-                    + " component#"
-                    + componentIndex
-                    + " rejected: endpoints violate free-variable ordering for bits "
-                    + signature);
           }
         }
       }
@@ -188,9 +179,7 @@ public final class DecompositionPipeline {
               List.of(new Component(fullBits, vertices)), extraction.freeVariables());
       List<KnownComponent> globalCandidates = builder.options(fullBits, globalJoinNodes);
       globalCatalogue = globalCandidates;
-      List<KnownComponent> orderedGlobalCandidates =
-          filterGlobalCandidates(globalCandidates, freeVariableOrder);
-      finalComponent = selectPreferredFinalComponent(orderedGlobalCandidates);
+      finalComponent = selectPreferredFinalComponent(globalCandidates);
     }
 
     long elapsed = timing.elapsedMillis();
@@ -213,26 +202,6 @@ public final class DecompositionPipeline {
         diagnostics,
         elapsed,
         terminationReason);
-  }
-
-  private List<KnownComponent> filterGlobalCandidates(
-      List<KnownComponent> candidates, List<String> freeVariableOrder) {
-    if (candidates == null || candidates.isEmpty()) {
-      return List.of();
-    }
-    if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
-      return candidates;
-    }
-    String expectedSource = freeVariableOrder.get(0);
-    String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
-    if (expectedSource == null) {
-      return candidates;
-    }
-    return candidates.stream()
-        .filter(
-            option ->
-                JoinNodeUtils.matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
-        .collect(Collectors.toList());
   }
 
   private void registerOptionVariants(

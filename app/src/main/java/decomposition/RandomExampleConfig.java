@@ -7,23 +7,15 @@ import java.util.Random;
  * the generated query.
  */
 public record RandomExampleConfig(
-    int freeVariableCount,
-    int boundVariableCount,
-    int edgeCount,
-    int predicateLabelCount,
-    Long seed) {
+    int freeVariableCount, int edgeCount, int predicateLabelCount, Long seed) {
 
   public static final int DEFAULT_FREE_VARIABLES = 1;
-  public static final int DEFAULT_BOUND_VARIABLES = 4;
   public static final int DEFAULT_EDGE_COUNT = 5;
   public static final int DEFAULT_PREDICATE_LABELS = 5;
 
   public RandomExampleConfig {
     if (freeVariableCount < 1) {
       throw new IllegalArgumentException("freeVariableCount must be at least 1");
-    }
-    if (boundVariableCount < 0) {
-      throw new IllegalArgumentException("boundVariableCount cannot be negative");
     }
     if (edgeCount < 1) {
       throw new IllegalArgumentException("edgeCount must be at least 1");
@@ -35,11 +27,7 @@ public record RandomExampleConfig(
 
   public static RandomExampleConfig defaults() {
     return new RandomExampleConfig(
-        DEFAULT_FREE_VARIABLES,
-        DEFAULT_BOUND_VARIABLES,
-        DEFAULT_EDGE_COUNT,
-        DEFAULT_PREDICATE_LABELS,
-        null);
+        DEFAULT_FREE_VARIABLES, DEFAULT_EDGE_COUNT, DEFAULT_PREDICATE_LABELS, null);
   }
 
   public Random createRandom() {

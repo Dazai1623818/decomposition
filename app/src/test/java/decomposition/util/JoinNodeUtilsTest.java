@@ -88,65 +88,6 @@ final class JoinNodeUtilsTest {
   }
 
   @Test
-  void filterByFreeVariableOrderingWithEmptyOptions() {
-    Component c = makeComponent(Set.of("a", "b"));
-    List<KnownComponent> filtered =
-        JoinNodeUtils.filterByFreeVariableOrdering(List.of(), c, List.of("a", "b"));
-    assertTrue(filtered.isEmpty(), "Empty input yields empty output");
-  }
-
-  @Test
-  void filterByFreeVariableOrderingWithNoFreeVariables() {
-    Component c = makeComponent(Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("a", "b");
-    List<KnownComponent> filtered =
-        JoinNodeUtils.filterByFreeVariableOrdering(List.of(kc), c, List.of());
-    assertEquals(List.of(kc), filtered, "No filtering when freeVariableOrder is empty");
-  }
-
-  @Test
-  void filterByFreeVariableOrderingMatchesForward() {
-    Component c = makeComponent(Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("a", "b");
-    List<KnownComponent> filtered =
-        JoinNodeUtils.filterByFreeVariableOrdering(List.of(kc), c, List.of("a", "b"));
-    assertEquals(List.of(kc), filtered, "Forward orientation matches freeVariableOrder");
-  }
-
-  @Test
-  void filterByFreeVariableOrderingMatchesReverse() {
-    Component c = makeComponent(Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("b", "a");
-    List<KnownComponent> filtered =
-        JoinNodeUtils.filterByFreeVariableOrdering(List.of(kc), c, List.of("a", "b"));
-    assertEquals(List.of(kc), filtered, "Reverse orientation also matches");
-  }
-
-  @Test
-  void filterByFreeVariableOrderingRejectsWrongOrientation() {
-    Component c = makeComponent(Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("x", "y");
-    List<KnownComponent> filtered =
-        JoinNodeUtils.filterByFreeVariableOrdering(List.of(kc), c, List.of("a", "b"));
-    assertTrue(filtered.isEmpty(), "Endpoints don't match freeVariableOrder");
-  }
-
-  @Test
-  void matchesFreeVariableOrderingWithSingleFreeVariable() {
-    KnownComponent kc = makeKnownComponent("a", "b");
-    assertTrue(JoinNodeUtils.matchesFreeVariableOrdering(kc, "a", null), "Source matches");
-    assertFalse(JoinNodeUtils.matchesFreeVariableOrdering(kc, "x", null), "Source doesn't match");
-  }
-
-  @Test
-  void matchesFreeVariableOrderingWithTwoFreeVariables() {
-    KnownComponent kc = makeKnownComponent("a", "b");
-    assertTrue(JoinNodeUtils.matchesFreeVariableOrdering(kc, "a", "b"), "Forward match");
-    assertTrue(JoinNodeUtils.matchesFreeVariableOrdering(kc, "b", "a"), "Reverse match");
-    assertFalse(JoinNodeUtils.matchesFreeVariableOrdering(kc, "a", "x"), "Target doesn't match");
-  }
-
-  @Test
   void endpointsRespectJoinNodeRolesWithNoJoinNodes() {
     Component c = makeComponent(Set.of("a", "b"));
     KnownComponent kc = makeKnownComponent("a", "b");

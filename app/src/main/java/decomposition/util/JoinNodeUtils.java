@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /** Utilities for reasoning about join nodes within components and CPQ options. */
 public final class JoinNodeUtils {
@@ -141,49 +140,6 @@ public final class JoinNodeUtils {
       }
     }
     return present.isEmpty() ? Set.of() : Collections.unmodifiableSet(present);
-  }
-
-  /** Filters candidate components so their endpoints respect the desired free-variable ordering. */
-  public static List<KnownComponent> filterByFreeVariableOrdering(
-      List<KnownComponent> options, Component component, List<String> freeVariableOrder) {
-    if (options == null || options.isEmpty()) {
-      return options;
-    }
-    Objects.requireNonNull(component, "component");
-    if (freeVariableOrder == null || freeVariableOrder.isEmpty()) {
-      return options;
-    }
-    String expectedSource = freeVariableOrder.get(0);
-    if (expectedSource == null) {
-      return options;
-    }
-    String expectedTarget = freeVariableOrder.size() >= 2 ? freeVariableOrder.get(1) : null;
-    if (!component.vertices().contains(expectedSource)) {
-      return options;
-    }
-    return options.stream()
-        .filter(option -> matchesFreeVariableOrdering(option, expectedSource, expectedTarget))
-        .collect(Collectors.toList());
-  }
-
-  /**
-   * Checks whether a candidate component's endpoints match the expected free-variable orientation.
-   */
-  public static boolean matchesFreeVariableOrdering(
-      KnownComponent option, String expectedSource, String expectedTarget) {
-    Objects.requireNonNull(option, "option");
-    Objects.requireNonNull(expectedSource, "expectedSource");
-
-    boolean forwardMatch =
-        expectedSource.equals(option.source())
-            && (expectedTarget == null || expectedTarget.equals(option.target()));
-
-    boolean reverseMatch =
-        (expectedTarget != null)
-            && expectedTarget.equals(option.source())
-            && expectedSource.equals(option.target());
-
-    return forwardMatch || reverseMatch;
   }
 
   /**

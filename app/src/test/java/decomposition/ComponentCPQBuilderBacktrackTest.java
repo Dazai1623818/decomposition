@@ -109,12 +109,7 @@ final class ComponentCPQBuilderBacktrackTest {
             singleEdgePartition.components(), extraction.freeVariables());
     assertTrue(
         validator.isValidCPQDecomposition(
-            singleEdgePartition,
-            joinNodes,
-            builder,
-            extraction.freeVariables(),
-            extraction.freeVariableOrder(),
-            edges),
+            singleEdgePartition, joinNodes, builder, extraction.freeVariables(), edges),
         "Single-edge partition should now be a valid CPQ decomposition");
   }
 

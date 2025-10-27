@@ -195,7 +195,6 @@ public final class Main {
     String limitRaw = null;
     boolean show = false;
     String randomFreeRaw = null;
-    String randomBoundRaw = null;
     String randomEdgesRaw = null;
     String randomLabelsRaw = null;
     String randomSeedRaw = null;
@@ -238,8 +237,6 @@ public final class Main {
         case "--show" -> show = true;
         case "--random-free-vars" ->
             randomFreeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
-        case "--random-bound-vars" ->
-            randomBoundRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--random-edges" ->
             randomEdgesRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--random-labels" ->
@@ -293,7 +290,6 @@ public final class Main {
     int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
     boolean randomOptionsProvided =
         randomFreeRaw != null
-            || randomBoundRaw != null
             || randomEdgesRaw != null
             || randomLabelsRaw != null
             || randomSeedRaw != null;
@@ -305,17 +301,13 @@ public final class Main {
     if (isRandomExampleName(exampleName)) {
       int freeVariables =
           parseInt(randomFreeRaw, RandomExampleConfig.DEFAULT_FREE_VARIABLES, "--random-free-vars");
-      int boundVariables =
-          parseInt(
-              randomBoundRaw, RandomExampleConfig.DEFAULT_BOUND_VARIABLES, "--random-bound-vars");
       int edges =
           parseInt(randomEdgesRaw, RandomExampleConfig.DEFAULT_EDGE_COUNT, "--random-edges");
       int labels =
           parseInt(
               randomLabelsRaw, RandomExampleConfig.DEFAULT_PREDICATE_LABELS, "--random-labels");
       Long seed = randomSeedRaw != null ? parseLong(randomSeedRaw, 0L, "--random-seed") : null;
-      randomExampleConfig =
-          new RandomExampleConfig(freeVariables, boundVariables, edges, labels, seed);
+      randomExampleConfig = new RandomExampleConfig(freeVariables, edges, labels, seed);
     }
 
     return new CliOptions(

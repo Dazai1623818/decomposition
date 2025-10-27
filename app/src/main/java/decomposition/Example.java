@@ -156,26 +156,100 @@ public class Example {
     Random rng = config.createRandom();
 
     CQ cq = CQ.empty();
-    List<VarCQ> variables = new ArrayList<>();
+    List<VarCQ> freeVars = new ArrayList<>();
 
     for (int i = 0; i < config.freeVariableCount(); i++) {
-      variables.add(cq.addFreeVariable("F" + i));
-    }
-    for (int i = 0; i < config.boundVariableCount(); i++) {
-      variables.add(cq.addBoundVariable("B" + i));
+      freeVars.add(cq.addFreeVariable("F" + i));
     }
 
-    if (variables.isEmpty()) {
+    if (freeVars.isEmpty()) {
       throw new IllegalStateException("Random example requires at least one variable");
     }
 
-    for (int i = 0; i < config.edgeCount(); i++) {
-      VarCQ source = variables.get(rng.nextInt(variables.size()));
-      VarCQ target = variables.get(rng.nextInt(variables.size()));
-      int predicateId = rng.nextInt(config.predicateLabelCount()) + 1;
-      cq.addAtom(source, new Predicate(predicateId, "r" + predicateId), target);
+    int minEdgesForConnectivity = freeVars.size() > 1 ? freeVars.size() - 1 : 0;
+    if (config.edgeCount() < minEdgesForConnectivity) {
+      throw new IllegalArgumentException(
+          "edgeCount must be at least "
+              + minEdgesForConnectivity
+              + " to connect all free variables");
+    }
+
+    List<VarCQ> connected = new ArrayList<>();
+    List<VarCQ> unconnectedFree = new ArrayList<>(freeVars);
+    if (!unconnectedFree.isEmpty()) {
+      connected.add(removeRandom(unconnectedFree, rng));
+    }
+    int boundCounter = 0;
+
+    int edgesAdded = 0;
+    while (edgesAdded < config.edgeCount()) {
+      VarCQ anchor = connected.get(rng.nextInt(connected.size()));
+
+      int edgesRemaining = config.edgeCount() - edgesAdded;
+      boolean mustAttachFree =
+          !unconnectedFree.isEmpty() && edgesRemaining <= unconnectedFree.size();
+
+      VarCQ other;
+      if (mustAttachFree) {
+        other = removeRandom(unconnectedFree, rng);
+        connected.add(other);
+      } else {
+        boolean canAttachExisting = connected.size() > 1;
+        boolean canAttachFree = !unconnectedFree.isEmpty();
+
+        int optionCount = 1; // self-loop
+        if (canAttachExisting) optionCount++;
+        if (canAttachFree) optionCount++;
+        optionCount++; // always allow new bound variable
+
+        int choice = rng.nextInt(optionCount);
+        int index = 0;
+        if (choice == index++) {
+          other = anchor;
+        } else if (canAttachExisting && choice == index++) {
+          other = pickExistingOther(connected, rng, anchor);
+        } else if (canAttachFree && choice == index++) {
+          other = removeRandom(unconnectedFree, rng);
+          connected.add(other);
+        } else {
+          VarCQ bound = cq.addBoundVariable("B" + boundCounter++);
+          connected.add(bound);
+          other = bound;
+        }
+      }
+
+      addRandomlyOrientedEdge(cq, rng, anchor, other, config);
+      edgesAdded++;
     }
 
     return cq;
+  }
+
+  private static void addRandomlyOrientedEdge(
+      CQ cq, Random rng, VarCQ a, VarCQ b, RandomExampleConfig config) {
+    VarCQ source = a;
+    VarCQ target = b;
+    if (!source.equals(target) && rng.nextBoolean()) {
+      source = b;
+      target = a;
+    }
+    int predicateId = rng.nextInt(config.predicateLabelCount()) + 1;
+    cq.addAtom(source, new Predicate(predicateId, "r" + predicateId), target);
+  }
+
+  private static VarCQ removeRandom(List<VarCQ> variables, Random rng) {
+    return variables.remove(rng.nextInt(variables.size()));
+  }
+
+  private static VarCQ pickExistingOther(List<VarCQ> connected, Random rng, VarCQ anchor) {
+    if (connected.size() <= 1) {
+      return anchor;
+    }
+    while (true) {
+      VarCQ candidate = connected.get(rng.nextInt(connected.size()));
+      if (!candidate.equals(anchor)) {
+        return candidate;
+      }
+    }
   }
 }

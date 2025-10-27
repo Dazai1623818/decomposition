@@ -17,12 +17,10 @@ import java.util.stream.Collectors;
 /** Extracts a neutral intermediate representation from a gMark CQ. */
 public final class CQExtractor {
 
-  public record ExtractionResult(
-      List<Edge> edges, Set<String> freeVariables, List<String> freeVariableOrder) {
+  public record ExtractionResult(List<Edge> edges, Set<String> freeVariables) {
     public ExtractionResult {
       edges = List.copyOf(edges);
       freeVariables = Set.copyOf(freeVariables);
-      freeVariableOrder = List.copyOf(freeVariableOrder);
     }
   }
 
@@ -51,9 +49,7 @@ public final class CQExtractor {
             ? validateFreeVariables(explicitFreeVariables, cq)
             : deriveFreeVariables(cq);
 
-    List<String> freeVariableOrder = deriveFreeVariableOrder(cq, freeVariables);
-
-    return new ExtractionResult(edges, freeVariables, freeVariableOrder);
+    return new ExtractionResult(edges, freeVariables);
   }
 
   private Set<String> deriveFreeVariables(CQ cq) {
@@ -78,26 +74,5 @@ public final class CQExtractor {
         .map(GraphNode::getData)
         .map(VarCQ::getName)
         .collect(Collectors.toCollection(LinkedHashSet::new));
-  }
-
-  private List<String> deriveFreeVariableOrder(CQ cq, Set<String> freeVariables) {
-    if (freeVariables == null || freeVariables.isEmpty()) {
-      return List.of();
-    }
-
-    LinkedHashSet<String> ordered = new LinkedHashSet<>();
-
-    cq.getFreeVariables().stream()
-        .map(VarCQ::getName)
-        .filter(freeVariables::contains)
-        .forEach(ordered::add);
-
-    deriveAllVariables(cq).stream().filter(freeVariables::contains).forEach(ordered::add);
-
-    for (String explicit : freeVariables) {
-      ordered.add(explicit);
-    }
-
-    return List.copyOf(ordered);
   }
 }
