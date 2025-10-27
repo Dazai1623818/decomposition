@@ -13,6 +13,7 @@ import decomposition.partitions.PartitionFilter.FilterResult;
 import decomposition.partitions.PartitionFilter.FilteredPartition;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.partitions.PartitionValidator;
+import decomposition.partitions.PartitionValidator.ComponentOptions;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
@@ -20,7 +21,6 @@ import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,49 +94,32 @@ public final class DecompositionPipeline {
       Partition partition = filteredPartition.partition();
       Set<String> joinNodes = filteredPartition.joinNodes();
       partitionIndex++;
-      List<Component> componentsInPartition = partition.components();
-      boolean valid =
-          validator.isValidCPQDecomposition(
+
+      List<ComponentOptions> componentOptions =
+          validator.componentOptions(
               partition, joinNodes, builder, extraction.freeVariables(), freeVariableOrder, edges);
+
+      boolean valid = componentOptions.stream().allMatch(ComponentOptions::hasCandidates);
       if (valid) {
         cpqPartitions.add(partition);
-        List<Integer> optionCounts = new ArrayList<>();
-        List<List<KnownComponent>> filteredOptionsPerComponent = new ArrayList<>();
-        Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
-        int componentIndex = 0;
-        for (Component component : componentsInPartition) {
-          componentIndex++;
-          BitSet componentBits = component.edgeBits();
-          List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
-          Set<String> componentJoinNodes =
-              localJoinNodeCache.computeIfAbsent(
-                  component, c -> JoinNodeUtils.localJoinNodes(c, joinNodes));
-          List<KnownComponent> joinFilteredOptions =
-              rawOptions.stream()
-                  .filter(
-                      kc ->
-                          JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                              kc, component, componentJoinNodes))
-                  .collect(Collectors.toList());
-          List<KnownComponent> filteredOptions =
-              enforceFreeVariableOrdering(
-                  joinFilteredOptions, component, componentsInPartition, freeVariableOrder);
 
-          optionCounts.add(filteredOptions.size());
-          filteredOptionsPerComponent.add(filteredOptions);
-        }
+        List<Integer> optionCounts =
+            componentOptions.stream()
+                .map(ComponentOptions::candidateCount)
+                .collect(Collectors.toList());
+
+        List<List<KnownComponent>> filteredOptionsPerComponent =
+            componentOptions.stream()
+                .map(ComponentOptions::finalOptions)
+                .collect(Collectors.toList());
+
         List<List<KnownComponent>> tuples =
             effectiveOptions.mode().enumerateTuples()
                 ? validator.enumerateDecompositions(
-                    partition,
-                    joinNodes,
-                    builder,
+                    componentOptions,
                     effectiveOptions.enumerationLimit() == 0
                         ? 1
-                        : Math.min(1, effectiveOptions.enumerationLimit()),
-                    extraction.freeVariables(),
-                    freeVariableOrder,
-                    edges)
+                        : Math.min(1, effectiveOptions.enumerationLimit()))
                 : List.of();
 
         if (!tuples.isEmpty()) {
@@ -160,27 +143,12 @@ public final class DecompositionPipeline {
             new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
       } else {
         int componentIndex = 0;
-        Map<Component, Set<String>> localJoinNodeCache = new HashMap<>();
-        for (Component component : componentsInPartition) {
+        for (ComponentOptions componentOption : componentOptions) {
           componentIndex++;
-          BitSet componentBits = component.edgeBits();
-          List<KnownComponent> rawOptions = builder.options(componentBits, joinNodes);
-          Set<String> componentJoinNodes =
-              localJoinNodeCache.computeIfAbsent(
-                  component, c -> JoinNodeUtils.localJoinNodes(c, joinNodes));
-          List<KnownComponent> joinFilteredOptions =
-              rawOptions.stream()
-                  .filter(
-                      kc ->
-                          JoinNodeUtils.endpointsRespectJoinNodeRoles(
-                              kc, component, componentJoinNodes))
-                  .collect(Collectors.toList());
-          List<KnownComponent> orientationFilteredOptions =
-              enforceFreeVariableOrdering(
-                  joinFilteredOptions, component, componentsInPartition, freeVariableOrder);
+          BitSet componentBits = componentOption.component().edgeBits();
+          String signature = BitsetUtils.signature(componentBits, edgeCount);
 
-          if (rawOptions.isEmpty()) {
-            String signature = BitsetUtils.signature(componentBits, edgeCount);
+          if (componentOption.rawOptions().isEmpty()) {
             diagnostics.add(
                 "Partition#"
                     + partitionIndex
@@ -188,8 +156,7 @@ public final class DecompositionPipeline {
                     + componentIndex
                     + " rejected: no CPQ candidates for bits "
                     + signature);
-          } else if (joinFilteredOptions.isEmpty()) {
-            String signature = BitsetUtils.signature(componentBits, edgeCount);
+          } else if (componentOption.joinFilteredOptions().isEmpty()) {
             diagnostics.add(
                 "Partition#"
                     + partitionIndex
@@ -197,8 +164,7 @@ public final class DecompositionPipeline {
                     + componentIndex
                     + " rejected: endpoints not on join nodes for bits "
                     + signature);
-          } else if (orientationFilteredOptions.isEmpty()) {
-            String signature = BitsetUtils.signature(componentBits, edgeCount);
+          } else if (componentOption.finalOptions().isEmpty()) {
             diagnostics.add(
                 "Partition#"
                     + partitionIndex
@@ -247,20 +213,6 @@ public final class DecompositionPipeline {
         diagnostics,
         elapsed,
         terminationReason);
-  }
-
-  private List<KnownComponent> enforceFreeVariableOrdering(
-      List<KnownComponent> options,
-      Component component,
-      List<Component> componentsInPartition,
-      List<String> freeVariableOrder) {
-    if (options == null || options.isEmpty()) {
-      return options;
-    }
-    if (componentsInPartition.size() != 1) {
-      return options;
-    }
-    return JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
   }
 
   private List<KnownComponent> filterGlobalCandidates(

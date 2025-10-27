@@ -8,6 +8,7 @@ import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -21,27 +22,10 @@ public final class PartitionValidator {
       Set<String> freeVariables,
       List<String> freeVariableOrder,
       List<Edge> allEdges) {
-    List<Component> components = partition.components();
-    boolean singleComponent = components.size() == 1;
-    for (Component component : components) {
-      List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
-      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
-      if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
-        options =
-            options.stream()
-                .filter(
-                    kc ->
-                        JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
-                .collect(Collectors.toList());
-      }
-      if (singleComponent) {
-        options = JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
-      }
-      if (options.isEmpty()) {
-        return false;
-      }
-    }
-    return true;
+    return componentOptions(
+            partition, joinNodes, builder, freeVariables, freeVariableOrder, allEdges)
+        .stream()
+        .allMatch(ComponentOptions::hasCandidates);
   }
 
   public List<List<KnownComponent>> enumerateDecompositions(
@@ -69,35 +53,9 @@ public final class PartitionValidator {
       Set<String> freeVariables,
       List<String> freeVariableOrder,
       List<Edge> allEdges) {
-    List<Component> components = partition.components();
-    List<Set<String>> componentVariables = new ArrayList<>();
-    for (Component component : components) {
-      componentVariables.add(component.vertices());
-    }
-
-    List<List<KnownComponent>> perComponentOptions = new ArrayList<>();
-    boolean singleComponent = components.size() == 1;
-    for (Component component : components) {
-      List<KnownComponent> options = builder.options(component.edgeBits(), joinNodes);
-      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
-      if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
-        options =
-            options.stream()
-                .filter(
-                    kc ->
-                        JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
-                .collect(Collectors.toList());
-      }
-      if (singleComponent) {
-        options = JoinNodeUtils.filterByFreeVariableOrdering(options, component, freeVariableOrder);
-      }
-      if (options.isEmpty()) {
-        return List.of();
-      }
-      perComponentOptions.add(options);
-    }
-
-    return cartesian(perComponentOptions, componentVariables, freeVariables, allEdges, limit);
+    List<ComponentOptions> perComponent =
+        componentOptions(partition, joinNodes, builder, freeVariables, freeVariableOrder, allEdges);
+    return enumerateDecompositions(perComponent, limit);
   }
 
   // Legacy method for backward compatibility
@@ -108,23 +66,64 @@ public final class PartitionValidator {
         partition, joinNodes, builder, limit, Set.of(), List.of(), builder.allEdges());
   }
 
-  private List<List<KnownComponent>> cartesian(
-      List<List<KnownComponent>> lists,
-      List<Set<String>> componentVariables,
+  public List<List<KnownComponent>> enumerateDecompositions(
+      List<ComponentOptions> componentOptions, int limit) {
+    if (componentOptions.stream().anyMatch(options -> options.finalOptions().isEmpty())) {
+      return List.of();
+    }
+    List<List<KnownComponent>> perComponentOptions =
+        componentOptions.stream().map(ComponentOptions::finalOptions).collect(Collectors.toList());
+    return cartesian(perComponentOptions, limit);
+  }
+
+  public List<ComponentOptions> componentOptions(
+      Partition partition,
+      Set<String> joinNodes,
+      ComponentCPQBuilder builder,
       Set<String> freeVariables,
-      List<Edge> allEdges,
-      int limit) {
+      List<String> freeVariableOrder,
+      List<Edge> allEdges) {
+    Objects.requireNonNull(partition, "partition");
+    Objects.requireNonNull(joinNodes, "joinNodes");
+    Objects.requireNonNull(builder, "builder");
+    Objects.requireNonNull(freeVariables, "freeVariables");
+    Objects.requireNonNull(freeVariableOrder, "freeVariableOrder");
+    Objects.requireNonNull(allEdges, "allEdges");
+
+    List<Component> components = partition.components();
+    boolean singleComponent = components.size() == 1;
+    List<ComponentOptions> results = new ArrayList<>(components.size());
+
+    for (Component component : components) {
+      List<KnownComponent> raw = builder.options(component.edgeBits(), joinNodes);
+      List<KnownComponent> joinFiltered = raw;
+      if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
+        Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
+        joinFiltered =
+            raw.stream()
+                .filter(
+                    kc ->
+                        JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
+                .collect(Collectors.toList());
+      }
+      List<KnownComponent> ordered = joinFiltered;
+      if (singleComponent) {
+        ordered =
+            JoinNodeUtils.filterByFreeVariableOrdering(joinFiltered, component, freeVariableOrder);
+      }
+      results.add(new ComponentOptions(component, raw, joinFiltered, ordered));
+    }
+    return List.copyOf(results);
+  }
+
+  private List<List<KnownComponent>> cartesian(List<List<KnownComponent>> lists, int limit) {
     List<List<KnownComponent>> output = new ArrayList<>();
-    backtrack(
-        lists, componentVariables, freeVariables, allEdges, 0, new ArrayList<>(), output, limit);
+    backtrack(lists, 0, new ArrayList<>(), output, limit);
     return output;
   }
 
   private void backtrack(
       List<List<KnownComponent>> lists,
-      List<Set<String>> componentVariables,
-      Set<String> freeVariables,
-      List<Edge> allEdges,
       int index,
       List<KnownComponent> current,
       List<List<KnownComponent>> output,
@@ -138,8 +137,7 @@ public final class PartitionValidator {
     }
     for (KnownComponent option : lists.get(index)) {
       current.add(option);
-      backtrack(
-          lists, componentVariables, freeVariables, allEdges, index + 1, current, output, limit);
+      backtrack(lists, index + 1, current, output, limit);
       current.remove(current.size() - 1);
       if (limit > 0 && output.size() >= limit) {
         return;
@@ -156,5 +154,32 @@ public final class PartitionValidator {
       return true;
     }
     return component.edgeCount() > 1;
+  }
+
+  public static record ComponentOptions(
+      Component component,
+      List<KnownComponent> rawOptions,
+      List<KnownComponent> joinFilteredOptions,
+      List<KnownComponent> finalOptions) {
+
+    public ComponentOptions(
+        Component component,
+        List<KnownComponent> rawOptions,
+        List<KnownComponent> joinFilteredOptions,
+        List<KnownComponent> finalOptions) {
+      this.component = Objects.requireNonNull(component, "component");
+      this.rawOptions = List.copyOf(Objects.requireNonNull(rawOptions, "rawOptions"));
+      this.joinFilteredOptions =
+          List.copyOf(Objects.requireNonNull(joinFilteredOptions, "joinFilteredOptions"));
+      this.finalOptions = List.copyOf(Objects.requireNonNull(finalOptions, "finalOptions"));
+    }
+
+    public boolean hasCandidates() {
+      return !finalOptions.isEmpty();
+    }
+
+    public int candidateCount() {
+      return finalOptions.size();
+    }
   }
 }
