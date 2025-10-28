@@ -7,6 +7,7 @@ import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -97,7 +98,10 @@ public final class PartitionValidator {
                         JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
                 .collect(Collectors.toList());
       }
-      results.add(new ComponentOptions(component, raw, joinFiltered, joinFiltered));
+      List<KnownComponent> oriented =
+          preferCanonicalOrientation(joinFiltered, joinNodes, freeVariables);
+      List<KnownComponent> finalOptions = oriented.isEmpty() ? joinFiltered : oriented;
+      results.add(new ComponentOptions(component, raw, joinFiltered, finalOptions));
     }
     return List.copyOf(results);
   }
@@ -140,6 +144,28 @@ public final class PartitionValidator {
       return true;
     }
     return component.edgeCount() > 1;
+  }
+
+  private List<KnownComponent> preferCanonicalOrientation(
+      List<KnownComponent> candidates, Set<String> joinNodes, Set<String> freeVariables) {
+    if (candidates.isEmpty() || joinNodes.size() != 2) {
+      return List.of();
+    }
+
+    List<String> orderedJoinNodes = new ArrayList<>(joinNodes);
+    orderedJoinNodes.sort(
+        Comparator.comparing((String node) -> freeVariables.contains(node) ? 0 : 1)
+            .thenComparing(node -> node));
+
+    String preferredSource = orderedJoinNodes.get(0);
+    String preferredTarget = orderedJoinNodes.get(1);
+
+    return candidates.stream()
+        .filter(
+            candidate ->
+                preferredSource.equals(candidate.source())
+                    && preferredTarget.equals(candidate.target()))
+        .collect(Collectors.toList());
   }
 
   public static record ComponentOptions(

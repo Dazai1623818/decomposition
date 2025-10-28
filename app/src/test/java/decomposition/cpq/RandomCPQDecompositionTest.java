@@ -46,19 +46,17 @@ final class RandomCPQDecompositionTest {
 
       ReconstructionResult analysis =
           analyseReconstruction(pipeline, original, cq, freeVars, PREDICATE_ALPHABET);
-      if (!analysis.hasSingleComponent() || !analysis.isHomomorphic()) {
-        System.out.println(
-            "[Reconstruct] iteration="
-                + i
-                + " original="
-                + original
-                + " hasSingleComponent="
-                + analysis.hasSingleComponent()
-                + " homomorphic="
-                + analysis.isHomomorphic()
-                + " reconstructed="
-                + analysis.reconstructed().map(CPQ::toString).orElse("n/a"));
-      }
+      System.out.println(
+          "[Reconstruct] iteration="
+              + i
+              + " original="
+              + original
+              + " hasSingleComponent="
+              + analysis.hasSingleComponent()
+              + " homomorphic="
+              + analysis.isHomomorphic()
+              + " reconstructed="
+              + analysis.reconstructed().map(CPQ::toString).orElse("n/a"));
     }
   }
 
