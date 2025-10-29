@@ -63,7 +63,12 @@ public final class PartitionFilter {
 
     for (Component component : partition.components()) {
       long joinNodes =
-          component.vertices().stream().filter(v -> multiplicity.getOrDefault(v, 0) >= 2).count();
+          component.vertices().stream()
+              .filter(
+                  v ->
+                      multiplicity.getOrDefault(v, 0) >= 2
+                          || (freeVariables != null && freeVariables.contains(v)))
+              .count();
       if (joinNodes > maxJoinNodesPerComponent) {
         return "component had >" + maxJoinNodesPerComponent + " join nodes";
       }
