@@ -1,10 +1,12 @@
 package decomposition;
 
+import com.google.common.base.Splitter;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.util.graph.GraphPanel;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,11 +44,10 @@ public final class PlotCPQ {
     }
 
     List<String> expressions = new ArrayList<>();
-    for (String token : rawInput.split("[\\r\\n;]+")) {
-      String trimmed = token.trim();
-      if (!trimmed.isEmpty()) {
-        expressions.add(trimmed);
-      }
+    Iterable<String> tokens =
+        Splitter.onPattern("[\\r\\n;]+").trimResults().omitEmptyStrings().split(rawInput);
+    for (String token : tokens) {
+      expressions.add(token);
     }
 
     if (expressions.isEmpty()) {
@@ -66,7 +67,8 @@ public final class PlotCPQ {
     System.out.println(
         "Enter CPQ expressions to plot. Submit an empty line to skip, or Ctrl-D to exit.");
 
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
       String line;
       int count = 1;
       while ((line = reader.readLine()) != null) {

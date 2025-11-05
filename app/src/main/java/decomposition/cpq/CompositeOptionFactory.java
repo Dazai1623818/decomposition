@@ -2,10 +2,10 @@ package decomposition.cpq;
 
 import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -16,11 +16,9 @@ final class CompositeOptionFactory {
 
   private CompositeOptionFactory() {}
 
-  static void build(
-      BitSet edgeBits,
-      int totalEdgeCount,
-      Function<BitSet, List<KnownComponent>> optionLookup,
-      Consumer<KnownComponent> sink) {
+  static List<KnownComponent> build(
+      BitSet edgeBits, int totalEdgeCount, Function<BitSet, List<KnownComponent>> optionLookup) {
+    List<KnownComponent> results = new ArrayList<>();
     forEachSplit(
         edgeBits,
         totalEdgeCount,
@@ -32,11 +30,12 @@ final class CompositeOptionFactory {
           }
           for (KnownComponent lhs : left) {
             for (KnownComponent rhs : right) {
-              tryConcat(edgeBits, lhs, rhs, sink);
-              tryIntersect(edgeBits, lhs, rhs, sink);
+              tryConcat(edgeBits, lhs, rhs, results);
+              tryIntersect(edgeBits, lhs, rhs, results);
             }
           }
         });
+    return results;
   }
 
   /**
@@ -62,7 +61,7 @@ final class CompositeOptionFactory {
   }
 
   private static void tryConcat(
-      BitSet edgeBits, KnownComponent left, KnownComponent right, Consumer<KnownComponent> sink) {
+      BitSet edgeBits, KnownComponent left, KnownComponent right, List<KnownComponent> sink) {
     if (!left.target().equals(right.source())) {
       return;
     }
@@ -78,7 +77,7 @@ final class CompositeOptionFactory {
   }
 
   private static void tryIntersect(
-      BitSet edgeBits, KnownComponent left, KnownComponent right, Consumer<KnownComponent> sink) {
+      BitSet edgeBits, KnownComponent left, KnownComponent right, List<KnownComponent> sink) {
     if (!left.source().equals(right.source()) || !left.target().equals(right.target())) {
       return;
     }
@@ -101,10 +100,10 @@ final class CompositeOptionFactory {
       String source,
       String target,
       String derivation,
-      Consumer<KnownComponent> sink) {
+      List<KnownComponent> sink) {
     try {
       CPQ cpq = CPQ.parse(expression);
-      sink.accept(new KnownComponent(cpq, edgeBits, source, target, derivation));
+      sink.add(new KnownComponent(cpq, edgeBits, source, target, derivation));
     } catch (RuntimeException ex) {
       // Ignore unparsable synthesized expression.
     }

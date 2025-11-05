@@ -1,8 +1,5 @@
 package decomposition.cpq;
 
-import decomposition.model.Edge;
-import decomposition.util.BitsetUtils;
-import decomposition.util.JoinNodeUtils;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -11,6 +8,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+
+import decomposition.model.Edge;
+import decomposition.util.BitsetUtils;
+import decomposition.util.JoinNodeUtils;
 
 /** Builds CPQ expressions for connected components using gMark's CPQ model. */
 public final class ComponentCPQBuilder {
@@ -57,42 +58,51 @@ public final class ComponentCPQBuilder {
       return List.of();
     }
 
-    Map<ComponentKey, KnownComponent> results = new LinkedHashMap<>();
+    OptionAccumulator accumulator = new OptionAccumulator();
     if (cardinality == 1) {
-      addSingleEdgeOptions(edgeBits, results);
+      accumulator.addAll(singleEdgeOptions(edgeBits));
     } else {
-      addLoopBacktrackOptions(edgeBits, localJoinNodes, results);
-      addCompositeOptions(edgeBits, originalJoinNodes, results);
+      accumulator.addAll(loopBacktrackOptions(edgeBits, localJoinNodes));
+      accumulator.addAll(compositeOptions(edgeBits, originalJoinNodes));
     }
-    return List.copyOf(results.values());
+    return accumulator.snapshot();
   }
 
-  private void addSingleEdgeOptions(BitSet edgeBits, Map<ComponentKey, KnownComponent> results) {
+  private List<KnownComponent> singleEdgeOptions(BitSet edgeBits) {
     int edgeIndex = edgeBits.nextSetBit(0);
     Edge edge = edges.get(edgeIndex);
-    SingleEdgeOptionFactory.build(edge, edgeBits).forEach(option -> tryAdd(results, option));
+    return SingleEdgeOptionFactory.build(edge, edgeBits);
   }
 
-  private void addLoopBacktrackOptions(
-      BitSet edgeBits, Set<String> localJoinNodes, Map<ComponentKey, KnownComponent> results) {
+  private List<KnownComponent> loopBacktrackOptions(BitSet edgeBits, Set<String> localJoinNodes) {
     if (localJoinNodes.size() > 1) {
-      return;
+      return List.of();
     }
-    LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes)
-        .forEach(option -> tryAdd(results, option));
+    return LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes);
   }
 
-  private void addCompositeOptions(
-      BitSet edgeBits, Set<String> originalJoinNodes, Map<ComponentKey, KnownComponent> results) {
+  private List<KnownComponent> compositeOptions(BitSet edgeBits, Set<String> originalJoinNodes) {
     Function<BitSet, List<KnownComponent>> lookup = subset -> enumerate(subset, originalJoinNodes);
-    CompositeOptionFactory.build(
-        edgeBits, edges.size(), lookup, candidate -> tryAdd(results, candidate));
+    return CompositeOptionFactory.build(edgeBits, edges.size(), lookup);
   }
 
-  private void tryAdd(Map<ComponentKey, KnownComponent> results, KnownComponent candidate) {
-    for (KnownComponent variant : candidateValidator.validateAndExpand(candidate)) {
-      ComponentKey key = variant.toKey(edges.size());
-      results.putIfAbsent(key, variant);
+  private final class OptionAccumulator {
+    private final Map<ComponentKey, KnownComponent> unique = new LinkedHashMap<>();
+
+    void addAll(List<KnownComponent> candidates) {
+      if (candidates == null || candidates.isEmpty()) {
+        return;
+      }
+      for (KnownComponent candidate : candidates) {
+        for (KnownComponent variant : candidateValidator.validateAndExpand(candidate)) {
+          ComponentKey key = variant.toKey(edges.size());
+          unique.putIfAbsent(key, variant);
+        }
+      }
+    }
+
+    List<KnownComponent> snapshot() {
+      return List.copyOf(unique.values());
     }
   }
 

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,14 +81,10 @@ public final class VisualizationExporter {
       return;
     }
     try (var walk = Files.walk(baseDir)) {
-      walk.sorted(Comparator.reverseOrder())
-          .forEach(
-              path -> {
-                try {
-                  Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                }
-              });
+      Iterator<Path> iterator = walk.sorted(Comparator.reverseOrder()).iterator();
+      while (iterator.hasNext()) {
+        Files.deleteIfExists(iterator.next());
+      }
     }
   }
 }

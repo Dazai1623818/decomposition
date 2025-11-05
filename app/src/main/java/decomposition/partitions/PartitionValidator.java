@@ -5,16 +5,29 @@ import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
+import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /** Validates partitions against the CPQ builder and enumerates component combinations. */
 public final class PartitionValidator {
+  private final Map<ComponentOptionsKey, CachedComponentOptions> optionsCache = new HashMap<>();
+  private final ComponentOptionsCacheStats cacheStats;
+
+  public PartitionValidator() {
+    this(new ComponentOptionsCacheStats());
+  }
+
+  public PartitionValidator(ComponentOptionsCacheStats cacheStats) {
+    this.cacheStats = Objects.requireNonNull(cacheStats, "cacheStats");
+  }
 
   public boolean isValidCPQDecomposition(
       Partition partition,
@@ -53,14 +66,6 @@ public final class PartitionValidator {
     return enumerateDecompositions(perComponent, limit);
   }
 
-  // Legacy method for backward compatibility
-  public List<List<KnownComponent>> enumerateDecompositions(
-      Partition partition, ComponentCPQBuilder builder, int limit) {
-    Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(partition.components(), Set.of());
-    return enumerateDecompositions(
-        partition, joinNodes, builder, limit, Set.of(), builder.allEdges());
-  }
-
   public List<List<KnownComponent>> enumerateDecompositions(
       List<ComponentOptions> componentOptions, int limit) {
     if (componentOptions.stream().anyMatch(options -> options.finalOptions().isEmpty())) {
@@ -85,25 +90,62 @@ public final class PartitionValidator {
 
     List<Component> components = partition.components();
     List<ComponentOptions> results = new ArrayList<>(components.size());
+    Set<String> normalizedJoinNodes = normalize(joinNodes);
+    Set<String> normalizedFreeVars = normalize(freeVariables);
+    int totalComponents = components.size();
 
     for (Component component : components) {
-      List<KnownComponent> raw = builder.options(component.edgeBits(), joinNodes);
-      List<KnownComponent> joinFiltered = raw;
-      if (shouldEnforceJoinNodes(joinNodes, components.size(), component)) {
-        Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
-        joinFiltered =
-            raw.stream()
-                .filter(
-                    kc ->
-                        JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
-                .collect(Collectors.toList());
+      ComponentOptionsKey key =
+          new ComponentOptionsKey(
+              BitsetUtils.signature(component.edgeBits(), allEdges.size()),
+              totalComponents,
+              normalizedJoinNodes,
+              normalizedFreeVars);
+      CachedComponentOptions cached = optionsCache.get(key);
+      if (cached == null) {
+        cacheStats.recordMiss();
+        cached =
+            buildComponentOptions(
+                component, normalizedJoinNodes, builder, normalizedFreeVars, totalComponents);
+        optionsCache.put(key, cached);
+      } else {
+        cacheStats.recordHit();
       }
-      List<KnownComponent> oriented =
-          preferCanonicalOrientation(joinFiltered, joinNodes, freeVariables);
-      List<KnownComponent> finalOptions = oriented.isEmpty() ? joinFiltered : oriented;
-      results.add(new ComponentOptions(component, raw, joinFiltered, finalOptions));
+      results.add(
+          new ComponentOptions(
+              component, cached.raw(), cached.joinFiltered(), cached.finalOptions()));
     }
     return List.copyOf(results);
+  }
+
+  private CachedComponentOptions buildComponentOptions(
+      Component component,
+      Set<String> joinNodes,
+      ComponentCPQBuilder builder,
+      Set<String> freeVariables,
+      int totalComponents) {
+    List<KnownComponent> raw = builder.options(component.edgeBits(), joinNodes);
+    List<KnownComponent> joinFiltered = raw;
+    if (shouldEnforceJoinNodes(joinNodes, totalComponents, component)) {
+      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
+      joinFiltered =
+          raw.stream()
+              .filter(
+                  kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
+              .collect(Collectors.toList());
+    }
+    List<KnownComponent> oriented =
+        preferCanonicalOrientation(joinFiltered, joinNodes, freeVariables);
+    List<KnownComponent> finalOptions = oriented.isEmpty() ? joinFiltered : oriented;
+    return new CachedComponentOptions(raw, joinFiltered, finalOptions);
+  }
+
+  private Set<String> normalize(Set<String> values) {
+    return values == null || values.isEmpty() ? Set.of() : Set.copyOf(values);
+  }
+
+  public ComponentOptionsCacheStats cacheStats() {
+    return cacheStats;
   }
 
   private List<List<KnownComponent>> cartesian(List<List<KnownComponent>> lists, int limit) {
@@ -192,6 +234,70 @@ public final class PartitionValidator {
 
     public int candidateCount() {
       return finalOptions.size();
+    }
+  }
+
+  private record ComponentOptionsKey(
+      String componentSignature,
+      int totalComponents,
+      Set<String> joinNodes,
+      Set<String> freeVars) {}
+
+  private record CachedComponentOptions(
+      List<KnownComponent> raw,
+      List<KnownComponent> joinFiltered,
+      List<KnownComponent> finalOptions) {}
+
+  public static final class ComponentOptionsCacheStats {
+    private long hits;
+    private long misses;
+
+    public ComponentOptionsCacheStats() {}
+
+    public void recordHit() {
+      hits++;
+    }
+
+    public void recordMiss() {
+      misses++;
+    }
+
+    public long hits() {
+      return hits;
+    }
+
+    public long misses() {
+      return misses;
+    }
+
+    public long lookups() {
+      return hits + misses;
+    }
+
+    public double hitRate() {
+      long lookups = lookups();
+      if (lookups == 0) {
+        return 0.0;
+      }
+      return hits / (double) lookups;
+    }
+
+    public CacheSnapshot snapshot() {
+      return new CacheSnapshot(hits, misses);
+    }
+
+    public record CacheSnapshot(long hits, long misses) {
+      public long lookups() {
+        return hits + misses;
+      }
+
+      public double hitRate() {
+        long lookups = lookups();
+        if (lookups == 0) {
+          return 0.0;
+        }
+        return hits / (double) lookups;
+      }
     }
   }
 }

@@ -24,13 +24,24 @@ import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline. */
 public final class DecompositionPipeline {
   private static final int MAX_JOIN_NODES = 2;
   private final CQExtractor extractor = new CQExtractor();
+  private final Supplier<PartitionValidator> partitionValidatorSupplier;
+
+  public DecompositionPipeline() {
+    this(PartitionValidator::new);
+  }
+
+  public DecompositionPipeline(Supplier<PartitionValidator> partitionValidatorSupplier) {
+    this.partitionValidatorSupplier =
+        Objects.requireNonNull(partitionValidatorSupplier, "partitionValidatorSupplier");
+  }
 
   public DecompositionResult execute(
       CQ cq, Set<String> explicitFreeVariables, DecompositionOptions options) {
@@ -54,10 +65,7 @@ public final class DecompositionPipeline {
         new PartitionFilter(MAX_JOIN_NODES).filter(partitions, extraction.freeVariables());
     List<FilteredPartition> filteredPartitionsWithJoins = filterResult.partitions();
     List<Partition> filteredPartitions =
-        List.copyOf(
-            filteredPartitionsWithJoins.stream()
-                .map(FilteredPartition::partition)
-                .collect(Collectors.toList()));
+        filteredPartitionsWithJoins.stream().map(FilteredPartition::partition).toList();
 
     List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
     Map<ComponentKey, KnownComponent> recognizedCatalogueMap = new LinkedHashMap<>();
@@ -81,7 +89,10 @@ public final class DecompositionPipeline {
     }
 
     ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
-    PartitionValidator validator = new PartitionValidator();
+    PartitionValidator validator = partitionValidatorSupplier.get();
+    if (validator == null) {
+      throw new IllegalStateException("partitionValidatorSupplier returned null");
+    }
 
     KnownComponent finalComponent = null;
     List<Partition> cpqPartitions = new ArrayList<>();
@@ -98,49 +109,7 @@ public final class DecompositionPipeline {
           validator.componentOptions(
               partition, joinNodes, builder, extraction.freeVariables(), edges);
 
-      boolean valid = componentOptions.stream().allMatch(ComponentOptions::hasCandidates);
-      if (valid) {
-        cpqPartitions.add(partition);
-
-        List<Integer> optionCounts =
-            componentOptions.stream()
-                .map(ComponentOptions::candidateCount)
-                .collect(Collectors.toList());
-
-        List<List<KnownComponent>> filteredOptionsPerComponent =
-            componentOptions.stream()
-                .map(ComponentOptions::finalOptions)
-                .collect(Collectors.toList());
-
-        List<List<KnownComponent>> tuples =
-            effectiveOptions.mode().enumerateTuples()
-                ? validator.enumerateDecompositions(
-                    componentOptions,
-                    effectiveOptions.enumerationLimit() == 0
-                        ? 1
-                        : Math.min(1, effectiveOptions.enumerationLimit()))
-                : List.of();
-
-        if (!tuples.isEmpty()) {
-          for (KnownComponent kc : tuples.get(0)) {
-            registerRecognized(recognizedCatalogueMap, kc, edgeCount);
-          }
-        } else {
-          for (List<KnownComponent> filteredOptions : filteredOptionsPerComponent) {
-            if (!filteredOptions.isEmpty()) {
-              KnownComponent kc = filteredOptions.get(0);
-              registerRecognized(recognizedCatalogueMap, kc, edgeCount);
-            }
-          }
-        }
-
-        for (List<KnownComponent> filteredOptions : filteredOptionsPerComponent) {
-          registerOptionVariants(filteredOptions, recognizedCatalogueMap, edgeCount);
-        }
-
-        partitionEvaluations.add(
-            new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
-      } else {
+      if (!componentOptions.stream().allMatch(ComponentOptions::hasCandidates)) {
         int componentIndex = 0;
         for (ComponentOptions componentOption : componentOptions) {
           componentIndex++;
@@ -165,7 +134,40 @@ public final class DecompositionPipeline {
                     + signature);
           }
         }
+        continue;
       }
+
+      cpqPartitions.add(partition);
+
+      List<Integer> optionCounts =
+          componentOptions.stream().map(ComponentOptions::candidateCount).toList();
+      List<List<KnownComponent>> tuples =
+          effectiveOptions.mode().enumerateTuples()
+              ? validator.enumerateDecompositions(
+                  componentOptions,
+                  effectiveOptions.enumerationLimit() == 0
+                      ? 1
+                      : Math.min(1, effectiveOptions.enumerationLimit()))
+              : List.of();
+
+      List<KnownComponent> preferred =
+          !tuples.isEmpty()
+              ? tuples.get(0)
+              : componentOptions.stream()
+                  .map(ComponentOptions::finalOptions)
+                  .filter(candidateOptions -> !candidateOptions.isEmpty())
+                  .map(candidateOptions -> candidateOptions.get(0))
+                  .toList();
+
+      preferred.forEach(kc -> registerRecognized(recognizedCatalogueMap, kc, edgeCount));
+      componentOptions.stream()
+          .map(ComponentOptions::finalOptions)
+          .forEach(
+              candidateOptions ->
+                  registerOptionVariants(candidateOptions, recognizedCatalogueMap, edgeCount));
+
+      partitionEvaluations.add(
+          new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
 
       if (timeExceeded(effectiveOptions, timing)) {
         terminationReason = "time_budget_exceeded_during_validation";

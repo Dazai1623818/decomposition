@@ -9,6 +9,11 @@ import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
+import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats.CacheSnapshot;
+import decomposition.profile.PipelineProfiler;
+import decomposition.profile.PipelineProfiler.NamedQuery;
+import decomposition.profile.PipelineProfiler.PipelineProfile;
+import decomposition.profile.PipelineProfiler.ProfileRun;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -35,6 +40,15 @@ public final class Main {
 
   int run(String[] args) {
     try {
+      if (args == null || args.length == 0) {
+        throw new IllegalArgumentException("Missing command. Use: decompose [options]");
+      }
+      String command = args[0];
+      if ("profile".equalsIgnoreCase(command)) {
+        ProfileOptions profileOptions = parseProfileArgs(args);
+        return runProfile(profileOptions);
+      }
+
       CliOptions cliOptions = parseArgs(args);
       DecompositionOptions pipelineOptions =
           new DecompositionOptions(
@@ -82,6 +96,13 @@ public final class Main {
       ex.printStackTrace(System.err);
       return 4;
     }
+  }
+
+  private int runProfile(ProfileOptions options) {
+    PipelineProfiler profiler = new PipelineProfiler();
+    PipelineProfile report = profiler.profile(options.queries(), options.options());
+    printProfileReport(report, options.options());
+    return 0;
   }
 
   private void printSummary(DecompositionResult result, CliOptions options) {
@@ -134,6 +155,65 @@ public final class Main {
     }
   }
 
+  private void printProfileReport(PipelineProfile report, DecompositionOptions options) {
+    System.out.println(
+        "Profiling "
+            + report.runs().size()
+            + " queries with options: mode="
+            + options.mode()
+            + ", maxPartitions="
+            + options.maxPartitions()
+            + ", maxCovers="
+            + options.maxCovers()
+            + ", timeBudgetMs="
+            + options.timeBudgetMs()
+            + ", enumerationLimit="
+            + options.enumerationLimit());
+
+    for (ProfileRun run : report.runs()) {
+      System.out.println(
+          "- "
+              + run.queryName()
+              + ": elapsed="
+              + run.elapsedMillis()
+              + "ms, partitions="
+              + run.totalPartitions()
+              + ", filtered="
+              + run.filteredPartitions()
+              + ", valid="
+              + run.validPartitions()
+              + ", recognized="
+              + run.recognizedComponents());
+      CacheSnapshot cache = run.cacheSnapshot();
+      if (cache != null && cache.lookups() > 0) {
+        double hitRatePct = cache.hitRate() * 100.0;
+        System.out.printf(
+            Locale.ROOT,
+            "  cache: lookups=%d hits=%d misses=%d hitRate=%.2f%%%n",
+            cache.lookups(),
+            cache.hits(),
+            cache.misses(),
+            hitRatePct);
+      } else {
+        System.out.println("  cache: no lookups");
+      }
+      if (run.terminationReason() != null) {
+        System.out.println("  termination: " + run.terminationReason());
+      }
+    }
+
+    CacheSnapshot aggregate = report.aggregateCache();
+    double aggregatePct = aggregate.hitRate() * 100.0;
+    System.out.printf(
+        Locale.ROOT,
+        "Aggregate cache: lookups=%d hits=%d misses=%d hitRate=%.2f%%%n",
+        aggregate.lookups(),
+        aggregate.hits(),
+        aggregate.misses(),
+        aggregatePct);
+    System.out.println("Total elapsed millis: " + report.totalElapsedMillis());
+  }
+
   private void exportForVisualization(DecompositionResult result) {
     try {
       var cwd = Paths.get("").toAbsolutePath().normalize();
@@ -175,6 +255,138 @@ public final class Main {
       return parseDecomposeArgs(remapped);
     }
     throw new IllegalArgumentException("Unknown command: " + command);
+  }
+
+  @SuppressWarnings("StringSplitter")
+  private ProfileOptions parseProfileArgs(String[] args) {
+    if (args.length == 0 || !"profile".equalsIgnoreCase(args[0])) {
+      throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
+    }
+
+    String examplesRaw = null;
+    String modeRaw = null;
+    String maxPartitionsRaw = null;
+    String maxCoversRaw = null;
+    String timeBudgetRaw = null;
+    String limitRaw = null;
+    String randomCountRaw = null;
+    String randomFreeRaw = null;
+    String randomEdgesRaw = null;
+    String randomLabelsRaw = null;
+    String randomSeedRaw = null;
+
+    for (int i = 1; i < args.length; i++) {
+      String rawArg = args[i];
+      String option = rawArg;
+      String inlineValue = null;
+      if (rawArg.startsWith("--")) {
+        int equalsIndex = rawArg.indexOf('=');
+        if (equalsIndex > 0) {
+          option = rawArg.substring(0, equalsIndex);
+          inlineValue = rawArg.substring(equalsIndex + 1);
+          if (inlineValue.isEmpty()) {
+            inlineValue = null;
+          }
+        }
+      }
+
+      switch (option) {
+        case "--examples" ->
+            examplesRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--mode" -> modeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--max-partitions" ->
+            maxPartitionsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--max-covers" ->
+            maxCoversRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--time-budget-ms" ->
+            timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--limit" ->
+            limitRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-count" ->
+            randomCountRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-free-vars" ->
+            randomFreeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-edges" ->
+            randomEdgesRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-labels" ->
+            randomLabelsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--random-seed" ->
+            randomSeedRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
+      }
+    }
+
+    Mode mode = Mode.VALIDATE;
+    if (modeRaw != null) {
+      String normalized = modeRaw.toLowerCase(Locale.ROOT);
+      switch (normalized) {
+        case "validate" -> mode = Mode.VALIDATE;
+        case "enumerate" -> mode = Mode.ENUMERATE;
+        default -> throw new IllegalArgumentException("Invalid mode: " + modeRaw);
+      }
+    }
+
+    int maxPartitions =
+        parseInt(
+            maxPartitionsRaw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions");
+    int maxCovers =
+        parseInt(maxCoversRaw, DecompositionOptions.defaults().maxCovers(), "--max-covers");
+    long timeBudget =
+        parseLong(
+            timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
+    int limit = parseInt(limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
+    int randomCount = parseInt(randomCountRaw, 0, "--random-count");
+    boolean randomOptionsProvided =
+        randomFreeRaw != null
+            || randomEdgesRaw != null
+            || randomLabelsRaw != null
+            || randomSeedRaw != null;
+
+    RandomExampleConfig baseRandomConfig = null;
+    if (randomCount > 0 || randomOptionsProvided) {
+      int freeVariables =
+          parseInt(randomFreeRaw, RandomExampleConfig.DEFAULT_FREE_VARIABLES, "--random-free-vars");
+      int edges =
+          parseInt(randomEdgesRaw, RandomExampleConfig.DEFAULT_EDGE_COUNT, "--random-edges");
+      int labels =
+          parseInt(
+              randomLabelsRaw, RandomExampleConfig.DEFAULT_PREDICATE_LABELS, "--random-labels");
+      Long seed = randomSeedRaw != null ? parseLong(randomSeedRaw, 0L, "--random-seed") : null;
+      baseRandomConfig = new RandomExampleConfig(freeVariables, edges, labels, seed);
+    }
+
+    List<NamedQuery> queries = new ArrayList<>();
+    int randomIndex = 1;
+    if (examplesRaw == null || examplesRaw.isBlank()) {
+      queries.addAll(PipelineProfiler.defaultExamples());
+    } else {
+      for (String token : examplesRaw.split(",")) {
+        String trimmed = token.trim();
+        if (trimmed.isEmpty()) {
+          continue;
+        }
+        String normalized = trimmed.toLowerCase(Locale.ROOT);
+        if (isRandomExampleName(normalized)) {
+          RandomExampleConfig config = iterationRandomConfig(baseRandomConfig, randomIndex - 1);
+          CQ query = loadExampleByName(normalized, config);
+          queries.add(NamedQuery.of("random-" + randomIndex, query));
+          randomIndex++;
+        } else {
+          CQ query = loadExampleByName(normalized, null);
+          queries.add(NamedQuery.of(trimmed, query));
+        }
+      }
+    }
+
+    for (int i = 0; i < randomCount; i++) {
+      RandomExampleConfig config = iterationRandomConfig(baseRandomConfig, randomIndex - 1);
+      queries.add(PipelineProfiler.randomQuery("random-" + randomIndex, config));
+      randomIndex++;
+    }
+
+    DecompositionOptions options =
+        new DecompositionOptions(mode, maxPartitions, maxCovers, timeBudget, limit);
+    return new ProfileOptions(queries, options);
   }
 
   private CliOptions parseDecomposeArgs(String[] args) {
@@ -342,6 +554,15 @@ public final class Main {
     return normalized.equals("random") || normalized.equals("examplerandom");
   }
 
+  private RandomExampleConfig iterationRandomConfig(RandomExampleConfig base, int offset) {
+    if (base == null) {
+      return null;
+    }
+    Long seed = base.seed() != null ? base.seed() + offset : null;
+    return new RandomExampleConfig(
+        base.freeVariableCount(), base.edgeCount(), base.predicateLabelCount(), seed);
+  }
+
   private String[] remapExampleArgs(String exampleName, String[] remaining) {
     String[] remapped = new String[remaining.length + 3];
     remapped[0] = "decompose";
@@ -412,7 +633,13 @@ public final class Main {
   }
 
   private CQ loadExample(CliOptions options) {
-    String exampleName = options.exampleName();
+    return loadExampleByName(options.exampleName(), options.randomExampleConfig());
+  }
+
+  private CQ loadExampleByName(String exampleName, RandomExampleConfig randomConfig) {
+    if (exampleName == null || exampleName.isBlank()) {
+      throw new IllegalArgumentException("Unknown example: " + exampleName);
+    }
     String normalized = exampleName.trim().toLowerCase(Locale.ROOT);
     return switch (normalized) {
       case "example1" -> Example.example1();
@@ -425,9 +652,7 @@ public final class Main {
       case "example8" -> Example.example8();
       case "random", "examplerandom" -> {
         RandomExampleConfig config =
-            options.randomExampleConfig() != null
-                ? options.randomExampleConfig()
-                : RandomExampleConfig.defaults();
+            randomConfig != null ? randomConfig : RandomExampleConfig.defaults();
         yield Example.random(config);
       }
       default -> throw new IllegalArgumentException("Unknown example: " + exampleName);
