@@ -6,19 +6,19 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
-/** Generates the CPQ alternatives that arise from a single CQ edge. */
-final class SingleEdgeOptionFactory {
+/** Generates the CPQ construction rules that arise from a single CQ edge. */
+final class SingleEdgeRuleFactory {
 
-  private SingleEdgeOptionFactory() {}
+  private SingleEdgeRuleFactory() {}
 
   static List<KnownComponent> build(Edge edge, BitSet edgeBits) {
-    List<KnownComponent> options = new ArrayList<>();
+    List<KnownComponent> constructionRules = new ArrayList<>();
 
-    addForward(edge, edgeBits, options);
-    addInverse(edge, edgeBits, options);
-    addBacktracks(edge, edgeBits, options);
+    addForward(edge, edgeBits, constructionRules);
+    addInverse(edge, edgeBits, constructionRules);
+    addBacktracks(edge, edgeBits, constructionRules);
 
-    return options;
+    return constructionRules;
   }
 
   private static void addForward(Edge edge, BitSet bits, List<KnownComponent> out) {

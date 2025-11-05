@@ -9,9 +9,9 @@ import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
-import decomposition.partitions.PartitionValidator.ComponentOptions;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats.CacheSnapshot;
+import decomposition.partitions.PartitionValidator.ComponentConstructionRules;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
 import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
@@ -35,17 +35,17 @@ final class PartitionValidatorTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(partition.components(), extraction.freeVariables());
     ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
-    ComponentOptionsCacheStats stats = new ComponentOptionsCacheStats();
+    ComponentRuleCacheStats stats = new ComponentRuleCacheStats();
     PartitionValidator validator = new PartitionValidator(stats);
 
-    List<ComponentOptions> first =
-        validator.componentOptions(
+    List<ComponentConstructionRules> first =
+        validator.componentConstructionRules(
             partition, joinNodes, builder, extraction.freeVariables(), edges);
-    List<ComponentOptions> second =
-        validator.componentOptions(
+    List<ComponentConstructionRules> second =
+        validator.componentConstructionRules(
             partition, joinNodes, builder, extraction.freeVariables(), edges);
 
-    assertTrue(!first.isEmpty(), "Expected at least one component option set");
+    assertTrue(!first.isEmpty(), "Expected at least one component construction rule set");
     assertTrue(second.size() == first.size(), "Repeated lookups should return same count");
 
     CacheSnapshot snapshot = stats.snapshot();

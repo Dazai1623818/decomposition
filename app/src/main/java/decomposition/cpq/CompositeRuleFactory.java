@@ -9,22 +9,24 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * Generates composite CPQ candidates by joining subcomponents through concatenation or
+ * Generates composite CPQ construction rules by joining subcomponents via concatenation or
  * intersection.
  */
-final class CompositeOptionFactory {
+final class CompositeRuleFactory {
 
-  private CompositeOptionFactory() {}
+  private CompositeRuleFactory() {}
 
   static List<KnownComponent> build(
-      BitSet edgeBits, int totalEdgeCount, Function<BitSet, List<KnownComponent>> optionLookup) {
+      BitSet edgeBits,
+      int totalEdgeCount,
+      Function<BitSet, List<KnownComponent>> constructionRuleLookup) {
     List<KnownComponent> results = new ArrayList<>();
     forEachSplit(
         edgeBits,
         totalEdgeCount,
         (subsetA, subsetB) -> {
-          List<KnownComponent> left = optionLookup.apply(subsetA);
-          List<KnownComponent> right = optionLookup.apply(subsetB);
+          List<KnownComponent> left = constructionRuleLookup.apply(subsetA);
+          List<KnownComponent> right = constructionRuleLookup.apply(subsetB);
           if (left.isEmpty() || right.isEmpty()) {
             return;
           }

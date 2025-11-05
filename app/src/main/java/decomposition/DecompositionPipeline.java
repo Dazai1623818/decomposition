@@ -13,7 +13,7 @@ import decomposition.partitions.PartitionFilter.FilterResult;
 import decomposition.partitions.PartitionFilter.FilteredPartition;
 import decomposition.partitions.PartitionGenerator;
 import decomposition.partitions.PartitionValidator;
-import decomposition.partitions.PartitionValidator.ComponentOptions;
+import decomposition.partitions.PartitionValidator.ComponentConstructionRules;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
@@ -105,26 +105,26 @@ public final class DecompositionPipeline {
       Set<String> joinNodes = filteredPartition.joinNodes();
       partitionIndex++;
 
-      List<ComponentOptions> componentOptions =
-          validator.componentOptions(
+      List<ComponentConstructionRules> componentRules =
+          validator.componentConstructionRules(
               partition, joinNodes, builder, extraction.freeVariables(), edges);
 
-      if (!componentOptions.stream().allMatch(ComponentOptions::hasCandidates)) {
+      if (!componentRules.stream().allMatch(ComponentConstructionRules::hasRules)) {
         int componentIndex = 0;
-        for (ComponentOptions componentOption : componentOptions) {
+        for (ComponentConstructionRules componentRuleSet : componentRules) {
           componentIndex++;
-          BitSet componentBits = componentOption.component().edgeBits();
+          BitSet componentBits = componentRuleSet.component().edgeBits();
           String signature = BitsetUtils.signature(componentBits, edgeCount);
 
-          if (componentOption.rawOptions().isEmpty()) {
+          if (componentRuleSet.rawRules().isEmpty()) {
             diagnostics.add(
                 "Partition#"
                     + partitionIndex
                     + " component#"
                     + componentIndex
-                    + " rejected: no CPQ candidates for bits "
+                    + " rejected: no CPQ construction rules for bits "
                     + signature);
-          } else if (componentOption.joinFilteredOptions().isEmpty()) {
+          } else if (componentRuleSet.joinFilteredRules().isEmpty()) {
             diagnostics.add(
                 "Partition#"
                     + partitionIndex
@@ -139,12 +139,12 @@ public final class DecompositionPipeline {
 
       cpqPartitions.add(partition);
 
-      List<Integer> optionCounts =
-          componentOptions.stream().map(ComponentOptions::candidateCount).toList();
+      List<Integer> ruleCounts =
+          componentRules.stream().map(ComponentConstructionRules::ruleCount).toList();
       List<List<KnownComponent>> tuples =
           effectiveOptions.mode().enumerateTuples()
               ? validator.enumerateDecompositions(
-                  componentOptions,
+                  componentRules,
                   effectiveOptions.enumerationLimit() == 0
                       ? 1
                       : Math.min(1, effectiveOptions.enumerationLimit()))
@@ -153,21 +153,21 @@ public final class DecompositionPipeline {
       List<KnownComponent> preferred =
           !tuples.isEmpty()
               ? tuples.get(0)
-              : componentOptions.stream()
-                  .map(ComponentOptions::finalOptions)
-                  .filter(candidateOptions -> !candidateOptions.isEmpty())
-                  .map(candidateOptions -> candidateOptions.get(0))
+              : componentRules.stream()
+                  .map(ComponentConstructionRules::finalRules)
+                  .filter(finalRules -> !finalRules.isEmpty())
+                  .map(finalRules -> finalRules.get(0))
                   .toList();
 
       preferred.forEach(kc -> registerRecognized(recognizedCatalogueMap, kc, edgeCount));
-      componentOptions.stream()
-          .map(ComponentOptions::finalOptions)
+      componentRules.stream()
+          .map(ComponentConstructionRules::finalRules)
           .forEach(
-              candidateOptions ->
-                  registerOptionVariants(candidateOptions, recognizedCatalogueMap, edgeCount));
+              finalRules ->
+                  registerConstructionRuleVariants(finalRules, recognizedCatalogueMap, edgeCount));
 
       partitionEvaluations.add(
-          new PartitionEvaluation(partition, partitionIndex, optionCounts, tuples));
+          new PartitionEvaluation(partition, partitionIndex, ruleCounts, tuples));
 
       if (timeExceeded(effectiveOptions, timing)) {
         terminationReason = "time_budget_exceeded_during_validation";
@@ -179,7 +179,7 @@ public final class DecompositionPipeline {
       Set<String> globalJoinNodes =
           JoinNodeUtils.computeJoinNodes(
               List.of(new Component(fullBits, vertices)), extraction.freeVariables());
-      List<KnownComponent> globalCandidates = builder.options(fullBits, globalJoinNodes);
+      List<KnownComponent> globalCandidates = builder.constructionRules(fullBits, globalJoinNodes);
       globalCatalogue = globalCandidates;
       finalComponent = selectPreferredFinalComponent(globalCandidates);
     }
@@ -206,28 +206,30 @@ public final class DecompositionPipeline {
         terminationReason);
   }
 
-  private void registerOptionVariants(
-      List<KnownComponent> options, Map<ComponentKey, KnownComponent> catalogue, int edgeCount) {
-    if (options == null) {
+  private void registerConstructionRuleVariants(
+      List<KnownComponent> constructionRules,
+      Map<ComponentKey, KnownComponent> catalogue,
+      int edgeCount) {
+    if (constructionRules == null) {
       return;
     }
 
-    for (KnownComponent option : options) {
-      registerRecognized(catalogue, option, edgeCount);
+    for (KnownComponent rule : constructionRules) {
+      registerRecognized(catalogue, rule, edgeCount);
     }
   }
 
   private void registerRecognized(
-      Map<ComponentKey, KnownComponent> catalogue, KnownComponent candidate, int edgeCount) {
-    ComponentKey key = candidate.toKey(edgeCount);
-    catalogue.putIfAbsent(key, candidate);
+      Map<ComponentKey, KnownComponent> catalogue, KnownComponent rule, int edgeCount) {
+    ComponentKey key = rule.toKey(edgeCount);
+    catalogue.putIfAbsent(key, rule);
   }
 
-  private KnownComponent selectPreferredFinalComponent(List<KnownComponent> candidates) {
-    if (candidates == null || candidates.isEmpty()) {
+  private KnownComponent selectPreferredFinalComponent(List<KnownComponent> rules) {
+    if (rules == null || rules.isEmpty()) {
       return null;
     }
-    return candidates.get(0);
+    return rules.get(0);
   }
 
   private DecompositionResult buildResult(

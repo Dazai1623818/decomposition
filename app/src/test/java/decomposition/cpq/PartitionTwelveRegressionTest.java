@@ -35,11 +35,12 @@ final class PartitionTwelveRegressionTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(List.of(component), extraction.freeVariables());
 
-    List<KnownComponent> options = builder.options(fullBits, joinNodes);
+    List<KnownComponent> rules = builder.constructionRules(fullBits, joinNodes);
 
-    assertFalse(options.isEmpty(), "Expected at least one CPQ option for the full component");
+    assertFalse(
+        rules.isEmpty(), "Expected at least one CPQ construction rule for the full component");
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     "A".equals(kc.source())
@@ -47,7 +48,7 @@ final class PartitionTwelveRegressionTest {
                         && kc.cpq().toString().contains("∩ id")),
         () ->
             "Expected a loop anchored at join node A but saw: "
-                + options.stream()
+                + rules.stream()
                     .map(kc -> kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]")
                     .toList());
   }

@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Utilities for reasoning about join nodes within components and CPQ options. */
+/** Utilities for reasoning about join nodes within components and CPQ construction rules. */
 public final class JoinNodeUtils {
 
   private JoinNodeUtils() {}
@@ -143,16 +143,16 @@ public final class JoinNodeUtils {
   }
 
   /**
-   * Checks whether the endpoints of the provided CPQ option respect the directional roles inferred
-   * for the local join nodes of its component.
+   * Checks whether the endpoints of the provided CPQ construction rule respect the directional
+   * roles inferred for the local join nodes of its component.
    *
-   * @param option CPQ option to validate
+   * @param rule CPQ construction rule to validate
    * @param localJoinNodes join nodes present inside the component
    * @return {@code true} if endpoints comply with join node expectations
    */
   public static boolean endpointsRespectJoinNodeRoles(
-      KnownComponent option, decomposition.model.Component component, Set<String> localJoinNodes) {
-    Objects.requireNonNull(option, "option");
+      KnownComponent rule, decomposition.model.Component component, Set<String> localJoinNodes) {
+    Objects.requireNonNull(rule, "rule");
     Objects.requireNonNull(component, "component");
     Objects.requireNonNull(localJoinNodes, "localJoinNodes");
 
@@ -160,8 +160,8 @@ public final class JoinNodeUtils {
       return true;
     }
 
-    String source = option.source();
-    String target = option.target();
+    String source = rule.source();
+    String target = rule.target();
 
     if (localJoinNodes.size() == 1) {
       String join = localJoinNodes.iterator().next();

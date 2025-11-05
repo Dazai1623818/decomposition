@@ -6,8 +6,8 @@ import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.RandomExampleConfig;
 import decomposition.partitions.PartitionValidator;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats.CacheSnapshot;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,7 +75,7 @@ public final class PipelineProfiler {
 
     List<ProfileRun> runs = new ArrayList<>(queries.size());
     for (NamedQuery query : queries) {
-      ComponentOptionsCacheStats stats = new ComponentOptionsCacheStats();
+      ComponentRuleCacheStats stats = new ComponentRuleCacheStats();
       DecompositionPipeline pipeline =
           new DecompositionPipeline(() -> new PartitionValidator(stats));
       DecompositionResult result =

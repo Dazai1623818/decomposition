@@ -100,7 +100,7 @@ final class JsonReportBuilder {
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       Map<String, Object> map = new LinkedHashMap<>();
       map.put("index", evaluation.partitionIndex());
-      map.put("component_options", evaluation.componentOptionCounts());
+      map.put("component_rules", evaluation.componentRuleCounts());
       map.put("components", componentSummaries(evaluation.partition()));
       if (!evaluation.decompositionTuples().isEmpty()) {
         map.put("tuples", tupleSummaries(evaluation.decompositionTuples()));

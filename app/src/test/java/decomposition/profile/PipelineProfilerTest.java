@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.DecompositionOptions;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats.CacheSnapshot;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;
 import decomposition.profile.PipelineProfiler.ProfileRun;

@@ -38,17 +38,17 @@ final class ComponentCPQBuilderBacktrackTest {
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4 ◦ r4⁻) ∩ id"));
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4⁻ ◦ r4) ∩ id"));
 
-    List<KnownComponent> options = builder.options(r4Bits);
+    List<KnownComponent> rules = builder.constructionRules(r4Bits);
     Edge r4 = edges.get(r4Index);
 
-    assertFalse(options.isEmpty(), "Expected CPQ options for single edge component");
+    assertFalse(rules.isEmpty(), "Expected CPQ construction rules for single edge component");
     assertTrue(
-        options.stream()
+        rules.stream()
             .filter(kc -> kc.source().equals(r4.source()) && kc.target().equals(r4.source()))
             .allMatch(kc -> kc.cpqRule().contains("∩ id")),
         () ->
             "Backtrack loop at source missing ∩ id but saw:\n"
-                + options.stream()
+                + rules.stream()
                     .map(
                         kc ->
                             kc.cpqRule()
@@ -60,12 +60,12 @@ final class ComponentCPQBuilderBacktrackTest {
                                 + kc.derivation())
                     .collect(Collectors.joining("\n")));
     assertTrue(
-        options.stream()
+        rules.stream()
             .filter(kc -> kc.source().equals(r4.target()) && kc.target().equals(r4.target()))
             .allMatch(kc -> kc.cpqRule().contains("∩ id")),
         () ->
             "Backtrack loop at target missing ∩ id but saw:\n"
-                + options.stream()
+                + rules.stream()
                     .map(
                         kc ->
                             kc.cpqRule()
@@ -78,7 +78,7 @@ final class ComponentCPQBuilderBacktrackTest {
                     .collect(Collectors.joining("\n")));
 
     Set<List<String>> endpointPairs =
-        options.stream().map(kc -> List.of(kc.source(), kc.target())).collect(Collectors.toSet());
+        rules.stream().map(kc -> List.of(kc.source(), kc.target())).collect(Collectors.toSet());
 
     Set<List<String>> expectedPairs =
         Set.of(
@@ -126,15 +126,15 @@ final class ComponentCPQBuilderBacktrackTest {
     BitSet selfLoopBits = new BitSet(edges.size());
     selfLoopBits.set(selfLoopIndex);
 
-    List<KnownComponent> options = builder.options(selfLoopBits);
+    List<KnownComponent> rules = builder.constructionRules(selfLoopBits);
 
-    assertEquals(1, options.size(), "Self-loop should produce a single structural option");
-    KnownComponent loop = options.get(0);
+    assertEquals(1, rules.size(), "Self-loop should produce a single structural rule");
+    KnownComponent loop = rules.get(0);
     assertTrue(
         loop.cpqRule().contains("∩ id"),
         () ->
             "Self-loop should enforce equality via id but saw: "
-                + options.stream()
+                + rules.stream()
                     .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "]")
                     .collect(Collectors.joining(", ")));
   }

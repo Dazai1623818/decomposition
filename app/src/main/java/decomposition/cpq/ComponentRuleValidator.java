@@ -29,8 +29,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-/** Validates whether a CPQ candidate actually matches the underlying component. */
-final class ComponentCandidateValidator {
+/** Validates whether a CPQ construction rule actually matches the underlying component. */
+final class ComponentRuleValidator {
 
   private final List<Edge> edges;
   private static final Field EDGE_SYMBOL_FIELD;
@@ -50,18 +50,18 @@ final class ComponentCandidateValidator {
     }
   }
 
-  ComponentCandidateValidator(List<Edge> edges) {
+  ComponentRuleValidator(List<Edge> edges) {
     this.edges = edges;
   }
 
-  List<KnownComponent> validateAndExpand(KnownComponent candidate) {
-    KnownComponent anchored = ensureLoopAnchored(candidate);
+  List<KnownComponent> validateAndExpand(KnownComponent rule) {
+    KnownComponent anchored = ensureLoopAnchored(rule);
     List<KnownComponent> variants = new ArrayList<>();
     if (matchesComponent(anchored)) {
       variants.add(anchored);
     }
     if (!anchored.source().equals(anchored.target())) {
-      Optional<KnownComponent> reversed = reverseCandidate(anchored);
+      Optional<KnownComponent> reversed = reverseRule(anchored);
       if (reversed.isPresent()) {
         KnownComponent reversedAnchored = ensureLoopAnchored(reversed.get());
         if (matchesComponent(reversedAnchored)) {
@@ -72,38 +72,36 @@ final class ComponentCandidateValidator {
     return Collections.unmodifiableList(variants);
   }
 
-  KnownComponent ensureLoopAnchored(KnownComponent candidate) {
-    if (!candidate.source().equals(candidate.target())) {
-      return candidate;
+  KnownComponent ensureLoopAnchored(KnownComponent rule) {
+    if (!rule.source().equals(rule.target())) {
+      return rule;
     }
     try {
-      QueryGraphCPQ graph = candidate.cpq().toQueryGraph();
+      QueryGraphCPQ graph = rule.cpq().toQueryGraph();
       if (graph.isLoop()) {
-        return candidate;
+        return rule;
       }
     } catch (RuntimeException ex) {
-      return candidate;
+      return rule;
     }
     try {
-      CPQ anchored = CPQ.parse("(" + candidate.cpq().toString() + " ∩ id)");
-      String derivation = candidate.derivation() + " + anchored with id";
-      return new KnownComponent(
-          anchored, candidate.edges(), candidate.source(), candidate.target(), derivation);
+      CPQ anchored = CPQ.parse("(" + rule.cpq().toString() + " ∩ id)");
+      String derivation = rule.derivation() + " + anchored with id";
+      return new KnownComponent(anchored, rule.edges(), rule.source(), rule.target(), derivation);
     } catch (RuntimeException ex) {
-      return candidate;
+      return rule;
     }
   }
 
-  private Optional<KnownComponent> reverseCandidate(KnownComponent candidate) {
+  private Optional<KnownComponent> reverseRule(KnownComponent rule) {
     try {
-      CPQ reversedCpq = reverse(candidate.cpq());
+      CPQ reversedCpq = reverse(rule.cpq());
       if (reversedCpq == null) {
         return Optional.empty();
       }
-      String derivation = candidate.derivation() + " + reversed orientation";
+      String derivation = rule.derivation() + " + reversed orientation";
       return Optional.of(
-          new KnownComponent(
-              reversedCpq, candidate.edges(), candidate.target(), candidate.source(), derivation));
+          new KnownComponent(reversedCpq, rule.edges(), rule.target(), rule.source(), derivation));
     } catch (UnsupportedOperationException | IllegalStateException ex) {
       return Optional.empty();
     }
@@ -171,45 +169,45 @@ final class ComponentCandidateValidator {
     }
   }
 
-  boolean matchesComponent(KnownComponent candidate) {
-    List<Edge> componentEdges = edgesFor(candidate.edges());
-    if (componentEdges.isEmpty() || !coversEndpoints(candidate, componentEdges)) {
+  boolean matchesComponent(KnownComponent rule) {
+    List<Edge> componentEdges = edgesFor(rule.edges());
+    if (componentEdges.isEmpty() || !coversEndpoints(rule, componentEdges)) {
       return false;
     }
 
-    ParsedCandidate parsed = parseCandidate(candidate);
+    ParsedRule parsed = parseRule(rule);
     if (parsed == null || parsed.cpqEdges().size() != componentEdges.size()) {
       return false;
     }
 
-    boolean candidateIsLoop = candidate.source().equals(candidate.target());
-    if (parsed.cpqGraph().isLoop() != candidateIsLoop) {
+    boolean ruleIsLoop = rule.source().equals(rule.target());
+    if (parsed.cpqGraph().isLoop() != ruleIsLoop) {
       return false;
     }
 
-    MatchContext context = MatchContext.create(parsed, componentEdges, candidate);
+    MatchContext context = MatchContext.create(parsed, componentEdges, rule);
     return matchEdges(0, context);
   }
 
-  private boolean coversEndpoints(KnownComponent candidate, List<Edge> componentEdges) {
+  private boolean coversEndpoints(KnownComponent rule, List<Edge> componentEdges) {
     LinkedHashSet<String> vertices = new LinkedHashSet<>();
     for (Edge edge : componentEdges) {
       vertices.add(edge.source());
       vertices.add(edge.target());
     }
-    return vertices.contains(candidate.source()) && vertices.contains(candidate.target());
+    return vertices.contains(rule.source()) && vertices.contains(rule.target());
   }
 
-  private ParsedCandidate parseCandidate(KnownComponent candidate) {
+  private ParsedRule parseRule(KnownComponent rule) {
     try {
-      CPQ cpq = candidate.cpq();
+      CPQ cpq = rule.cpq();
       CQ cqPattern = cpq.toCQ();
       QueryGraphCQ cqGraph = cqPattern.toQueryGraph();
       UniqueGraph<VarCQ, AtomCQ> graph = cqGraph.toUniqueGraph();
       QueryGraphCPQ cpqGraph = cpq.toQueryGraph();
       String sourceVarName = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
       String targetVarName = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
-      return new ParsedCandidate(graph.getEdges(), cpqGraph, sourceVarName, targetVarName);
+      return new ParsedRule(graph.getEdges(), cpqGraph, sourceVarName, targetVarName);
     } catch (RuntimeException ex) {
       return null;
     }
@@ -292,14 +290,14 @@ final class ComponentCandidateValidator {
     return false;
   }
 
-  private record ParsedCandidate(
+  private record ParsedRule(
       List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
       QueryGraphCPQ cpqGraph,
       String sourceVarName,
       String targetVarName) {}
 
   /**
-   * Mutable traversal state for validating a candidate against the component edges. The data
+   * Mutable traversal state for validating a construction rule against component edges. The data
    * structure mirrors the recursive backtracking expectation and keeps parameter lists short.
    */
   private record MatchContext(
@@ -312,14 +310,13 @@ final class ComponentCandidateValidator {
       String expectedSource,
       String expectedTarget) {
 
-    static MatchContext create(
-        ParsedCandidate parsed, List<Edge> componentEdges, KnownComponent candidate) {
+    static MatchContext create(ParsedRule parsed, List<Edge> componentEdges, KnownComponent rule) {
       Map<String, String> variables = new HashMap<>();
       Set<String> used = new HashSet<>();
-      variables.put(parsed.sourceVarName(), candidate.source());
-      variables.put(parsed.targetVarName(), candidate.target());
-      used.add(candidate.source());
-      used.add(candidate.target());
+      variables.put(parsed.sourceVarName(), rule.source());
+      variables.put(parsed.targetVarName(), rule.target());
+      used.add(rule.source());
+      used.add(rule.target());
       return new MatchContext(
           parsed.cpqEdges(),
           new ArrayList<>(componentEdges),
@@ -327,8 +324,8 @@ final class ComponentCandidateValidator {
           used,
           parsed.sourceVarName(),
           parsed.targetVarName(),
-          candidate.source(),
-          candidate.target());
+          rule.source(),
+          rule.target());
     }
   }
 }

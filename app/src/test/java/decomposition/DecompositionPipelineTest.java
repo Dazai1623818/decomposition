@@ -36,11 +36,11 @@ final class DecompositionPipelineTest {
         1, result.partitionEvaluations().size(), "Exactly one partition evaluation expected");
     assertEquals(
         1,
-        result.partitionEvaluations().get(0).componentOptionCounts().size(),
+        result.partitionEvaluations().get(0).componentRuleCounts().size(),
         "Single component in the partition");
     assertTrue(
-        result.partitionEvaluations().get(0).componentOptionCounts().get(0) >= 1,
-        "Single component should have at least one CPQ option");
+        result.partitionEvaluations().get(0).componentRuleCounts().get(0) >= 1,
+        "Single component should have at least one construction rule");
   }
 
   @Test
@@ -99,8 +99,8 @@ final class DecompositionPipelineTest {
     PartitionEvaluation evaluation = singleEdgePartition.orElseThrow();
 
     assertTrue(
-        evaluation.componentOptionCounts().stream().allMatch(count -> count > 0),
-        "Every single-edge component must yield at least one CPQ option");
+        evaluation.componentRuleCounts().stream().allMatch(count -> count > 0),
+        "Every single-edge component must yield at least one construction rule");
     assertFalse(
         evaluation.decompositionTuples().isEmpty(),
         "Single-edge partition should produce at least one decomposition tuple");
@@ -178,8 +178,8 @@ final class DecompositionPipelineTest {
 
     PartitionEvaluation evaluation = singleComponent.orElseThrow();
     assertTrue(
-        evaluation.componentOptionCounts().get(0) >= 1,
-        "Single component should have at least one CPQ option");
+        evaluation.componentRuleCounts().get(0) >= 1,
+        "Single component should have at least one construction rule");
 
     assertFalse(
         evaluation.decompositionTuples().isEmpty(),

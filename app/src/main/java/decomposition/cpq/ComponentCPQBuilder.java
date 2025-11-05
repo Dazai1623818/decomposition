@@ -1,104 +1,153 @@
 package decomposition.cpq;
 
+import decomposition.model.Edge;
+import decomposition.util.BitsetUtils;
+import decomposition.util.JoinNodeUtils;
+import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
-
-import decomposition.model.Edge;
-import decomposition.util.BitsetUtils;
-import decomposition.util.JoinNodeUtils;
+import java.util.function.Supplier;
 
 /** Builds CPQ expressions for connected components using gMark's CPQ model. */
 public final class ComponentCPQBuilder {
   private final List<Edge> edges;
-  private final Map<MemoKey, List<KnownComponent>> memo = new HashMap<>();
-  private final ComponentCandidateValidator candidateValidator;
+  private final ComponentRuleValidator ruleValidator;
+  private final Map<MemoKey, MemoizedRuleSet> memoizedRules = new ConcurrentHashMap<>();
 
   public ComponentCPQBuilder(List<Edge> edges) {
     this.edges = List.copyOf(edges);
-    this.candidateValidator = new ComponentCandidateValidator(this.edges);
+    this.ruleValidator = new ComponentRuleValidator(this.edges);
   }
 
-  public List<Edge> allEdges() {
-    return edges;
+  public List<KnownComponent> constructionRules(BitSet edgeSubset) {
+    return constructionRules(edgeSubset, Set.of());
   }
 
-  public List<KnownComponent> options(BitSet edgeBits) {
-    return options(edgeBits, Set.of());
+  public List<KnownComponent> constructionRules(BitSet edgeSubset, Set<String> requestedAnchors) {
+    Objects.requireNonNull(edgeSubset, "edgeSubset");
+    Set<String> normalizedAnchors =
+        requestedAnchors == null || requestedAnchors.isEmpty()
+            ? Set.of()
+            : Set.copyOf(requestedAnchors);
+    return lookupConstructionRules(edgeSubset, normalizedAnchors);
   }
 
-  public List<KnownComponent> options(BitSet edgeBits, Set<String> joinNodes) {
-    Objects.requireNonNull(edgeBits, "edgeBits");
-    Set<String> normalizedJoinNodes =
-        joinNodes == null || joinNodes.isEmpty() ? Set.of() : Set.copyOf(joinNodes);
-    return enumerate(edgeBits, normalizedJoinNodes);
+  /**
+   * Returns the memoized construction rule list for the given edge subset and anchor requirements.
+   *
+   * @param edgeSubset edges that define the subgraph
+   * @param requestedAnchors join nodes that must be covered by the component
+   */
+  private List<KnownComponent> lookupConstructionRules(
+      BitSet edgeSubset, Set<String> requestedAnchors) {
+    Set<String> anchors = JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedAnchors);
+    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), anchors);
+    MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
+    Function<BitSet, List<KnownComponent>> subsetResolver =
+        subset -> resolveSubgraph(subset, requestedAnchors);
+    return entry.resolve(
+        () -> evaluateStages(edgeSubset, requestedAnchors, anchors, subsetResolver));
   }
 
-  private List<KnownComponent> enumerate(BitSet edgeBits, Set<String> joinNodes) {
-    Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(edgeBits, edges, joinNodes);
-    MemoKey key = new MemoKey(BitsetUtils.signature(edgeBits, edges.size()), localJoinNodes);
-    List<KnownComponent> cached = memo.get(key);
-    if (cached != null) {
-      return cached;
-    }
-    List<KnownComponent> computed = collectOptions(edgeBits, joinNodes, localJoinNodes);
-    memo.put(key, computed);
-    return computed;
-  }
-
-  private List<KnownComponent> collectOptions(
-      BitSet edgeBits, Set<String> originalJoinNodes, Set<String> localJoinNodes) {
-    int cardinality = edgeBits.cardinality();
-    if (cardinality == 0) {
+  /**
+   * Gathers construction rules across all stages, validates them, and returns the deduplicated
+   * result.
+   */
+  private List<KnownComponent> evaluateStages(
+      BitSet edgeSubset,
+      Set<String> requestedAnchors,
+      Set<String> anchors,
+      Function<BitSet, List<KnownComponent>> subsetResolver) {
+    List<KnownComponent> stageRules =
+        collectStageConstructionRules(edgeSubset, requestedAnchors, anchors, subsetResolver);
+    if (stageRules.isEmpty()) {
       return List.of();
     }
+    return validateAndDeduplicate(stageRules);
+  }
 
-    OptionAccumulator accumulator = new OptionAccumulator();
-    if (cardinality == 1) {
-      accumulator.addAll(singleEdgeOptions(edgeBits));
+  /**
+   * Collects the raw construction rules emitted by the individual construction stages. Each stage
+   * handles a distinct shape: single-edge atoms, loop backtracks, and composite joins.
+   */
+  private List<KnownComponent> collectStageConstructionRules(
+      BitSet edgeSubset,
+      Set<String> requestedAnchors,
+      Set<String> anchors,
+      Function<BitSet, List<KnownComponent>> subsetResolver) {
+    int edgeCount = edgeSubset.cardinality();
+    if (edgeCount == 0) {
+      return List.of();
+    }
+    List<KnownComponent> rules = new ArrayList<>();
+    if (edgeCount == 1) {
+      rules.addAll(buildSingleEdgeRules(edgeSubset));
     } else {
-      accumulator.addAll(loopBacktrackOptions(edgeBits, localJoinNodes));
-      accumulator.addAll(compositeOptions(edgeBits, originalJoinNodes));
+      rules.addAll(buildLoopBacktrackRules(edgeSubset, anchors));
+      rules.addAll(buildCompositeRules(edgeSubset, subsetResolver));
     }
-    return accumulator.snapshot();
+    return List.copyOf(rules);
   }
 
-  private List<KnownComponent> singleEdgeOptions(BitSet edgeBits) {
-    int edgeIndex = edgeBits.nextSetBit(0);
+  /**
+   * Validates raw construction rules, expands them as needed, and merges duplicates while
+   * preserving emission order.
+   */
+  private List<KnownComponent> validateAndDeduplicate(List<KnownComponent> rawRules) {
+    ComponentDeduplicator deduplicator = new ComponentDeduplicator();
+    for (KnownComponent rule : rawRules) {
+      for (KnownComponent variant : ruleValidator.validateAndExpand(rule)) {
+        deduplicator.include(variant);
+      }
+    }
+    return deduplicator.snapshot();
+  }
+
+  private List<KnownComponent> buildSingleEdgeRules(BitSet edgeSubset) {
+    int edgeIndex = edgeSubset.nextSetBit(0);
     Edge edge = edges.get(edgeIndex);
-    return SingleEdgeOptionFactory.build(edge, edgeBits);
+    return SingleEdgeRuleFactory.build(edge, edgeSubset);
   }
 
-  private List<KnownComponent> loopBacktrackOptions(BitSet edgeBits, Set<String> localJoinNodes) {
-    if (localJoinNodes.size() > 1) {
+  private List<KnownComponent> buildLoopBacktrackRules(BitSet edgeSubset, Set<String> anchors) {
+    if (anchors.size() > 1) {
       return List.of();
     }
-    return LoopBacktrackBuilder.build(edges, edgeBits, localJoinNodes);
+    return LoopBacktrackBuilder.build(edges, edgeSubset, anchors);
   }
 
-  private List<KnownComponent> compositeOptions(BitSet edgeBits, Set<String> originalJoinNodes) {
-    Function<BitSet, List<KnownComponent>> lookup = subset -> enumerate(subset, originalJoinNodes);
-    return CompositeOptionFactory.build(edgeBits, edges.size(), lookup);
+  private List<KnownComponent> buildCompositeRules(
+      BitSet edgeSubset, Function<BitSet, List<KnownComponent>> subsetResolver) {
+    return CompositeRuleFactory.build(edgeSubset, edges.size(), subsetResolver);
   }
 
-  private final class OptionAccumulator {
+  /**
+   * Resolves component construction rules for a subgraph without triggering nested computeIfAbsent
+   * recursion.
+   */
+  private List<KnownComponent> resolveSubgraph(BitSet edgeSubset, Set<String> requestedAnchors) {
+    Set<String> anchors = JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedAnchors);
+    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), anchors);
+    MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
+    Function<BitSet, List<KnownComponent>> subsetResolver =
+        subset -> resolveSubgraph(subset, requestedAnchors);
+    return entry.resolve(
+        () -> evaluateStages(edgeSubset, requestedAnchors, anchors, subsetResolver));
+  }
+
+  /** Deduplicates validated construction rules based on their structural signature. */
+  private final class ComponentDeduplicator {
     private final Map<ComponentKey, KnownComponent> unique = new LinkedHashMap<>();
 
-    void addAll(List<KnownComponent> candidates) {
-      if (candidates == null || candidates.isEmpty()) {
-        return;
-      }
-      for (KnownComponent candidate : candidates) {
-        for (KnownComponent variant : candidateValidator.validateAndExpand(candidate)) {
-          ComponentKey key = variant.toKey(edges.size());
-          unique.putIfAbsent(key, variant);
-        }
-      }
+    void include(KnownComponent rule) {
+      ComponentKey key = rule.toKey(edges.size());
+      unique.putIfAbsent(key, rule);
     }
 
     List<KnownComponent> snapshot() {
@@ -106,29 +155,22 @@ public final class ComponentCPQBuilder {
     }
   }
 
-  private static final class MemoKey {
-    private final String signature;
-    private final Set<String> anchors;
+  private static final class MemoizedRuleSet {
+    private volatile List<KnownComponent> value;
 
-    MemoKey(String signature, Set<String> anchors) {
-      this.signature = signature;
-      this.anchors = anchors;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (this == obj) {
-        return true;
+    List<KnownComponent> resolve(Supplier<List<KnownComponent>> computer) {
+      List<KnownComponent> resolved = value;
+      if (resolved != null) {
+        return resolved;
       }
-      if (!(obj instanceof MemoKey other)) {
-        return false;
+      synchronized (this) {
+        if (value == null) {
+          value = Objects.requireNonNull(computer.get(), "computedComponents");
+        }
+        return value;
       }
-      return signature.equals(other.signature) && anchors.equals(other.anchors);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(signature, anchors);
     }
   }
+
+  private record MemoKey(String signature, Set<String> anchors) {}
 }

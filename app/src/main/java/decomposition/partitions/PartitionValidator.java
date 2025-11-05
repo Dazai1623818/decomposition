@@ -18,14 +18,14 @@ import java.util.stream.Collectors;
 
 /** Validates partitions against the CPQ builder and enumerates component combinations. */
 public final class PartitionValidator {
-  private final Map<ComponentOptionsKey, CachedComponentOptions> optionsCache = new HashMap<>();
-  private final ComponentOptionsCacheStats cacheStats;
+  private final Map<ComponentRuleCacheKey, CachedComponentRules> ruleCache = new HashMap<>();
+  private final ComponentRuleCacheStats cacheStats;
 
   public PartitionValidator() {
-    this(new ComponentOptionsCacheStats());
+    this(new ComponentRuleCacheStats());
   }
 
-  public PartitionValidator(ComponentOptionsCacheStats cacheStats) {
+  public PartitionValidator(ComponentRuleCacheStats cacheStats) {
     this.cacheStats = Objects.requireNonNull(cacheStats, "cacheStats");
   }
 
@@ -35,8 +35,9 @@ public final class PartitionValidator {
       ComponentCPQBuilder builder,
       Set<String> freeVariables,
       List<Edge> allEdges) {
-    return componentOptions(partition, joinNodes, builder, freeVariables, allEdges).stream()
-        .allMatch(ComponentOptions::hasCandidates);
+    return componentConstructionRules(partition, joinNodes, builder, freeVariables, allEdges)
+        .stream()
+        .allMatch(ComponentConstructionRules::hasRules);
   }
 
   public List<List<KnownComponent>> enumerateDecompositions(
@@ -61,22 +62,24 @@ public final class PartitionValidator {
       int limit,
       Set<String> freeVariables,
       List<Edge> allEdges) {
-    List<ComponentOptions> perComponent =
-        componentOptions(partition, joinNodes, builder, freeVariables, allEdges);
-    return enumerateDecompositions(perComponent, limit);
+    List<ComponentConstructionRules> perComponentRules =
+        componentConstructionRules(partition, joinNodes, builder, freeVariables, allEdges);
+    return enumerateDecompositions(perComponentRules, limit);
   }
 
   public List<List<KnownComponent>> enumerateDecompositions(
-      List<ComponentOptions> componentOptions, int limit) {
-    if (componentOptions.stream().anyMatch(options -> options.finalOptions().isEmpty())) {
+      List<ComponentConstructionRules> componentRules, int limit) {
+    if (componentRules.stream().anyMatch(rules -> rules.finalRules().isEmpty())) {
       return List.of();
     }
-    List<List<KnownComponent>> perComponentOptions =
-        componentOptions.stream().map(ComponentOptions::finalOptions).collect(Collectors.toList());
-    return cartesian(perComponentOptions, limit);
+    List<List<KnownComponent>> perComponentRuleLists =
+        componentRules.stream()
+            .map(ComponentConstructionRules::finalRules)
+            .collect(Collectors.toList());
+    return cartesian(perComponentRuleLists, limit);
   }
 
-  public List<ComponentOptions> componentOptions(
+  public List<ComponentConstructionRules> componentConstructionRules(
       Partition partition,
       Set<String> joinNodes,
       ComponentCPQBuilder builder,
@@ -89,62 +92,62 @@ public final class PartitionValidator {
     Objects.requireNonNull(allEdges, "allEdges");
 
     List<Component> components = partition.components();
-    List<ComponentOptions> results = new ArrayList<>(components.size());
+    List<ComponentConstructionRules> results = new ArrayList<>(components.size());
     Set<String> normalizedJoinNodes = normalize(joinNodes);
     Set<String> normalizedFreeVars = normalize(freeVariables);
     int totalComponents = components.size();
 
     for (Component component : components) {
-      ComponentOptionsKey key =
-          new ComponentOptionsKey(
+      ComponentRuleCacheKey key =
+          new ComponentRuleCacheKey(
               BitsetUtils.signature(component.edgeBits(), allEdges.size()),
               totalComponents,
               normalizedJoinNodes,
               normalizedFreeVars);
-      CachedComponentOptions cached = optionsCache.get(key);
+      CachedComponentRules cached = ruleCache.get(key);
       if (cached == null) {
         cacheStats.recordMiss();
         cached =
-            buildComponentOptions(
+            buildComponentRules(
                 component, normalizedJoinNodes, builder, normalizedFreeVars, totalComponents);
-        optionsCache.put(key, cached);
+        ruleCache.put(key, cached);
       } else {
         cacheStats.recordHit();
       }
       results.add(
-          new ComponentOptions(
-              component, cached.raw(), cached.joinFiltered(), cached.finalOptions()));
+          new ComponentConstructionRules(
+              component, cached.raw(), cached.joinFiltered(), cached.finalRules()));
     }
     return List.copyOf(results);
   }
 
-  private CachedComponentOptions buildComponentOptions(
+  private CachedComponentRules buildComponentRules(
       Component component,
       Set<String> joinNodes,
       ComponentCPQBuilder builder,
       Set<String> freeVariables,
       int totalComponents) {
-    List<KnownComponent> raw = builder.options(component.edgeBits(), joinNodes);
-    List<KnownComponent> joinFiltered = raw;
+    List<KnownComponent> rawRules = builder.constructionRules(component.edgeBits(), joinNodes);
+    List<KnownComponent> joinFilteredRules = rawRules;
     if (shouldEnforceJoinNodes(joinNodes, totalComponents, component)) {
       Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
-      joinFiltered =
-          raw.stream()
+      joinFilteredRules =
+          rawRules.stream()
               .filter(
                   kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
               .collect(Collectors.toList());
     }
     List<KnownComponent> oriented =
-        preferCanonicalOrientation(joinFiltered, joinNodes, freeVariables);
-    List<KnownComponent> finalOptions = oriented.isEmpty() ? joinFiltered : oriented;
-    return new CachedComponentOptions(raw, joinFiltered, finalOptions);
+        preferCanonicalOrientation(joinFilteredRules, joinNodes, freeVariables);
+    List<KnownComponent> finalRules = oriented.isEmpty() ? joinFilteredRules : oriented;
+    return new CachedComponentRules(rawRules, joinFilteredRules, finalRules);
   }
 
   private Set<String> normalize(Set<String> values) {
     return values == null || values.isEmpty() ? Set.of() : Set.copyOf(values);
   }
 
-  public ComponentOptionsCacheStats cacheStats() {
+  public ComponentRuleCacheStats cacheStats() {
     return cacheStats;
   }
 
@@ -167,8 +170,8 @@ public final class PartitionValidator {
       output.add(List.copyOf(current));
       return;
     }
-    for (KnownComponent option : lists.get(index)) {
-      current.add(option);
+    for (KnownComponent rule : lists.get(index)) {
+      current.add(rule);
       backtrack(lists, index + 1, current, output, limit);
       current.remove(current.size() - 1);
       if (limit > 0 && output.size() >= limit) {
@@ -189,8 +192,8 @@ public final class PartitionValidator {
   }
 
   private List<KnownComponent> preferCanonicalOrientation(
-      List<KnownComponent> candidates, Set<String> joinNodes, Set<String> freeVariables) {
-    if (candidates.isEmpty() || joinNodes.size() != 2) {
+      List<KnownComponent> rules, Set<String> joinNodes, Set<String> freeVariables) {
+    if (rules.isEmpty() || joinNodes.size() != 2) {
       return List.of();
     }
 
@@ -202,57 +205,55 @@ public final class PartitionValidator {
     String preferredSource = orderedJoinNodes.get(0);
     String preferredTarget = orderedJoinNodes.get(1);
 
-    return candidates.stream()
+    return rules.stream()
         .filter(
-            candidate ->
-                preferredSource.equals(candidate.source())
-                    && preferredTarget.equals(candidate.target()))
+            rule -> preferredSource.equals(rule.source()) && preferredTarget.equals(rule.target()))
         .collect(Collectors.toList());
   }
 
-  public static record ComponentOptions(
+  public static record ComponentConstructionRules(
       Component component,
-      List<KnownComponent> rawOptions,
-      List<KnownComponent> joinFilteredOptions,
-      List<KnownComponent> finalOptions) {
+      List<KnownComponent> rawRules,
+      List<KnownComponent> joinFilteredRules,
+      List<KnownComponent> finalRules) {
 
-    public ComponentOptions(
+    public ComponentConstructionRules(
         Component component,
-        List<KnownComponent> rawOptions,
-        List<KnownComponent> joinFilteredOptions,
-        List<KnownComponent> finalOptions) {
+        List<KnownComponent> rawRules,
+        List<KnownComponent> joinFilteredRules,
+        List<KnownComponent> finalRules) {
       this.component = Objects.requireNonNull(component, "component");
-      this.rawOptions = List.copyOf(Objects.requireNonNull(rawOptions, "rawOptions"));
-      this.joinFilteredOptions =
-          List.copyOf(Objects.requireNonNull(joinFilteredOptions, "joinFilteredOptions"));
-      this.finalOptions = List.copyOf(Objects.requireNonNull(finalOptions, "finalOptions"));
+      this.rawRules = List.copyOf(Objects.requireNonNull(rawRules, "rawRules"));
+      this.joinFilteredRules =
+          List.copyOf(Objects.requireNonNull(joinFilteredRules, "joinFilteredRules"));
+      this.finalRules = List.copyOf(Objects.requireNonNull(finalRules, "finalRules"));
     }
 
-    public boolean hasCandidates() {
-      return !finalOptions.isEmpty();
+    public boolean hasRules() {
+      return !finalRules.isEmpty();
     }
 
-    public int candidateCount() {
-      return finalOptions.size();
+    public int ruleCount() {
+      return finalRules.size();
     }
   }
 
-  private record ComponentOptionsKey(
+  private record ComponentRuleCacheKey(
       String componentSignature,
       int totalComponents,
       Set<String> joinNodes,
       Set<String> freeVars) {}
 
-  private record CachedComponentOptions(
+  private record CachedComponentRules(
       List<KnownComponent> raw,
       List<KnownComponent> joinFiltered,
-      List<KnownComponent> finalOptions) {}
+      List<KnownComponent> finalRules) {}
 
-  public static final class ComponentOptionsCacheStats {
+  public static final class ComponentRuleCacheStats {
     private long hits;
     private long misses;
 
-    public ComponentOptionsCacheStats() {}
+    public ComponentRuleCacheStats() {}
 
     public void recordHit() {
       hits++;

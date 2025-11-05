@@ -9,7 +9,7 @@ import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
 import decomposition.cpq.KnownComponent;
 import decomposition.model.Component;
-import decomposition.partitions.PartitionValidator.ComponentOptionsCacheStats.CacheSnapshot;
+import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;
@@ -119,13 +119,18 @@ public final class Main {
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       System.out.println("Partition #" + evaluation.partitionIndex() + ":");
       List<Component> components = evaluation.partition().components();
-      List<Integer> optionCounts = evaluation.componentOptionCounts();
+      List<Integer> ruleCounts = evaluation.componentRuleCounts();
       for (int i = 0; i < components.size(); i++) {
         var component = components.get(i);
         String signature = BitsetUtils.signature(component.edgeBits(), totalEdges);
-        int optionsForComponent = optionCounts.get(i);
+        int rulesForComponent = ruleCounts.get(i);
         System.out.println(
-            "  Component #" + (i + 1) + " [" + signature + "] options=" + optionsForComponent);
+            "  Component #"
+                + (i + 1)
+                + " ["
+                + signature
+                + "] construction_rules="
+                + rulesForComponent);
       }
       if (options.mode() == Mode.ENUMERATE) {
         List<List<KnownComponent>> tuples = evaluation.decompositionTuples();

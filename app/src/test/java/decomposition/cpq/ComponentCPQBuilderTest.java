@@ -27,13 +27,13 @@ final class ComponentCPQBuilderTest {
     BitSet edgeBits = new BitSet();
     edgeBits.set(4);
 
-    List<KnownComponent> options = builder.options(edgeBits);
+    List<KnownComponent> rules = builder.constructionRules(edgeBits);
 
     CPQ expectedInverse = CPQ.parse("r5⁻");
     String expectedStr = expectedInverse.toString();
 
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     expectedStr.equals(kc.cpq().toString())
@@ -49,13 +49,13 @@ final class ComponentCPQBuilderTest {
     BitSet edgeBits = new BitSet();
     edgeBits.set(0);
 
-    List<KnownComponent> options = builder.options(edgeBits);
+    List<KnownComponent> rules = builder.constructionRules(edgeBits);
 
     String sourceLoop = CPQ.parse("((r1 ◦ r1⁻) ∩ id)").toString();
     String targetLoop = CPQ.parse("((r1⁻ ◦ r1) ∩ id)").toString();
 
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     sourceLoop.equals(kc.cpq().toString())
@@ -63,7 +63,7 @@ final class ComponentCPQBuilderTest {
                         && "A".equals(kc.target())),
         "Backtrack loop at source should be available");
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     targetLoop.equals(kc.cpq().toString())
@@ -81,13 +81,13 @@ final class ComponentCPQBuilderTest {
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> options = builder.options(edgeBits);
+    List<KnownComponent> rules = builder.constructionRules(edgeBits);
 
     CPQ expected = CPQ.parse("((r3◦r4) ∩ r5⁻)");
     String expectedStr = expected.toString();
 
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     expectedStr.equals(kc.cpq().toString())
@@ -107,11 +107,11 @@ final class ComponentCPQBuilderTest {
     edgeBits.set(2); // r3
     edgeBits.set(3); // r4
 
-    List<KnownComponent> options = builder.options(edgeBits);
+    List<KnownComponent> rules = builder.constructionRules(edgeBits);
 
     // Count unique CPQ strings for components with same source and target
     long countAtoC =
-        options.stream()
+        rules.stream()
             .filter(kc -> "A".equals(kc.source()) && "C".equals(kc.target()))
             .map(kc -> kc.cpq().toString())
             .distinct()
@@ -122,7 +122,7 @@ final class ComponentCPQBuilderTest {
     // After normalization, these should be deduplicated
 
     long countCtoA =
-        options.stream()
+        rules.stream()
             .filter(kc -> "C".equals(kc.source()) && "A".equals(kc.target()))
             .map(kc -> kc.cpq().toString())
             .distinct()
@@ -130,13 +130,13 @@ final class ComponentCPQBuilderTest {
 
     // Verify that we don't have excessive duplicates
     // The exact count will depend on the CPQ generation logic,
-    // but we should have significantly fewer options than before normalization
+    // but we should have significantly fewer construction rules than before normalization
     assertTrue(countAtoC > 0, "Should have at least one CPQ from A to C");
     assertTrue(countCtoA > 0, "Should have at least one CPQ from C to A");
 
     // More specific test: check that commutative duplicates are eliminated
     List<String> cpqStringsAtoC =
-        options.stream()
+        rules.stream()
             .filter(kc -> "A".equals(kc.source()) && "C".equals(kc.target()))
             .map(kc -> kc.cpq().toString())
             .toList();
@@ -172,11 +172,11 @@ final class ComponentCPQBuilderTest {
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> options = builder.options(edgeBits);
+    List<KnownComponent> rules = builder.constructionRules(edgeBits);
 
     String anchored = CPQ.parse("(r1⁻◦(((r4⁻◦r3⁻) ∩ r5)◦r2⁻)) ∩ id").toString();
     assertTrue(
-        options.stream()
+        rules.stream()
             .anyMatch(
                 kc ->
                     anchored.equals(kc.cpq().toString())
