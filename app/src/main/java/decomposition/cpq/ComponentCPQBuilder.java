@@ -1,10 +1,12 @@
 package decomposition.cpq;
 
+import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /** Builds CPQ expressions for connected components using gMark's CPQ model. */
 public final class ComponentCPQBuilder {
@@ -36,6 +39,40 @@ public final class ComponentCPQBuilder {
             ? Set.of()
             : Set.copyOf(requestedJoinNodes);
     return lookupConstructionRules(edgeSubset, normalizedJoinNodes);
+  }
+
+  /**
+   * Returns the cached rule bundle for a component, including raw, join-filtered, and preferred
+   * orientations.
+   */
+  public ComponentRuleSet componentRules(
+      Component component,
+      Set<String> requestedJoinNodes,
+      Set<String> freeVariables,
+      int totalComponents) {
+    Objects.requireNonNull(component, "component");
+    Set<String> normalizedJoinNodes =
+        requestedJoinNodes == null || requestedJoinNodes.isEmpty()
+            ? Set.of()
+            : Set.copyOf(requestedJoinNodes);
+    Set<String> normalizedFreeVariables =
+        freeVariables == null || freeVariables.isEmpty() ? Set.of() : Set.copyOf(freeVariables);
+
+    List<KnownComponent> rawRules = constructionRules(component.edgeBits(), normalizedJoinNodes);
+    List<KnownComponent> joinFilteredRules = rawRules;
+    if (shouldEnforceJoinNodes(normalizedJoinNodes, totalComponents, component)) {
+      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, normalizedJoinNodes);
+      joinFilteredRules =
+          rawRules.stream()
+              .filter(
+                  kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
+              .collect(Collectors.toList());
+    }
+
+    List<KnownComponent> oriented =
+        preferCanonicalOrientation(joinFilteredRules, normalizedJoinNodes, normalizedFreeVariables);
+    List<KnownComponent> finalRules = oriented.isEmpty() ? joinFilteredRules : oriented;
+    return new ComponentRuleSet(rawRules, joinFilteredRules, finalRules);
   }
 
   /**
@@ -115,6 +152,37 @@ public final class ComponentCPQBuilder {
     return CompositeRuleFactory.build(edgeSubset, edges.size(), subsetResolver);
   }
 
+  private boolean shouldEnforceJoinNodes(
+      Set<String> joinNodes, int totalComponents, Component component) {
+    if (joinNodes.isEmpty()) {
+      return false;
+    }
+    if (totalComponents > 1) {
+      return true;
+    }
+    return component.edgeCount() > 1;
+  }
+
+  private List<KnownComponent> preferCanonicalOrientation(
+      List<KnownComponent> rules, Set<String> joinNodes, Set<String> freeVariables) {
+    if (rules.isEmpty() || joinNodes.size() != 2) {
+      return List.of();
+    }
+
+    List<String> orderedJoinNodes = new ArrayList<>(joinNodes);
+    orderedJoinNodes.sort(
+        Comparator.comparing((String node) -> freeVariables.contains(node) ? 0 : 1)
+            .thenComparing(node -> node));
+
+    String preferredSource = orderedJoinNodes.get(0);
+    String preferredTarget = orderedJoinNodes.get(1);
+
+    return rules.stream()
+        .filter(
+            rule -> preferredSource.equals(rule.source()) && preferredTarget.equals(rule.target()))
+        .collect(Collectors.toList());
+  }
+
   /**
    * Resolves component construction rules for a subgraph while honoring the memoized cache and
    * avoiding nested computeIfAbsent recursion.
@@ -142,6 +210,34 @@ public final class ComponentCPQBuilder {
 
     List<KnownComponent> snapshot() {
       return List.copyOf(unique.values());
+    }
+  }
+
+  public static final class ComponentRuleSet {
+    private final List<KnownComponent> rawRules;
+    private final List<KnownComponent> joinFilteredRules;
+    private final List<KnownComponent> finalRules;
+
+    public ComponentRuleSet(
+        List<KnownComponent> rawRules,
+        List<KnownComponent> joinFilteredRules,
+        List<KnownComponent> finalRules) {
+      this.rawRules = List.copyOf(Objects.requireNonNull(rawRules, "rawRules"));
+      this.joinFilteredRules =
+          List.copyOf(Objects.requireNonNull(joinFilteredRules, "joinFilteredRules"));
+      this.finalRules = List.copyOf(Objects.requireNonNull(finalRules, "finalRules"));
+    }
+
+    public List<KnownComponent> rawRules() {
+      return rawRules;
+    }
+
+    public List<KnownComponent> joinFilteredRules() {
+      return joinFilteredRules;
+    }
+
+    public List<KnownComponent> finalRules() {
+      return finalRules;
     }
   }
 

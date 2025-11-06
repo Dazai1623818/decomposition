@@ -8,7 +8,6 @@ import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +17,8 @@ import java.util.stream.Collectors;
 
 /** Validates partitions against the CPQ builder and enumerates component combinations. */
 public final class PartitionValidator {
-  private final Map<ComponentRuleCacheKey, CachedComponentRules> ruleCache = new HashMap<>();
+  private final Map<ComponentRuleCacheKey, ComponentCPQBuilder.ComponentRuleSet> ruleCache =
+      new HashMap<>();
   private final ComponentRuleCacheStats cacheStats;
 
   public PartitionValidator() {
@@ -104,43 +104,21 @@ public final class PartitionValidator {
               totalComponents,
               normalizedJoinNodes,
               normalizedFreeVars);
-      CachedComponentRules cached = ruleCache.get(key);
+      ComponentCPQBuilder.ComponentRuleSet cached = ruleCache.get(key);
       if (cached == null) {
         cacheStats.recordMiss();
         cached =
-            buildComponentRules(
-                component, normalizedJoinNodes, builder, normalizedFreeVars, totalComponents);
+            builder.componentRules(
+                component, normalizedJoinNodes, normalizedFreeVars, totalComponents);
         ruleCache.put(key, cached);
       } else {
         cacheStats.recordHit();
       }
       results.add(
           new ComponentConstructionRules(
-              component, cached.raw(), cached.joinFiltered(), cached.finalRules()));
+              component, cached.rawRules(), cached.joinFilteredRules(), cached.finalRules()));
     }
     return List.copyOf(results);
-  }
-
-  private CachedComponentRules buildComponentRules(
-      Component component,
-      Set<String> joinNodes,
-      ComponentCPQBuilder builder,
-      Set<String> freeVariables,
-      int totalComponents) {
-    List<KnownComponent> rawRules = builder.constructionRules(component.edgeBits(), joinNodes);
-    List<KnownComponent> joinFilteredRules = rawRules;
-    if (shouldEnforceJoinNodes(joinNodes, totalComponents, component)) {
-      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, joinNodes);
-      joinFilteredRules =
-          rawRules.stream()
-              .filter(
-                  kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
-              .collect(Collectors.toList());
-    }
-    List<KnownComponent> oriented =
-        preferCanonicalOrientation(joinFilteredRules, joinNodes, freeVariables);
-    List<KnownComponent> finalRules = oriented.isEmpty() ? joinFilteredRules : oriented;
-    return new CachedComponentRules(rawRules, joinFilteredRules, finalRules);
   }
 
   private Set<String> normalize(Set<String> values) {
@@ -180,37 +158,6 @@ public final class PartitionValidator {
     }
   }
 
-  private boolean shouldEnforceJoinNodes(
-      Set<String> joinNodes, int totalComponents, Component component) {
-    if (joinNodes.isEmpty()) {
-      return false;
-    }
-    if (totalComponents > 1) {
-      return true;
-    }
-    return component.edgeCount() > 1;
-  }
-
-  private List<KnownComponent> preferCanonicalOrientation(
-      List<KnownComponent> rules, Set<String> joinNodes, Set<String> freeVariables) {
-    if (rules.isEmpty() || joinNodes.size() != 2) {
-      return List.of();
-    }
-
-    List<String> orderedJoinNodes = new ArrayList<>(joinNodes);
-    orderedJoinNodes.sort(
-        Comparator.comparing((String node) -> freeVariables.contains(node) ? 0 : 1)
-            .thenComparing(node -> node));
-
-    String preferredSource = orderedJoinNodes.get(0);
-    String preferredTarget = orderedJoinNodes.get(1);
-
-    return rules.stream()
-        .filter(
-            rule -> preferredSource.equals(rule.source()) && preferredTarget.equals(rule.target()))
-        .collect(Collectors.toList());
-  }
-
   public static record ComponentConstructionRules(
       Component component,
       List<KnownComponent> rawRules,
@@ -243,11 +190,6 @@ public final class PartitionValidator {
       int totalComponents,
       Set<String> joinNodes,
       Set<String> freeVars) {}
-
-  private record CachedComponentRules(
-      List<KnownComponent> raw,
-      List<KnownComponent> joinFiltered,
-      List<KnownComponent> finalRules) {}
 
   public static final class ComponentRuleCacheStats {
     private long hits;
