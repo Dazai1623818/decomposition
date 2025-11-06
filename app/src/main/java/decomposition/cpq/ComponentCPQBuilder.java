@@ -68,36 +68,21 @@ public final class ComponentCPQBuilder {
       Set<String> requestedJoinNodes,
       Set<String> localJoinNodes,
       Function<BitSet, List<KnownComponent>> subsetResolver) {
-    List<KnownComponent> stageRules =
-        collectStageConstructionRules(
-            edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver);
-    if (stageRules.isEmpty()) {
-      return List.of();
-    }
-    return validateAndDeduplicate(stageRules);
-  }
-
-  /**
-   * Collects the raw construction rules emitted by the individual construction stages. Each stage
-   * handles a distinct shape: single-edge atoms, loop backtracks, and composite joins.
-   */
-  private List<KnownComponent> collectStageConstructionRules(
-      BitSet edgeSubset,
-      Set<String> requestedJoinNodes,
-      Set<String> localJoinNodes,
-      Function<BitSet, List<KnownComponent>> subsetResolver) {
     int edgeCount = edgeSubset.cardinality();
     if (edgeCount == 0) {
       return List.of();
     }
-    List<KnownComponent> rules = new ArrayList<>();
+    List<KnownComponent> rawRules = new ArrayList<>();
     if (edgeCount == 1) {
-      rules.addAll(buildSingleEdgeRules(edgeSubset));
+      rawRules.addAll(buildSingleEdgeRules(edgeSubset));
     } else {
-      rules.addAll(buildLoopBacktrackRules(edgeSubset, localJoinNodes));
-      rules.addAll(buildCompositeRules(edgeSubset, subsetResolver));
+      rawRules.addAll(buildLoopBacktrackRules(edgeSubset, localJoinNodes));
+      rawRules.addAll(buildCompositeRules(edgeSubset, subsetResolver));
     }
-    return List.copyOf(rules);
+    if (rawRules.isEmpty()) {
+      return List.of();
+    }
+    return validateAndDeduplicate(List.copyOf(rawRules));
   }
 
   /**
