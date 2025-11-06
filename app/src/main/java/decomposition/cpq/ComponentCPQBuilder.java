@@ -29,8 +29,7 @@ public final class ComponentCPQBuilder {
     return constructionRules(edgeSubset, Set.of());
   }
 
-  public List<KnownComponent> constructionRules(
-      BitSet edgeSubset, Set<String> requestedJoinNodes) {
+  public List<KnownComponent> constructionRules(BitSet edgeSubset, Set<String> requestedJoinNodes) {
     Objects.requireNonNull(edgeSubset, "edgeSubset");
     Set<String> normalizedJoinNodes =
         requestedJoinNodes == null || requestedJoinNodes.isEmpty()
@@ -53,17 +52,18 @@ public final class ComponentCPQBuilder {
     MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), localJoinNodes);
     MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
     Function<BitSet, List<KnownComponent>> subsetResolver =
-        subset -> resolveSubgraph(subset, requestedJoinNodes);
+        subset -> resolveSubgraphWithCache(subset, requestedJoinNodes);
     return entry.resolve(
         () ->
-            evaluateStages(edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
+            generateConstructionRules(
+                edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
   }
 
   /**
    * Gathers construction rules across all stages, validates them, and returns the deduplicated
    * result.
    */
-  private List<KnownComponent> evaluateStages(
+  private List<KnownComponent> generateConstructionRules(
       BitSet edgeSubset,
       Set<String> requestedJoinNodes,
       Set<String> localJoinNodes,
@@ -134,20 +134,21 @@ public final class ComponentCPQBuilder {
   }
 
   /**
-   * Resolves component construction rules for a subgraph without triggering nested computeIfAbsent
-   * recursion.
+   * Resolves component construction rules for a subgraph while honoring the memoized cache and
+   * avoiding nested computeIfAbsent recursion.
    */
-  private List<KnownComponent> resolveSubgraph(
+  private List<KnownComponent> resolveSubgraphWithCache(
       BitSet edgeSubset, Set<String> requestedJoinNodes) {
     Set<String> localJoinNodes =
         JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
     MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), localJoinNodes);
     MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
     Function<BitSet, List<KnownComponent>> subsetResolver =
-        subset -> resolveSubgraph(subset, requestedJoinNodes);
+        subset -> resolveSubgraphWithCache(subset, requestedJoinNodes);
     return entry.resolve(
         () ->
-            evaluateStages(edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
+            generateConstructionRules(
+                edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
   }
 
   /** Deduplicates validated construction rules based on their structural signature. */
