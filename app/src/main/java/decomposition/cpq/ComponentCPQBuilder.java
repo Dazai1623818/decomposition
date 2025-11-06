@@ -54,9 +54,7 @@ public final class ComponentCPQBuilder {
     Function<BitSet, List<KnownComponent>> subsetResolver =
         subset -> resolveSubgraphWithCache(subset, requestedJoinNodes);
     return entry.resolve(
-        () ->
-            generateConstructionRules(
-                edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
+        () -> generateConstructionRules(edgeSubset, localJoinNodes, subsetResolver));
   }
 
   /**
@@ -65,7 +63,6 @@ public final class ComponentCPQBuilder {
    */
   private List<KnownComponent> generateConstructionRules(
       BitSet edgeSubset,
-      Set<String> requestedJoinNodes,
       Set<String> localJoinNodes,
       Function<BitSet, List<KnownComponent>> subsetResolver) {
     int edgeCount = edgeSubset.cardinality();
@@ -131,9 +128,7 @@ public final class ComponentCPQBuilder {
     Function<BitSet, List<KnownComponent>> subsetResolver =
         subset -> resolveSubgraphWithCache(subset, requestedJoinNodes);
     return entry.resolve(
-        () ->
-            generateConstructionRules(
-                edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
+        () -> generateConstructionRules(edgeSubset, localJoinNodes, subsetResolver));
   }
 
   /** Deduplicates validated construction rules based on their structural signature. */
