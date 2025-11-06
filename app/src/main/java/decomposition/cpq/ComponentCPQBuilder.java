@@ -29,30 +29,34 @@ public final class ComponentCPQBuilder {
     return constructionRules(edgeSubset, Set.of());
   }
 
-  public List<KnownComponent> constructionRules(BitSet edgeSubset, Set<String> requestedAnchors) {
+  public List<KnownComponent> constructionRules(
+      BitSet edgeSubset, Set<String> requestedJoinNodes) {
     Objects.requireNonNull(edgeSubset, "edgeSubset");
-    Set<String> normalizedAnchors =
-        requestedAnchors == null || requestedAnchors.isEmpty()
+    Set<String> normalizedJoinNodes =
+        requestedJoinNodes == null || requestedJoinNodes.isEmpty()
             ? Set.of()
-            : Set.copyOf(requestedAnchors);
-    return lookupConstructionRules(edgeSubset, normalizedAnchors);
+            : Set.copyOf(requestedJoinNodes);
+    return lookupConstructionRules(edgeSubset, normalizedJoinNodes);
   }
 
   /**
-   * Returns the memoized construction rule list for the given edge subset and anchor requirements.
+   * Returns the memoized construction rule list for the given edge subset and join-node
+   * requirements.
    *
    * @param edgeSubset edges that define the subgraph
-   * @param requestedAnchors join nodes that must be covered by the component
+   * @param requestedJoinNodes join nodes that must be covered by the component
    */
   private List<KnownComponent> lookupConstructionRules(
-      BitSet edgeSubset, Set<String> requestedAnchors) {
-    Set<String> anchors = JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedAnchors);
-    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), anchors);
+      BitSet edgeSubset, Set<String> requestedJoinNodes) {
+    Set<String> localJoinNodes =
+        JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
+    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), localJoinNodes);
     MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
     Function<BitSet, List<KnownComponent>> subsetResolver =
-        subset -> resolveSubgraph(subset, requestedAnchors);
+        subset -> resolveSubgraph(subset, requestedJoinNodes);
     return entry.resolve(
-        () -> evaluateStages(edgeSubset, requestedAnchors, anchors, subsetResolver));
+        () ->
+            evaluateStages(edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
   }
 
   /**
@@ -61,11 +65,12 @@ public final class ComponentCPQBuilder {
    */
   private List<KnownComponent> evaluateStages(
       BitSet edgeSubset,
-      Set<String> requestedAnchors,
-      Set<String> anchors,
+      Set<String> requestedJoinNodes,
+      Set<String> localJoinNodes,
       Function<BitSet, List<KnownComponent>> subsetResolver) {
     List<KnownComponent> stageRules =
-        collectStageConstructionRules(edgeSubset, requestedAnchors, anchors, subsetResolver);
+        collectStageConstructionRules(
+            edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver);
     if (stageRules.isEmpty()) {
       return List.of();
     }
@@ -78,8 +83,8 @@ public final class ComponentCPQBuilder {
    */
   private List<KnownComponent> collectStageConstructionRules(
       BitSet edgeSubset,
-      Set<String> requestedAnchors,
-      Set<String> anchors,
+      Set<String> requestedJoinNodes,
+      Set<String> localJoinNodes,
       Function<BitSet, List<KnownComponent>> subsetResolver) {
     int edgeCount = edgeSubset.cardinality();
     if (edgeCount == 0) {
@@ -89,7 +94,7 @@ public final class ComponentCPQBuilder {
     if (edgeCount == 1) {
       rules.addAll(buildSingleEdgeRules(edgeSubset));
     } else {
-      rules.addAll(buildLoopBacktrackRules(edgeSubset, anchors));
+      rules.addAll(buildLoopBacktrackRules(edgeSubset, localJoinNodes));
       rules.addAll(buildCompositeRules(edgeSubset, subsetResolver));
     }
     return List.copyOf(rules);
@@ -115,11 +120,12 @@ public final class ComponentCPQBuilder {
     return SingleEdgeRuleFactory.build(edge, edgeSubset);
   }
 
-  private List<KnownComponent> buildLoopBacktrackRules(BitSet edgeSubset, Set<String> anchors) {
-    if (anchors.size() > 1) {
+  private List<KnownComponent> buildLoopBacktrackRules(
+      BitSet edgeSubset, Set<String> localJoinNodes) {
+    if (localJoinNodes.size() > 1) {
       return List.of();
     }
-    return LoopBacktrackBuilder.build(edges, edgeSubset, anchors);
+    return LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes);
   }
 
   private List<KnownComponent> buildCompositeRules(
@@ -131,14 +137,17 @@ public final class ComponentCPQBuilder {
    * Resolves component construction rules for a subgraph without triggering nested computeIfAbsent
    * recursion.
    */
-  private List<KnownComponent> resolveSubgraph(BitSet edgeSubset, Set<String> requestedAnchors) {
-    Set<String> anchors = JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedAnchors);
-    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), anchors);
+  private List<KnownComponent> resolveSubgraph(
+      BitSet edgeSubset, Set<String> requestedJoinNodes) {
+    Set<String> localJoinNodes =
+        JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
+    MemoKey key = new MemoKey(BitsetUtils.signature(edgeSubset, edges.size()), localJoinNodes);
     MemoizedRuleSet entry = memoizedRules.computeIfAbsent(key, unused -> new MemoizedRuleSet());
     Function<BitSet, List<KnownComponent>> subsetResolver =
-        subset -> resolveSubgraph(subset, requestedAnchors);
+        subset -> resolveSubgraph(subset, requestedJoinNodes);
     return entry.resolve(
-        () -> evaluateStages(edgeSubset, requestedAnchors, anchors, subsetResolver));
+        () ->
+            evaluateStages(edgeSubset, requestedJoinNodes, localJoinNodes, subsetResolver));
   }
 
   /** Deduplicates validated construction rules based on their structural signature. */
@@ -172,5 +181,5 @@ public final class ComponentCPQBuilder {
     }
   }
 
-  private record MemoKey(String signature, Set<String> anchors) {}
+  private record MemoKey(String signature, Set<String> joinNodes) {}
 }

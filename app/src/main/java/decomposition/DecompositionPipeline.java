@@ -1,5 +1,14 @@
 package decomposition;
 
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+
 import decomposition.cpq.ComponentCPQBuilder;
 import decomposition.cpq.ComponentKey;
 import decomposition.cpq.KnownComponent;
@@ -19,14 +28,6 @@ import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Supplier;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline. */
 public final class DecompositionPipeline {
@@ -37,7 +38,7 @@ public final class DecompositionPipeline {
   public DecompositionPipeline() {
     this(PartitionValidator::new);
   }
-
+  /* current supplier enumerates, can also use supplier that shortcircuits */
   public DecompositionPipeline(Supplier<PartitionValidator> partitionValidatorSupplier) {
     this.partitionValidatorSupplier =
         Objects.requireNonNull(partitionValidatorSupplier, "partitionValidatorSupplier");
