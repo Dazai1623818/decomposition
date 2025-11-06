@@ -6,7 +6,6 @@ import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
-import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,33 +37,6 @@ public final class PartitionValidator {
     return componentConstructionRules(partition, joinNodes, builder, freeVariables, allEdges)
         .stream()
         .allMatch(ComponentConstructionRules::hasRules);
-  }
-
-  public List<List<KnownComponent>> enumerateDecompositions(
-      Partition partition,
-      ComponentCPQBuilder builder,
-      int limit,
-      Set<String> freeVariables,
-      List<Edge> allEdges) {
-    return enumerateDecompositions(
-        partition,
-        JoinNodeUtils.computeJoinNodes(partition.components(), freeVariables),
-        builder,
-        limit,
-        freeVariables,
-        allEdges);
-  }
-
-  public List<List<KnownComponent>> enumerateDecompositions(
-      Partition partition,
-      Set<String> joinNodes,
-      ComponentCPQBuilder builder,
-      int limit,
-      Set<String> freeVariables,
-      List<Edge> allEdges) {
-    List<ComponentConstructionRules> perComponentRules =
-        componentConstructionRules(partition, joinNodes, builder, freeVariables, allEdges);
-    return enumerateDecompositions(perComponentRules, limit);
   }
 
   public List<List<KnownComponent>> enumerateDecompositions(
