@@ -44,6 +44,9 @@ public final class ComponentCPQBuilder {
   /**
    * Returns the cached rule bundle for a component, including raw, join-filtered, and preferred
    * orientations.
+   *
+   * <p>The inputs {@code requestedJoinNodes} and {@code freeVariables} should already be normalized
+   * (non-null, immutable) upstream.
    */
   public ComponentRuleSet componentRules(
       Component component,
@@ -51,17 +54,14 @@ public final class ComponentCPQBuilder {
       Set<String> freeVariables,
       int totalComponents) {
     Objects.requireNonNull(component, "component");
-    Set<String> normalizedJoinNodes =
-        requestedJoinNodes == null || requestedJoinNodes.isEmpty()
-            ? Set.of()
-            : Set.copyOf(requestedJoinNodes);
-    Set<String> normalizedFreeVariables =
-        freeVariables == null || freeVariables.isEmpty() ? Set.of() : Set.copyOf(freeVariables);
+    Objects.requireNonNull(requestedJoinNodes, "requestedJoinNodes");
+    Objects.requireNonNull(freeVariables, "freeVariables");
 
-    List<KnownComponent> rawRules = constructionRules(component.edgeBits(), normalizedJoinNodes);
+    BitSet componentEdges = component.edgeBits();
+    List<KnownComponent> rawRules = lookupConstructionRules(componentEdges, requestedJoinNodes);
     List<KnownComponent> joinFilteredRules = rawRules;
-    if (shouldEnforceJoinNodes(normalizedJoinNodes, totalComponents, component)) {
-      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, normalizedJoinNodes);
+    if (shouldEnforceJoinNodes(requestedJoinNodes, totalComponents, component)) {
+      Set<String> localJoinNodes = JoinNodeUtils.localJoinNodes(component, requestedJoinNodes);
       joinFilteredRules =
           rawRules.stream()
               .filter(
@@ -70,7 +70,7 @@ public final class ComponentCPQBuilder {
     }
 
     List<KnownComponent> oriented =
-        preferCanonicalOrientation(joinFilteredRules, normalizedJoinNodes, normalizedFreeVariables);
+        preferCanonicalOrientation(joinFilteredRules, requestedJoinNodes, freeVariables);
     List<KnownComponent> finalRules = oriented.isEmpty() ? joinFilteredRules : oriented;
     return new ComponentRuleSet(rawRules, joinFilteredRules, finalRules);
   }
