@@ -21,7 +21,7 @@ final class PartitionTwelveRegressionTest {
   void fullComponentRetainsLoopAnchoredAtFreeVariable() {
     ExtractionResult extraction = new CQExtractor().extract(Example.example6(), Set.of("A"));
     List<Edge> edges = extraction.edges();
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
+    CPQEngine engine = new CPQEngine(edges);
 
     BitSet fullBits = new BitSet(edges.size());
     fullBits.set(0, edges.size());
@@ -35,7 +35,7 @@ final class PartitionTwelveRegressionTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(List.of(component), extraction.freeVariables());
 
-    List<KnownComponent> rules = builder.constructionRules(fullBits, joinNodes);
+    List<KnownComponent> rules = engine.constructionRules(fullBits, joinNodes);
 
     assertFalse(
         rules.isEmpty(), "Expected at least one CPQ construction rule for the full component");

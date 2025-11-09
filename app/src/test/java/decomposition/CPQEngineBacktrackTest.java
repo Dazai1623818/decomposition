@@ -5,13 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.ComponentCPQBuilder;
+import decomposition.cpq.CPQEngine;
 import decomposition.cpq.KnownComponent;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
 import decomposition.partitions.PartitionGenerator;
-import decomposition.partitions.PartitionValidator;
 import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.BitSet;
@@ -20,7 +19,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
-final class ComponentCPQBuilderBacktrackTest {
+final class CPQEngineBacktrackTest {
 
   @Test
   void singleEdgeBacktrackVariantsAreGeneratedAndUsable() {
@@ -29,7 +28,7 @@ final class ComponentCPQBuilderBacktrackTest {
     ExtractionResult extraction = extractor.extract(cq, Set.of("D"));
     List<Edge> edges = extraction.edges();
 
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
+    CPQEngine engine = new CPQEngine(edges);
 
     int r4Index = findEdgeIndex(edges, "r4");
     BitSet r4Bits = new BitSet(edges.size());
@@ -38,7 +37,7 @@ final class ComponentCPQBuilderBacktrackTest {
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4 ◦ r4⁻) ∩ id"));
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4⁻ ◦ r4) ∩ id"));
 
-    List<KnownComponent> rules = builder.constructionRules(r4Bits);
+    List<KnownComponent> rules = engine.constructionRules(r4Bits);
     Edge r4 = edges.get(r4Index);
 
     assertFalse(rules.isEmpty(), "Expected CPQ construction rules for single edge component");
@@ -103,13 +102,11 @@ final class ComponentCPQBuilderBacktrackTest {
             .findFirst()
             .orElseThrow();
 
-    PartitionValidator validator = new PartitionValidator();
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(
             singleEdgePartition.components(), extraction.freeVariables());
     assertTrue(
-        validator.isValidCPQDecomposition(
-            singleEdgePartition, joinNodes, builder, extraction.freeVariables(), edges),
+        engine.analyzePartition(singleEdgePartition, joinNodes, extraction.freeVariables()) != null,
         "Single-edge partition should now be a valid CPQ decomposition");
   }
 
@@ -120,13 +117,13 @@ final class ComponentCPQBuilderBacktrackTest {
     ExtractionResult extraction = extractor.extract(cq, Set.of("A"));
     List<Edge> edges = extraction.edges();
 
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(edges);
+    CPQEngine engine = new CPQEngine(edges);
 
     int selfLoopIndex = findSelfLoopEdge(edges);
     BitSet selfLoopBits = new BitSet(edges.size());
     selfLoopBits.set(selfLoopIndex);
 
-    List<KnownComponent> rules = builder.constructionRules(selfLoopBits);
+    List<KnownComponent> rules = engine.constructionRules(selfLoopBits);
 
     assertEquals(1, rules.size(), "Self-loop should produce a single structural rule");
     KnownComponent loop = rules.get(0);

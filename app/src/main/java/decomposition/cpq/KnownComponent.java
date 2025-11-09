@@ -1,5 +1,6 @@
 package decomposition.cpq;
 
+import decomposition.cpq.model.ComponentKey;
 import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;
@@ -41,6 +42,6 @@ public record KnownComponent(
 
   /** Creates a component key for memoization based on edges and endpoints. */
   public ComponentKey toKey(int totalEdges) {
-    return new ComponentKey(edges, totalEdges, source, target);
+    return new ComponentKey(edges, source, target);
   }
 }

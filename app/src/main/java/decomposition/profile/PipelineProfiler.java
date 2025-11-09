@@ -5,9 +5,7 @@ import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.RandomExampleConfig;
-import decomposition.partitions.PartitionValidator;
-import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats;
-import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
+import decomposition.cpq.model.CacheStats;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +36,7 @@ public final class PipelineProfiler {
       int filteredPartitions,
       int validPartitions,
       int recognizedComponents,
-      CacheSnapshot cacheSnapshot,
+      CacheStats cacheSnapshot,
       String terminationReason) {}
 
   /** Aggregated profiling report. */
@@ -51,18 +49,18 @@ public final class PipelineProfiler {
       return runs.stream().mapToLong(ProfileRun::elapsedMillis).sum();
     }
 
-    public CacheSnapshot aggregateCache() {
+    public CacheStats aggregateCache() {
       long hits = 0;
       long misses = 0;
       for (ProfileRun run : runs) {
-        CacheSnapshot snapshot = run.cacheSnapshot();
+        CacheStats snapshot = run.cacheSnapshot();
         if (snapshot == null) {
           continue;
         }
         hits += snapshot.hits();
         misses += snapshot.misses();
       }
-      return new CacheSnapshot(hits, misses);
+      return CacheStats.of(hits, misses);
     }
   }
 
@@ -75,9 +73,7 @@ public final class PipelineProfiler {
 
     List<ProfileRun> runs = new ArrayList<>(queries.size());
     for (NamedQuery query : queries) {
-      ComponentRuleCacheStats stats = new ComponentRuleCacheStats();
-      DecompositionPipeline pipeline =
-          new DecompositionPipeline(() -> new PartitionValidator(stats));
+      DecompositionPipeline pipeline = new DecompositionPipeline();
       DecompositionResult result =
           pipeline.execute(query.query(), query.freeVariables(), effective);
       runs.add(
@@ -88,7 +84,7 @@ public final class PipelineProfiler {
               result.filteredPartitions(),
               result.cpqPartitions().size(),
               result.recognizedCatalogue().size(),
-              stats.snapshot(),
+              pipeline.lastCacheSnapshot(),
               result.terminationReason()));
     }
     return new PipelineProfile(runs);

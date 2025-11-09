@@ -3,6 +3,7 @@ package decomposition.cpq;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+import decomposition.cpq.model.ComponentKey;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,8 +17,8 @@ final class ComponentKeyTest {
     bits.set(0);
     bits.set(2);
 
-    ComponentKey key1 = new ComponentKey(bits, 3, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits, 3, "a", "b");
+    ComponentKey key1 = new ComponentKey(bits, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits, "a", "b");
 
     assertEquals(key1, key2, "Keys with same bits and endpoints should be equal");
     assertEquals(key1.hashCode(), key2.hashCode(), "Equal keys must have same hash code");
@@ -33,8 +34,8 @@ final class ComponentKeyTest {
     bits2.set(0);
     bits2.set(2);
 
-    ComponentKey key1 = new ComponentKey(bits1, 3, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits2, 3, "a", "b");
+    ComponentKey key1 = new ComponentKey(bits1, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits2, "a", "b");
 
     assertNotEquals(key1, key2, "Keys with different bits should not be equal");
   }
@@ -44,8 +45,8 @@ final class ComponentKeyTest {
     BitSet bits = new BitSet(3);
     bits.set(0);
 
-    ComponentKey key1 = new ComponentKey(bits, 3, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits, 3, "x", "b");
+    ComponentKey key1 = new ComponentKey(bits, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits, "x", "b");
 
     assertNotEquals(key1, key2, "Keys with different source should not be equal");
   }
@@ -55,8 +56,8 @@ final class ComponentKeyTest {
     BitSet bits = new BitSet(3);
     bits.set(0);
 
-    ComponentKey key1 = new ComponentKey(bits, 3, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits, 3, "a", "x");
+    ComponentKey key1 = new ComponentKey(bits, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits, "a", "x");
 
     assertNotEquals(key1, key2, "Keys with different target should not be equal");
   }
@@ -69,9 +70,9 @@ final class ComponentKeyTest {
     BitSet bits2 = new BitSet(2);
     bits2.set(1);
 
-    ComponentKey key1 = new ComponentKey(bits1, 2, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits2, 2, "c", "d");
-    ComponentKey key1Dup = new ComponentKey(bits1, 2, "a", "b");
+    ComponentKey key1 = new ComponentKey(bits1, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits2, "c", "d");
+    ComponentKey key1Dup = new ComponentKey(bits1, "a", "b");
 
     Map<ComponentKey, String> map = new HashMap<>();
     map.put(key1, "first");
@@ -87,7 +88,7 @@ final class ComponentKeyTest {
     bits.set(0);
     bits.set(1);
 
-    ComponentKey key = new ComponentKey(bits, 3, "a", "b");
+    ComponentKey key = new ComponentKey(bits, "a", "b");
 
     // Mutate the original bitset
     bits.set(2);
@@ -102,7 +103,7 @@ final class ComponentKeyTest {
     BitSet bits = new BitSet(3);
     bits.set(0);
 
-    ComponentKey key = new ComponentKey(bits, 3, "a", "b");
+    ComponentKey key = new ComponentKey(bits, "a", "b");
     BitSet retrieved = key.bits();
 
     // Mutate the retrieved bitset
@@ -120,7 +121,7 @@ final class ComponentKeyTest {
     bits.set(3);
     bits.set(4);
 
-    ComponentKey key = new ComponentKey(bits, 5, "source", "target");
+    ComponentKey key = new ComponentKey(bits, "source", "target");
 
     int hash1 = key.hashCode();
     int hash2 = key.hashCode();
@@ -142,8 +143,8 @@ final class ComponentKeyTest {
     bits2.set(2);
     bits2.set(3);
 
-    ComponentKey key1 = new ComponentKey(bits1, 4, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits2, 4, "a", "b");
+    ComponentKey key1 = new ComponentKey(bits1, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits2, "a", "b");
 
     assertEquals(
         key1.hashCode(), key2.hashCode(), "Identical bit patterns should hash identically");
@@ -154,12 +155,11 @@ final class ComponentKeyTest {
     BitSet bits = new BitSet(3);
     bits.set(0);
 
-    ComponentKey key1 = new ComponentKey(bits, 3, "a", "b");
-    ComponentKey key2 = new ComponentKey(bits, 10, "a", "b");
+    ComponentKey key1 = new ComponentKey(bits, "a", "b");
+    ComponentKey key2 = new ComponentKey(bits, "a", "b");
 
-    // After refactoring to ComponentSignature, totalEdges is ignored per domain specification:
-    // component equivalence depends only on (edgeBits, source, target)
-    assertEquals(key1, key2, "totalEdges parameter is ignored for component identity");
+    // Component identity depends only on (edgeBits, source, target)
+    assertEquals(key1, key2, "component identity ignores total edge counts");
     assertEquals(key1.hashCode(), key2.hashCode(), "Equal keys must have same hash");
   }
 }

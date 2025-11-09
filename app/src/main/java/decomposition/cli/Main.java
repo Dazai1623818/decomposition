@@ -8,8 +8,8 @@ import decomposition.Example;
 import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
 import decomposition.cpq.KnownComponent;
+import decomposition.cpq.model.CacheStats;
 import decomposition.model.Component;
-import decomposition.partitions.PartitionValidator.ComponentRuleCacheStats.CacheSnapshot;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;
@@ -189,7 +189,7 @@ public final class Main {
               + run.validPartitions()
               + ", recognized="
               + run.recognizedComponents());
-      CacheSnapshot cache = run.cacheSnapshot();
+      CacheStats cache = run.cacheSnapshot();
       if (cache != null && cache.lookups() > 0) {
         double hitRatePct = cache.hitRate() * 100.0;
         System.out.printf(
@@ -207,7 +207,7 @@ public final class Main {
       }
     }
 
-    CacheSnapshot aggregate = report.aggregateCache();
+    CacheStats aggregate = report.aggregateCache();
     double aggregatePct = aggregate.hitRate() * 100.0;
     System.out.printf(
         Locale.ROOT,

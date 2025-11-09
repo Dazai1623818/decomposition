@@ -9,7 +9,7 @@ import java.util.BitSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-final class ComponentCPQBuilderTest {
+final class CPQEngineTest {
 
   private static List<Edge> sampleEdges() {
     return List.of(
@@ -22,12 +22,12 @@ final class ComponentCPQBuilderTest {
 
   @Test
   void singleEdgeIncludesInverseVariant() {
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+    CPQEngine engine = new CPQEngine(sampleEdges());
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(4);
 
-    List<KnownComponent> rules = builder.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits);
 
     CPQ expectedInverse = CPQ.parse("r5⁻");
     String expectedStr = expectedInverse.toString();
@@ -44,12 +44,12 @@ final class ComponentCPQBuilderTest {
 
   @Test
   void singleEdgeIncludesBacktrackLoops() {
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+    CPQEngine engine = new CPQEngine(sampleEdges());
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(0);
 
-    List<KnownComponent> rules = builder.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits);
 
     String sourceLoop = CPQ.parse("((r1 ◦ r1⁻) ∩ id)").toString();
     String targetLoop = CPQ.parse("((r1⁻ ◦ r1) ∩ id)").toString();
@@ -74,14 +74,14 @@ final class ComponentCPQBuilderTest {
 
   @Test
   void threeEdgeComponentSupportsIntersectionWithInverse() {
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+    CPQEngine engine = new CPQEngine(sampleEdges());
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(2);
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> rules = builder.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits);
 
     CPQ expected = CPQ.parse("((r3◦r4) ∩ r5⁻)");
     String expectedStr = expected.toString();
@@ -98,7 +98,7 @@ final class ComponentCPQBuilderTest {
 
   @Test
   void conjunctionDeduplicationEliminatesCommutativeDuplicates() {
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+    CPQEngine engine = new CPQEngine(sampleEdges());
 
     // Create a component with 4 edges that would generate conjunctions
     BitSet edgeBits = new BitSet();
@@ -107,7 +107,7 @@ final class ComponentCPQBuilderTest {
     edgeBits.set(2); // r3
     edgeBits.set(3); // r4
 
-    List<KnownComponent> rules = builder.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits);
 
     // Count unique CPQ strings for components with same source and target
     long countAtoC =
@@ -163,7 +163,7 @@ final class ComponentCPQBuilderTest {
 
   @Test
   void loopsAreAnchoredWithIdentity() {
-    ComponentCPQBuilder builder = new ComponentCPQBuilder(sampleEdges());
+    CPQEngine engine = new CPQEngine(sampleEdges());
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(0);
@@ -172,7 +172,7 @@ final class ComponentCPQBuilderTest {
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> rules = builder.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits);
 
     String anchored = CPQ.parse("(r1⁻◦(((r4⁻◦r3⁻) ∩ r5)◦r2⁻)) ∩ id").toString();
     assertTrue(
