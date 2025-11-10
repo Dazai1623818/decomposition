@@ -49,14 +49,13 @@ public final class PartitionFilter {
   private String violatesConstraints(
       Partition partition, Set<String> freeVariables, Map<String, Integer> multiplicity) {
     if (partition.components().size() > 1) {
-      int requiredMultiplicity = freeVariables.size() <= 1 ? 2 : 1;
+      // Free variables must remain visible as join nodes. Presence (multiplicity > 0) suffices,
+      // because join-node computation later always includes free vars while also allowing
+      // additional shared vertices to act as joins.
       for (String freeVar : freeVariables) {
         int count = multiplicity.getOrDefault(freeVar, 0);
-        if (count < requiredMultiplicity) {
-          if (count == 0) {
-            return "free var " + freeVar + " absent from partition";
-          }
-          return "free var " + freeVar + " not a join node";
+        if (count == 0) {
+          return "free var " + freeVar + " absent from partition";
         }
       }
     }
