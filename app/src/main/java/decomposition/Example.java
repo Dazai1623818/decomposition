@@ -80,14 +80,15 @@ public class Example {
   // short branch
   public static CQ example5() {
     CQ cq = CQ.empty();
-    VarCQ c = cq.addBoundVariable("C");
-    VarCQ d = cq.addFreeVariable("D");
+    VarCQ c = cq.addFreeVariable("C");
+    VarCQ d = cq.addBoundVariable("D");
     VarCQ e = cq.addBoundVariable("E");
     VarCQ f = cq.addBoundVariable("F");
 
     cq.addAtom(c, new Predicate(3, "r3"), d);
     cq.addAtom(d, new Predicate(4, "r4"), e);
     cq.addAtom(d, new Predicate(5, "r5"), f);
+    cq.addAtom(e, new Predicate(6, "r6"), f);
 
     return cq;
   }
