@@ -10,6 +10,7 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -195,34 +196,36 @@ final class CPQEngineTest {
     List<Edge> edges = sampleEdges();
     CPQEngine engine = new CPQEngine(edges);
 
-    Component multiEdge = componentForEdges(edges, 0, 1);
-    Set<String> enforcedJoinNodes = Set.of("A", "B");
-    int multiComponentCount = 2; // Simulate a partition with ≥ 2 components
-    ComponentRules enforcedRules =
-        engine.componentRules(multiEdge, enforcedJoinNodes, Set.of(), multiComponentCount);
+    int desiredSamples = 10;
+    List<Scenario> enforcedScenarios =
+        List.of(
+            new Scenario(componentForEdges(edges, 0, 1), Set.of("A", "B"), 2),
+            new Scenario(componentForEdges(edges, 1, 2), Set.of("B", "C"), 2),
+            new Scenario(componentForEdges(edges, 2, 3), Set.of("C", "D"), 2),
+            new Scenario(componentForEdges(edges, 3, 0), Set.of("A", "D"), 2),
+            new Scenario(componentForEdges(edges, 0, 4), Set.of("A", "C"), 2),
+            new Scenario(componentForEdges(edges, 1, 4), Set.of("B", "C"), 2),
+            new Scenario(componentForEdges(edges, 2, 4), Set.of("C", "A"), 2),
+            new Scenario(componentForEdges(edges, 0, 1, 4), Set.of("A", "C"), 2),
+            new Scenario(componentForEdges(edges, 1, 2, 3), Set.of("B", "D"), 2),
+            new Scenario(componentForEdges(edges, 0, 1, 2, 3), Set.of("A", "C"), 2));
 
-    assertTrue(
-        !enforcedRules.joinFilteredRules().isEmpty(),
-        "Expected at least one CPQ that survives join-node enforcement");
-    assertTrue(
-        enforcedRules.joinFilteredRules().size() <= enforcedRules.rawRules().size(),
-        "Join-node filtering should never introduce new CPQs");
+    List<Scenario> relaxedScenarios =
+        List.of(
+            new Scenario(componentForEdges(edges, 0), Set.of("A", "B"), 1),
+            new Scenario(componentForEdges(edges, 1), Set.of("B", "C"), 1),
+            new Scenario(componentForEdges(edges, 2), Set.of("C", "D"), 1),
+            new Scenario(componentForEdges(edges, 3), Set.of("D", "A"), 1),
+            new Scenario(componentForEdges(edges, 4), Set.of("A", "C"), 1));
 
-    Component singleEdge = componentForEdges(edges, 4);
-    Set<String> relaxedJoinNodes = Set.of("A", "C");
-    int singleComponentCount = 1; // Single component + single edge disables enforcement
-    ComponentRules relaxedRules =
-        engine.componentRules(singleEdge, relaxedJoinNodes, Set.of(), singleComponentCount);
+    List<String> enforcedExamples =
+        collectExamples(engine, enforcedScenarios, desiredSamples, false);
+    List<String> relaxedExamples = collectExamples(engine, relaxedScenarios, desiredSamples, true);
 
-    assertEquals(
-        relaxedRules.rawRules(),
-        relaxedRules.joinFilteredRules(),
-        "Single-edge component with join nodes should bypass enforcement");
-
-    System.out.println("Join-node enforcement ON (join nodes " + enforcedJoinNodes + "):");
-    ruleSummaries(enforcedRules.joinFilteredRules()).forEach(System.out::println);
-    System.out.println("Join-node enforcement OFF (join nodes " + relaxedJoinNodes + "):");
-    ruleSummaries(relaxedRules.joinFilteredRules()).forEach(System.out::println);
+    System.out.println("Join-node enforcement ON (" + enforcedExamples.size() + " samples):");
+    enforcedExamples.forEach(System.out::println);
+    System.out.println("Join-node enforcement OFF (" + relaxedExamples.size() + " samples):");
+    relaxedExamples.forEach(System.out::println);
   }
 
   private static Component componentForEdges(List<Edge> edges, int... indices) {
@@ -237,9 +240,50 @@ final class CPQEngineTest {
     return new Component(bits, vertices);
   }
 
-  private static List<String> ruleSummaries(List<KnownComponent> rules) {
-    return rules.stream()
-        .map(kc -> kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]")
-        .toList();
+  private static List<String> collectExamples(
+      CPQEngine engine, List<Scenario> scenarios, int desiredCount, boolean expectRelaxed) {
+    Set<String> summaries = new LinkedHashSet<>();
+    for (Scenario scenario : scenarios) {
+      ComponentRules rules =
+          engine.componentRules(
+              scenario.component(), scenario.joinNodes(), Set.of(), scenario.totalComponents());
+      if (expectRelaxed) {
+        assertEquals(
+            rules.rawRules(),
+            rules.joinFilteredRules(),
+            () ->
+                "Expected no join-node enforcement for component "
+                    + scenario.component().vertices()
+                    + " with join nodes "
+                    + scenario.joinNodes());
+      } else {
+        assertTrue(
+            !rules.joinFilteredRules().isEmpty(),
+            () ->
+                "Expected enforced component "
+                    + scenario.component().vertices()
+                    + " with join nodes "
+                    + scenario.joinNodes()
+                    + " to retain rules");
+      }
+      rules.joinFilteredRules().stream().map(CPQEngineTest::formatSummary).forEach(summaries::add);
+      if (summaries.size() >= desiredCount) {
+        break;
+      }
+    }
+    assertTrue(
+        summaries.size() >= desiredCount,
+        () ->
+            "Needed at least "
+                + desiredCount
+                + " summaries but only collected "
+                + summaries.size());
+    return summaries.stream().limit(desiredCount).toList();
   }
+
+  private static String formatSummary(KnownComponent kc) {
+    return kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]";
+  }
+
+  private record Scenario(Component component, Set<String> joinNodes, int totalComponents) {}
 }
