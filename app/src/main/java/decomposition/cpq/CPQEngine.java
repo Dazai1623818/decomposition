@@ -104,7 +104,10 @@ public final class CPQEngine {
     List<KnownComponent> raw = deriveRules(component.edgeBits(), joinNodes);
 
     List<KnownComponent> joinFiltered = raw;
-    if (shouldEnforceJoinNodes(joinNodes, totalComponents, component)) {
+    // Only skip join-node enforcement for trivial single-edge components. Larger components must
+    // honor join-node roles so tuple enumeration keeps the requested boundaries intact.
+    boolean enforceJoinNodes = !joinNodes.isEmpty() && component.edgeCount() > 1;
+    if (enforceJoinNodes) {
       Set<String> local = JoinNodeUtils.localJoinNodes(component, joinNodes);
       joinFiltered =
           raw.stream()
@@ -433,11 +436,6 @@ public final class CPQEngine {
     }
 
     return false;
-  }
-
-  private boolean shouldEnforceJoinNodes(
-      Set<String> joinNodes, int totalComponents, Component component) {
-    return !joinNodes.isEmpty() && (totalComponents > 1 || component.edgeCount() > 1);
   }
 
   private List<KnownComponent> preferCanonicalOrientation(
