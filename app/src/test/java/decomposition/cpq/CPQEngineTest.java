@@ -1,12 +1,17 @@
 package decomposition.cpq;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import decomposition.cpq.model.ComponentRules;
+import decomposition.model.Component;
 import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 final class CPQEngineTest {
@@ -183,5 +188,58 @@ final class CPQEngineTest {
                         && kc.source().equals("B")
                         && kc.target().equals("B")),
         "Loop B→B should enforce equality via intersection with id");
+  }
+
+  @Test
+  void joinNodeEnforcementExamples() {
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+
+    Component multiEdge = componentForEdges(edges, 0, 1);
+    Set<String> enforcedJoinNodes = Set.of("A", "B");
+    int multiComponentCount = 2; // Simulate a partition with ≥ 2 components
+    ComponentRules enforcedRules =
+        engine.componentRules(multiEdge, enforcedJoinNodes, Set.of(), multiComponentCount);
+
+    assertTrue(
+        !enforcedRules.joinFilteredRules().isEmpty(),
+        "Expected at least one CPQ that survives join-node enforcement");
+    assertTrue(
+        enforcedRules.joinFilteredRules().size() <= enforcedRules.rawRules().size(),
+        "Join-node filtering should never introduce new CPQs");
+
+    Component singleEdge = componentForEdges(edges, 4);
+    Set<String> relaxedJoinNodes = Set.of("A", "C");
+    int singleComponentCount = 1; // Single component + single edge disables enforcement
+    ComponentRules relaxedRules =
+        engine.componentRules(singleEdge, relaxedJoinNodes, Set.of(), singleComponentCount);
+
+    assertEquals(
+        relaxedRules.rawRules(),
+        relaxedRules.joinFilteredRules(),
+        "Single-edge component with join nodes should bypass enforcement");
+
+    System.out.println("Join-node enforcement ON (join nodes " + enforcedJoinNodes + "):");
+    ruleSummaries(enforcedRules.joinFilteredRules()).forEach(System.out::println);
+    System.out.println("Join-node enforcement OFF (join nodes " + relaxedJoinNodes + "):");
+    ruleSummaries(relaxedRules.joinFilteredRules()).forEach(System.out::println);
+  }
+
+  private static Component componentForEdges(List<Edge> edges, int... indices) {
+    BitSet bits = new BitSet();
+    Set<String> vertices = new HashSet<>();
+    for (int index : indices) {
+      bits.set(index);
+      Edge edge = edges.get(index);
+      vertices.add(edge.source());
+      vertices.add(edge.target());
+    }
+    return new Component(bits, vertices);
+  }
+
+  private static List<String> ruleSummaries(List<KnownComponent> rules) {
+    return rules.stream()
+        .map(kc -> kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]")
+        .toList();
   }
 }
