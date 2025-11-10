@@ -1,23 +1,5 @@
 package decomposition.cpq;
 
-import decomposition.cpq.model.CacheStats;
-import decomposition.cpq.model.ComponentKey;
-import decomposition.cpq.model.ComponentRules;
-import decomposition.cpq.model.PartitionAnalysis;
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
-import decomposition.util.BitsetUtils;
-import decomposition.util.JoinNodeUtils;
-// REMOVED: import dev.roanh.gmark.ast.QueryTree;  // No longer needed
-import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
-import dev.roanh.gmark.lang.cq.AtomCQ;
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.QueryGraphCQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -32,6 +14,26 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+
+import decomposition.cpq.model.CacheStats;
+import decomposition.cpq.model.ComponentKey;
+import decomposition.cpq.model.ComponentRules;
+import decomposition.cpq.model.PartitionAnalysis;
+import decomposition.model.Component;
+import decomposition.model.Edge;
+import decomposition.model.Partition;
+import decomposition.util.BitsetUtils;
+import decomposition.util.JoinNodeUtils;
+import dev.roanh.gmark.ast.OperationType;
+import dev.roanh.gmark.ast.QueryTree;
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
+import dev.roanh.gmark.lang.cq.AtomCQ;
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.QueryGraphCQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 
 /**
  * End-to-end CPQ engine: handles rule synthesis, memoization, component analysis, and tuple
@@ -291,11 +293,7 @@ public final class CPQEngine {
 
   private KnownComponent createReversedVariant(KnownComponent rule) {
     try {
-      // Use gMark's built-in graph reversal for efficiency and correctness
-      QueryGraphCPQ queryGraph = rule.cpq().toQueryGraph();
-      QueryGraphCPQ reversedGraph = queryGraph.reverse();
-      CPQ reversedCpq = reversedGraph.toCPQ();
-      
+      CPQ reversedCpq = reverseCpq(rule.cpq());
       return new KnownComponent(
           reversedCpq,
           rule.edges(),
@@ -307,7 +305,40 @@ public final class CPQEngine {
     }
   }
 
-  // REMOVED: reverseQueryTree(QueryTree) method - no longer needed
+  private CPQ reverseCpq(CPQ cpq) {
+    return reverseQueryTree(cpq.toAbstractSyntaxTree());
+  }
+
+  private CPQ reverseQueryTree(QueryTree tree) {
+    OperationType operation = tree.getOperation();
+    return switch (operation) {
+      case EDGE -> {
+        var label = tree.getEdgeAtom().getLabel();
+        yield CPQ.label(label.getInverse());
+      }
+      case IDENTITY -> CPQ.IDENTITY;
+      case CONCATENATION -> CPQ.concat(reverseOperands(tree, true));
+      case INTERSECTION -> CPQ.intersect(reverseOperands(tree, false));
+      default ->
+          throw new IllegalArgumentException(
+              "Unsupported CPQ operation for reversal: " + operation);
+    };
+  }
+
+  private List<CPQ> reverseOperands(QueryTree tree, boolean reverseOrder) {
+    int arity = tree.getArity();
+    List<CPQ> operands = new ArrayList<>(arity);
+    if (reverseOrder) {
+      for (int i = arity - 1; i >= 0; i--) {
+        operands.add(reverseQueryTree(tree.getOperand(i)));
+      }
+    } else {
+      for (int i = 0; i < arity; i++) {
+        operands.add(reverseQueryTree(tree.getOperand(i)));
+      }
+    }
+    return operands;
+  }
 
   private boolean isValidComponent(KnownComponent rule) {
     // Get component edges
