@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-final class CPQEngineTest {
+final class CPQEnumeratorTest {
 
   private static List<Edge> sampleEdges() {
     return List.of(
@@ -37,7 +37,7 @@ final class CPQEngineTest {
   @Test
   void singleEdgeIncludesInverseVariant() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
@@ -61,7 +61,7 @@ final class CPQEngineTest {
   @Test
   void singleEdgeIncludesBacktrackLoops() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
@@ -93,7 +93,7 @@ final class CPQEngineTest {
   @Test
   void threeEdgeComponentSupportsIntersectionWithInverse() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
@@ -119,7 +119,7 @@ final class CPQEngineTest {
   @Test
   void conjunctionDeduplicationEliminatesCommutativeDuplicates() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     // Create a component with 4 edges that would generate conjunctions
@@ -186,7 +186,7 @@ final class CPQEngineTest {
   @Test
   void loopsAreAnchoredWithIdentity() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
@@ -222,7 +222,7 @@ final class CPQEngineTest {
     ExtractionResult extraction = extractor.extract(cq, Set.of("x", "y"));
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = extraction.variableNodeMap();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
 
     BitSet bits = new BitSet(edges.size());
     bits.set(0, edges.size());
@@ -248,7 +248,7 @@ final class CPQEngineTest {
   @Test
   void joinNodeEnforcementExamples() {
     List<Edge> edges = sampleEdges();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
     Map<String, String> varMap = identityVarMap(edges);
 
     int desiredSamples = 10;
@@ -297,7 +297,7 @@ final class CPQEngineTest {
   }
 
   private static List<String> collectExamples(
-      CPQEngine engine,
+      CPQEnumerator engine,
       Map<String, String> varToNodeMap,
       List<Scenario> scenarios,
       int desiredCount,
@@ -330,7 +330,9 @@ final class CPQEngineTest {
                     + scenario.joinNodes()
                     + " to retain rules");
       }
-      rules.joinFilteredRules().stream().map(CPQEngineTest::formatSummary).forEach(summaries::add);
+      rules.joinFilteredRules().stream()
+          .map(CPQEnumeratorTest::formatSummary)
+          .forEach(summaries::add);
       if (summaries.size() >= desiredCount) {
         break;
       }

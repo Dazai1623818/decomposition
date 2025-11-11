@@ -21,10 +21,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * End-to-end CPQ engine: handles rule synthesis, memoization, component analysis, and tuple
+ * End-to-end CPQ enumerator: handles rule synthesis, memoization, component analysis, and tuple
  * enumeration for partitions.
  */
-public final class CPQEngine {
+public final class CPQEnumerator {
   private final List<Edge> edges;
   private final Map<RuleCacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
   private final Map<ComponentCacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
@@ -33,7 +33,7 @@ public final class CPQEngine {
   private final ReverseLoopGenerator reverseLoopGenerator;
   private final PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
 
-  public CPQEngine(List<Edge> edges) {
+  public CPQEnumerator(List<Edge> edges) {
     this(edges, new CacheStats());
   }
 
@@ -45,7 +45,7 @@ public final class CPQEngine {
     return partitionDiagnostics.lastComponentDiagnostics();
   }
 
-  public CPQEngine(List<Edge> edges, CacheStats stats) {
+  public CPQEnumerator(List<Edge> edges, CacheStats stats) {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
     this.cacheStats = Objects.requireNonNull(stats, "stats");
     this.edgeMatcher = new ComponentEdgeMatcher(this.edges);

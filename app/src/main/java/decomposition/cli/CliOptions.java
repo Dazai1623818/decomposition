@@ -16,6 +16,7 @@ record CliOptions(
     int maxCovers,
     long timeBudgetMs,
     int enumerationLimit,
+    boolean singleTuplePerPartition,
     boolean showVisualization,
     String outputPath,
     RandomExampleConfig randomExampleConfig) {

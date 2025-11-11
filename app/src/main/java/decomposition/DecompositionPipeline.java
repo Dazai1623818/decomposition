@@ -1,6 +1,6 @@
 package decomposition;
 
-import decomposition.cpq.CPQEngine;
+import decomposition.cpq.CPQEnumerator;
 import decomposition.cpq.KnownComponent;
 import decomposition.cpq.model.CacheStats;
 import decomposition.cpq.model.ComponentKey;
@@ -83,7 +83,7 @@ public final class DecompositionPipeline {
     }
 
     // Engine
-    final CPQEngine engine = new CPQEngine(edges);
+    final CPQEnumerator engine = new CPQEnumerator(edges);
 
     // Working accumulators
     KnownComponent finalComponent = null;
@@ -93,7 +93,9 @@ public final class DecompositionPipeline {
 
     // Precompute tuple limit
     final boolean wantTuples = opts.mode().enumerateTuples();
-    final int tupleLimit = (opts.enumerationLimit() <= 0) ? 1 : opts.enumerationLimit();
+    final boolean singleTuplePerPartition = opts.singleTuplePerPartition();
+    final int tupleLimit =
+        singleTuplePerPartition ? 1 : (opts.enumerationLimit() <= 0 ? 1 : opts.enumerationLimit());
 
     int idx = 0;
     for (FilteredPartition fp : filteredWithJoins) {
@@ -183,7 +185,7 @@ public final class DecompositionPipeline {
       List<Edge> allEdges,
       Set<String> freeVars,
       Map<String, String> varToNodeMap,
-      CPQEngine engine) {
+      CPQEnumerator engine) {
     List<String> cached = engine.lastComponentDiagnostics();
     if (cached != null && !cached.isEmpty()) {
       diagnostics.addAll(cached);

@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.CPQEngine;
+import decomposition.cpq.CPQEnumerator;
 import decomposition.cpq.KnownComponent;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
@@ -22,7 +22,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
-final class CPQEngineBacktrackTest {
+final class CPQEnumeratorBacktrackTest {
 
   @Test
   void singleEdgeBacktrackVariantsAreGeneratedAndUsable() {
@@ -32,7 +32,7 @@ final class CPQEngineBacktrackTest {
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = identityVarMap(edges);
 
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
 
     int r4Index = findEdgeIndex(edges, "r4");
     BitSet r4Bits = new BitSet(edges.size());
@@ -123,7 +123,7 @@ final class CPQEngineBacktrackTest {
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = identityVarMap(edges);
 
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
 
     int selfLoopIndex = findSelfLoopEdge(edges);
     BitSet selfLoopBits = new BitSet(edges.size());

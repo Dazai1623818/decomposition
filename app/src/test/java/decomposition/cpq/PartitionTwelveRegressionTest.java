@@ -23,7 +23,7 @@ final class PartitionTwelveRegressionTest {
     ExtractionResult extraction = new CQExtractor().extract(Example.example6(), Set.of("A"));
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = extraction.variableNodeMap();
-    CPQEngine engine = new CPQEngine(edges);
+    CPQEnumerator engine = new CPQEnumerator(edges);
 
     BitSet fullBits = new BitSet(edges.size());
     fullBits.set(0, edges.size());

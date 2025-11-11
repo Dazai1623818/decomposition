@@ -1,0 +1,207 @@
+\documentclass{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{enumitem}
+\title{CPQ Enumerator and Construction Pseudocode}
+\date{}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\begin{document}
+\maketitle
+
+\section*{CPQ Enumerator Overview}
+
+\begin{algorithm}
+\caption{Derive construction rules for an edge subset}
+\begin{algorithmic}[1]
+\Procedure{DeriveRules}{$edgeSubset$, $requestedJoinNodes$, $originalVarMap$}
+  \If{$edgeSubset$ is empty}
+    \State \Return $\varnothing$
+  \EndIf
+  \State $localJoinNodes \gets$ \textsc{LocalJoinNodes}($edgeSubset$, $requestedJoinNodes$)
+  \State $key \gets$ cache key from ($edgeSubset$, $localJoinNodes$, size)
+  \If{$ruleCache$ contains $key$}
+    \State \Return cached rules
+  \EndIf
+  \If{cardinality == 1}
+    \State $rules \gets$ \textsc{SingleEdgeRules}(...)
+  \Else
+    \If{$\lvert localJoinNodes \rvert \leq 1$}
+      \State $rules \gets$ \textsc{LoopBacktrackRules}(...)
+    \Else
+      \State $rules \gets \varnothing$
+    \EndIf
+    \State $resolver(subset) \gets$ \textsc{DeriveRules}(subset, ...)
+    \State $rules \gets rules \cup$ \textsc{CompositeRules}(..., resolver)
+  \EndIf
+  \State $rules \gets$ \textsc{DeduplicateAndValidate}(rules)
+  \State cache $key \gets rules$
+  \State \Return rules
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Build component rules with caching and join-node handling}
+\begin{algorithmic}[1]
+\Procedure{ComponentRules}{$component$, $requestedJoinNodes$, $freeVars$, $totalComponents$, $originalVarMap$}
+  \State Normalize inputs
+  \State $key \gets$ cache key built from component signature, join nodes, free vars, sizes, var context hash
+  \If{$componentCache$ contains $key$}
+    \State Record cache hit; \Return cached result
+  \EndIf
+  \State Record cache miss
+  \State $raw \gets$ \textsc{DeriveRules}($component.edgeBits$, join nodes, originalVarMap)
+  \State $joinFiltered \gets$ $raw$
+  \If{join nodes non-empty $\wedge$ component has multiple edges}
+    \State $localJoinNodes \gets$ \textsc{LocalJoinNodes}(component, join nodes)
+    \State $joinFiltered \gets$ rules that respect join-node roles
+  \EndIf
+  \State $finals \gets joinFiltered$
+  \If{$\lvert joinNodes\rvert = 2$ and $joinFiltered$ not empty}
+    \State Determine preferred source/target ordering based on free vars and original order
+    \State $finals \gets$ rules matching preferred orientation when possible
+  \EndIf
+  \State $computed \gets$ new ComponentRules(component, raw, joinFiltered, finals)
+  \State store in cache; \Return $computed$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Analyze a partition}
+\begin{algorithmic}[1]
+\Procedure{AnalyzePartition}{$partition$, $requestedJoinNodes$, $freeVars$, $originalVarMap$}
+  \State Normalize inputs and collect component list, total count
+  \State Begin diagnostics
+  \State $perComponent \gets []$
+  \For{each $component$ with index}
+    \State $rules \gets$ \textsc{ComponentRules}(component, ...)
+    \If{$rules.finalRules$ empty}
+      \State Record failure; \Return $\texttt{null}$
+    \EndIf
+    \State Record component diagnostics
+    \State Append $rules$ to $perComponent$
+  \EndFor
+  \State $preferred \gets$ list of preferred rule per component
+  \State $ruleCounts \gets$ sizes of $finalRules$ per component
+  \State Record success; \Return new PartitionAnalysis(perComponent, preferred, ruleCounts)
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Enumerate tuples of known components}
+\begin{algorithmic}[1]
+\Procedure{EnumerateTuples}{$analysis$, $limit$}
+  \If{$analysis$ is null}
+    \State \Return empty list
+  \EndIf
+  \State $components \gets$ list of final rules per component
+  \If{$components$ empty}
+    \State \Return empty list
+  \EndIf
+  \State Initialize odometer indices $idx[0\dots n-1]$ to zero
+  \State $output \gets []$
+  \While{true}
+    \State $tuple \gets [components[i][idx[i]] \text{ for } i=0\dots n-1]$
+    \State append $tuple$ to $output$
+    \If{$limit > 0$ and $\lvert output\rvert \geq limit$}
+      \State \Return $output$
+    \EndIf
+    \State Advance odometer from last position; reset and carry as needed
+    \If{odometer exhausted}
+      \State \Return $output$
+    \EndIf
+  \EndWhile
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\section*{CPQ Construction Strategies}
+
+\begin{algorithm}
+\caption{Single-edge construction rules}
+\begin{algorithmic}[1]
+\Procedure{SingleEdgeRules}{$edge$, $edgeBits$, $varMap$}
+  \State $rules \gets []$
+  \State Add forward atom ($source \to target$)
+  \If{src != tgt}
+    \State Add inverse atom ($target \to source$) if inverse label parses
+    \State Add backtracking loop anchored at $source$ and $target$ via $(edge.label \circ edge.label^{-1}) \cap id$
+  \EndIf
+  \State \Return $rules$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Loop-shaped construction via backtracking}
+\begin{algorithmic}[1]
+\Procedure{LoopBacktrackRules}{$edges$, $edgeBits$, $allowedAnchors$, $varMap$}
+  \State $adjacency \gets$ adjacency list restricted to $edgeBits$
+  \State $results \gets []$
+  \For{each $anchor$ in adjacency}
+    \If{anchor not allowed} \State \textbf{continue} \EndIf
+    \State $loop \gets$ \textsc{BuildLoop}(anchor, adjacency, visitedBits)
+    \If{$loop$ null} \State \textbf{continue} \EndIf
+    \State append KnownComponent(loop $\cap$ id, anchor, anchor, derivation, $varMap$)
+  \EndFor
+  \State \Return $results$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Composite rules by joining subcomponents}
+\begin{algorithmic}[1]
+\Procedure{CompositeRules}{$edgeBits$, $totalEdges$, $resolver$}
+  \State $results \gets []$
+  \ForEach{non-empty proper split $(subsetA, subsetB)$ of $edgeBits$}
+    \State $left \gets resolver(subsetA)$
+    \State $right \gets resolver(subsetB)$
+    \For{each $lhs \in left$, $rhs \in right$}
+      \If{$lhs.target == rhs.source$ and var maps match}
+        \State add concatenated CPQ $lhs \circ rhs$
+      \EndIf
+      \If{$lhs.source == rhs.source$ and $lhs.target == rhs.target$ and var maps match}
+        \State add intersection CPQ $lhs \cap rhs$
+      \EndIf
+    \EndFor
+  \EndFor
+  \State \Return $results$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Reverse and anchor variants}
+\begin{algorithmic}[1]
+\Procedure{ReverseLoopVariants}{$rule$, $originalVarMap$}
+  \State $variants \gets []$
+  \State $candidate \gets rule$
+  \If{rule.source == rule.target and rule CPQ graph not loop}
+    \State $candidate \gets$ anchor rule intersected with identity
+  \EndIf
+  \If{validator accepts $candidate$} \State append $candidate$ \EndIf
+  \If{$candidate.source \neq candidate.target$}
+    \State $reversed \gets$ reverse CPQ tree and swap endpoints
+    \If{validator accepts $reversed$} \State append $reversed$ \EndIf
+  \EndIf
+  \State \Return deduplicated $variants$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Reverse CPQ expression}
+\begin{algorithmic}[1]
+\Function{ReverseCPQ}{$cpq$}
+  \State Recursively reverse leaves and operations (invert labels, reverse operand order for concat)
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

@@ -6,6 +6,7 @@ import decomposition.DecompositionOptions;
 import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
+import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -32,7 +33,8 @@ final class RandomCPQDecompositionTest {
           DEFAULT_OPTIONS.maxPartitions(),
           DEFAULT_OPTIONS.maxCovers(),
           DEFAULT_OPTIONS.timeBudgetMs(),
-          DEFAULT_OPTIONS.enumerationLimit());
+          DEFAULT_OPTIONS.enumerationLimit(),
+          TestDefaults.singleTuplePerPartition());
 
   @Test
   void decompositionReconstructsOriginalCpq() {
@@ -111,7 +113,8 @@ final class RandomCPQDecompositionTest {
             100_000,
             500,
             1, // 1ms time budget - very tight
-            100);
+            100,
+            TestDefaults.singleTuplePerPartition());
 
     CPQ complex = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
     CQ cq = complex.toCQ();

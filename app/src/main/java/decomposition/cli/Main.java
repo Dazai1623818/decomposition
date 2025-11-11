@@ -56,7 +56,8 @@ public final class Main {
               cliOptions.maxPartitions(),
               cliOptions.maxCovers(),
               cliOptions.timeBudgetMs(),
-              cliOptions.enumerationLimit());
+              cliOptions.enumerationLimit(),
+              cliOptions.singleTuplePerPartition());
 
       CQ query = loadQuery(cliOptions);
 
@@ -274,6 +275,7 @@ public final class Main {
     String maxCoversRaw = null;
     String timeBudgetRaw = null;
     String limitRaw = null;
+    boolean singleTuple = false;
     String randomCountRaw = null;
     String randomFreeRaw = null;
     String randomEdgesRaw = null;
@@ -307,6 +309,7 @@ public final class Main {
             timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--limit" ->
             limitRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--single-tuple" -> singleTuple = true;
         case "--random-count" ->
             randomCountRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--random-free-vars" ->
@@ -390,7 +393,7 @@ public final class Main {
     }
 
     DecompositionOptions options =
-        new DecompositionOptions(mode, maxPartitions, maxCovers, timeBudget, limit);
+        new DecompositionOptions(mode, maxPartitions, maxCovers, timeBudget, limit, singleTuple);
     return new ProfileOptions(queries, options);
   }
 
@@ -411,6 +414,7 @@ public final class Main {
     String outputPath = null;
     String limitRaw = null;
     boolean show = false;
+    boolean singleTuplePerPartition = false;
     String randomFreeRaw = null;
     String randomEdgesRaw = null;
     String randomLabelsRaw = null;
@@ -449,6 +453,7 @@ public final class Main {
             timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--limit" ->
             limitRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--single-tuple" -> singleTuplePerPartition = true;
         case "--out" ->
             outputPath = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--show" -> show = true;
@@ -538,6 +543,7 @@ public final class Main {
         maxCovers,
         timeBudget,
         limit,
+        singleTuplePerPartition,
         show,
         outputPath,
         randomExampleConfig);

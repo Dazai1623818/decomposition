@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.cpq.KnownComponent;
+import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
@@ -55,7 +56,8 @@ final class DecompositionPipelineTest {
             defaults.maxPartitions(),
             defaults.maxCovers(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit());
+            defaults.enumerationLimit(),
+            TestDefaults.singleTuplePerPartition());
 
     DecompositionResult result = pipeline.execute(cq, Set.of(), options);
 
@@ -80,7 +82,8 @@ final class DecompositionPipelineTest {
             defaults.maxPartitions(),
             defaults.maxCovers(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit());
+            defaults.enumerationLimit(),
+            TestDefaults.singleTuplePerPartition());
 
     DecompositionPipeline pipeline = new DecompositionPipeline();
     DecompositionResult result = pipeline.execute(cq, Set.of("A"), options);
@@ -162,7 +165,8 @@ final class DecompositionPipelineTest {
             defaults.maxPartitions(),
             defaults.maxCovers(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit());
+            defaults.enumerationLimit(),
+            TestDefaults.singleTuplePerPartition());
 
     DecompositionPipeline pipeline = new DecompositionPipeline();
     DecompositionResult result = pipeline.execute(cq, Set.of("src", "trg"), options);
@@ -208,5 +212,35 @@ final class DecompositionPipelineTest {
     assertTrue(
         hasValidPattern,
         "Component CPQ should contain all labels in intersection pattern, got: " + rule);
+  }
+
+  @Test
+  void enumerationSingleTupleOptionLimitsResults() {
+    CQ cq = Example.example7();
+
+    DecompositionOptions defaults = DecompositionOptions.defaults();
+    DecompositionOptions options =
+        new DecompositionOptions(
+            DecompositionOptions.Mode.ENUMERATE,
+            defaults.maxPartitions(),
+            defaults.maxCovers(),
+            defaults.timeBudgetMs(),
+            defaults.enumerationLimit(),
+            true);
+
+    DecompositionPipeline pipeline = new DecompositionPipeline();
+    DecompositionResult result = pipeline.execute(cq, Set.of("A"), options);
+
+    for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
+      assertTrue(
+          evaluation.decompositionTuples().size() <= 1,
+          "Single-tuple mode should cap tuples to at most one per partition");
+      if (!evaluation.decompositionTuples().isEmpty()) {
+        assertEquals(
+            evaluation.partition().components().size(),
+            evaluation.decompositionTuples().get(0).size(),
+            "First tuple should still cover all components");
+      }
+    }
   }
 }

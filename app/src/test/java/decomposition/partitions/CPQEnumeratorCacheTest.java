@@ -3,7 +3,7 @@ package decomposition.partitions;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.Example;
-import decomposition.cpq.CPQEngine;
+import decomposition.cpq.CPQEnumerator;
 import decomposition.cpq.model.CacheStats;
 import decomposition.cpq.model.PartitionAnalysis;
 import decomposition.extract.CQExtractor;
@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-final class CPQEngineCacheTest {
+final class CPQEnumeratorCacheTest {
 
   @Test
   void cacheStatsCaptureHitsAndMisses() {
@@ -36,7 +36,7 @@ final class CPQEngineCacheTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(partition.components(), extraction.freeVariables());
     CacheStats stats = new CacheStats();
-    CPQEngine engine = new CPQEngine(edges, stats);
+    CPQEnumerator engine = new CPQEnumerator(edges, stats);
 
     PartitionAnalysis first =
         engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varMap);
