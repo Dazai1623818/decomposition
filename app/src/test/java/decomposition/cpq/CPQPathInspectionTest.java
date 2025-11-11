@@ -1,10 +1,10 @@
 package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.Test;
 
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
-import org.junit.jupiter.api.Test;
 
 final class CPQPathInspectionTest {
 
@@ -52,8 +52,8 @@ final class CPQPathInspectionTest {
 
     String source = graph.getVertexLabel(graph.getSourceVertex());
     String target = graph.getVertexLabel(graph.getTargetVertex());
-    assertEquals("src", source, "Parser should expose canonical source variable name");
-    assertEquals("trg", target, "Parser should expose canonical target variable name");
+    assertEquals("src", source, "Parser should expose correct source variable name");
+    assertEquals("trg", target, "Parser should expose correct target variable name");
   }
 
   @Test

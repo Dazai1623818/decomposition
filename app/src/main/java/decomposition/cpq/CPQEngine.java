@@ -1,20 +1,5 @@
 package decomposition.cpq;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-
 import decomposition.cpq.model.CacheStats;
 import decomposition.cpq.model.ComponentKey;
 import decomposition.cpq.model.ComponentRules;
@@ -24,16 +9,16 @@ import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;
-import dev.roanh.gmark.ast.OperationType;
-import dev.roanh.gmark.ast.QueryTree;
-import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
-import dev.roanh.gmark.lang.cq.AtomCQ;
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.QueryGraphCQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * End-to-end CPQ engine: handles rule synthesis, memoization, component analysis, and tuple
@@ -44,7 +29,9 @@ public final class CPQEngine {
   private final Map<RuleCacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
   private final Map<ComponentCacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
   private final CacheStats cacheStats;
-  private volatile List<String> lastComponentDiagnostics = List.of();
+  private final ComponentEdgeMatcher componentValidator;
+  private final ReverseLoopGenerator reverseLoopGenerator;
+  private final PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
 
   public CPQEngine(List<Edge> edges) {
     this(edges, new CacheStats());
@@ -55,12 +42,14 @@ public final class CPQEngine {
    * when no failure has been recorded.
    */
   public List<String> lastComponentDiagnostics() {
-    return lastComponentDiagnostics;
+    return partitionDiagnostics.lastComponentDiagnostics();
   }
 
   public CPQEngine(List<Edge> edges, CacheStats stats) {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
     this.cacheStats = Objects.requireNonNull(stats, "stats");
+    this.componentValidator = new ComponentEdgeMatcher(this.edges);
+    this.reverseLoopGenerator = new ReverseLoopGenerator(componentValidator);
   }
 
   public CacheStats cacheStats() {
@@ -171,8 +160,7 @@ public final class CPQEngine {
     Set<String> freeVars = normalize(freeVariables);
     List<Component> components = partition.components();
     int totalComponents = components.size();
-    lastComponentDiagnostics = List.of();
-    List<String> failureDiagnostics = new ArrayList<>();
+    partitionDiagnostics.beginPartition();
 
     List<ComponentRules> perComponent = new ArrayList<>(totalComponents);
     for (int idx = 0; idx < totalComponents; idx++) {
@@ -181,15 +169,10 @@ public final class CPQEngine {
           componentRules(component, joinNodes, freeVars, totalComponents, originalVarMap);
 
       String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
-      String failureMessage =
-          buildFailureDiagnostic(idx + 1, componentSig, rules, joinNodes.isEmpty());
-      if (failureMessage != null) {
-        failureDiagnostics.add(failureMessage);
-      }
+      partitionDiagnostics.recordComponent(idx + 1, componentSig, rules, joinNodes.isEmpty());
 
       if (rules.finalRules().isEmpty()) {
-        lastComponentDiagnostics =
-            failureDiagnostics.isEmpty() ? List.of() : List.copyOf(failureDiagnostics);
+        partitionDiagnostics.failPartition();
         return null;
       }
       perComponent.add(rules);
@@ -198,7 +181,7 @@ public final class CPQEngine {
     List<KnownComponent> preferred = perComponent.stream().map(ComponentRules::preferred).toList();
     List<Integer> ruleCounts = perComponent.stream().map(r -> r.finalRules().size()).toList();
 
-    lastComponentDiagnostics = List.of();
+    partitionDiagnostics.succeedPartition();
     return new PartitionAnalysis(perComponent, preferred, ruleCounts);
   }
 
@@ -275,8 +258,7 @@ public final class CPQEngine {
     Map<ComponentKey, KnownComponent> unique = new LinkedHashMap<>();
 
     for (KnownComponent rule : rules) {
-      // Generate variants for this rule
-      List<KnownComponent> variants = generateVariants(rule, originalVarMap);
+      List<KnownComponent> variants = reverseLoopGenerator.generate(rule, originalVarMap);
 
       for (KnownComponent variant : variants) {
         ComponentKey compKey =
@@ -288,210 +270,6 @@ public final class CPQEngine {
     List<KnownComponent> result = unique.isEmpty() ? List.of() : List.copyOf(unique.values());
     ruleCache.put(key, result);
     return result;
-  }
-
-  private List<KnownComponent> generateVariants(
-      KnownComponent rule, Map<String, String> originalVarMap) {
-    List<KnownComponent> variants = new ArrayList<>(2);
-
-    // First variant: anchored (if loop)
-    KnownComponent candidate = rule;
-    if (rule.source().equals(rule.target())) {
-      try {
-        if (!rule.cpq().toQueryGraph().isLoop()) {
-          CPQ anchoredCpq = CPQ.intersect(rule.cpq(), CPQ.IDENTITY);
-          candidate =
-              new KnownComponent(
-                  anchoredCpq,
-                  rule.edges(),
-                  rule.source(),
-                  rule.target(),
-                  rule.derivation() + " + anchored with id",
-                  originalVarMap);
-        }
-      } catch (RuntimeException ignored) {
-        // Keep original if graph extraction fails
-      }
-    }
-
-    // Add candidate if valid
-    if (isValidComponent(candidate)) {
-      variants.add(candidate);
-    }
-
-    // Second variant: reversed (if not self-loop)
-    if (!candidate.source().equals(candidate.target())) {
-      KnownComponent reversed = createReversedVariant(candidate, originalVarMap);
-      if (reversed != null && isValidComponent(reversed)) {
-        variants.add(reversed);
-      }
-    }
-
-    return variants.isEmpty() ? List.of() : List.copyOf(variants);
-  }
-
-  private KnownComponent createReversedVariant(
-      KnownComponent rule, Map<String, String> originalVarMap) {
-    try {
-      CPQ reversedCpq = reverseCpq(rule.cpq());
-      return new KnownComponent(
-          reversedCpq,
-          rule.edges(),
-          rule.target(),
-          rule.source(),
-          rule.derivation() + " + reversed orientation",
-          originalVarMap);
-    } catch (RuntimeException ex) {
-      return null;
-    }
-  }
-
-  private CPQ reverseCpq(CPQ cpq) {
-    return reverseQueryTree(cpq.toAbstractSyntaxTree());
-  }
-
-  private CPQ reverseQueryTree(QueryTree tree) {
-    OperationType operation = tree.getOperation();
-    return switch (operation) {
-      case EDGE -> {
-        var label = tree.getEdgeAtom().getLabel();
-        yield CPQ.label(label.getInverse());
-      }
-      case IDENTITY -> CPQ.IDENTITY;
-      case CONCATENATION -> CPQ.concat(reverseOperands(tree, true));
-      case INTERSECTION -> CPQ.intersect(reverseOperands(tree, false));
-      default ->
-          throw new IllegalArgumentException(
-              "Unsupported CPQ operation for reversal: " + operation);
-    };
-  }
-
-  private List<CPQ> reverseOperands(QueryTree tree, boolean reverseOrder) {
-    int arity = tree.getArity();
-    List<CPQ> operands = new ArrayList<>(arity);
-    if (reverseOrder) {
-      for (int i = arity - 1; i >= 0; i--) {
-        operands.add(reverseQueryTree(tree.getOperand(i)));
-      }
-    } else {
-      for (int i = 0; i < arity; i++) {
-        operands.add(reverseQueryTree(tree.getOperand(i)));
-      }
-    }
-    return operands;
-  }
-
-  private boolean isValidComponent(KnownComponent rule) {
-    // Get component edges
-    List<Edge> componentEdges = new ArrayList<>(rule.edges().cardinality());
-    BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
-
-    if (componentEdges.isEmpty()) return false;
-
-    // Check endpoints coverage
-    Set<String> vertices = new HashSet<>();
-    for (Edge edge : componentEdges) {
-      vertices.add(edge.source());
-      vertices.add(edge.target());
-    }
-    if (!vertices.contains(rule.source()) || !vertices.contains(rule.target())) return false;
-
-    // Parse rule and check edge count
-    List<GraphEdge<VarCQ, AtomCQ>> cpqEdges;
-    QueryGraphCPQ cpqGraph;
-    String sourceVar;
-    String targetVar;
-    try {
-      CPQ cpq = rule.cpq();
-      CQ cqPattern = cpq.toCQ();
-      QueryGraphCQ cqGraph = cqPattern.toQueryGraph();
-      UniqueGraph<VarCQ, AtomCQ> graph = cqGraph.toUniqueGraph();
-      cpqEdges = graph.getEdges();
-      cpqGraph = cpq.toQueryGraph();
-      sourceVar = cpqGraph.getVertexLabel(cpqGraph.getSourceVertex());
-      targetVar = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
-
-      if (cpqEdges.size() != componentEdges.size()) return false;
-
-    } catch (RuntimeException ex) {
-      return false;
-    }
-
-    // Check loop consistency
-    boolean ruleIsLoop = rule.source().equals(rule.target());
-    if (cpqGraph.isLoop() != ruleIsLoop) return false;
-
-    // Match edges using backtracking
-    return matchEdges(cpqEdges, componentEdges, sourceVar, targetVar, rule);
-  }
-
-  private boolean matchEdges(
-      List<GraphEdge<VarCQ, AtomCQ>> cpqEdges,
-      List<Edge> componentEdges,
-      String sourceVar,
-      String targetVar,
-      KnownComponent rule) {
-
-    Map<String, String> initialMapping = new HashMap<>();
-    Set<String> initialUsedNodes = new HashSet<>();
-    initialMapping.put(sourceVar, rule.source());
-    initialMapping.put(targetVar, rule.target());
-    initialUsedNodes.add(rule.source());
-    initialUsedNodes.add(rule.target());
-
-    BitSet initialUsedEdges = new BitSet(componentEdges.size());
-    Deque<MatchState> stack = new ArrayDeque<>();
-    stack.push(new MatchState(0, initialUsedEdges, initialMapping, initialUsedNodes));
-
-    while (!stack.isEmpty()) {
-      MatchState state = stack.pop();
-      if (state.index() == cpqEdges.size()) {
-        if (state.usedEdges().cardinality() == componentEdges.size()
-            && rule.source().equals(state.mapping().get(sourceVar))
-            && rule.target().equals(state.mapping().get(targetVar))) {
-          return true;
-        }
-        continue;
-      }
-
-      GraphEdge<VarCQ, AtomCQ> cpqEdge = cpqEdges.get(state.index());
-      AtomCQ atom = cpqEdge.getData();
-      String label = atom.getLabel().getAlias();
-      String cpqSrcName = cpqEdge.getSourceNode().getData().getName();
-      String cpqTrgName = cpqEdge.getTargetNode().getData().getName();
-
-      for (int edgeIdx = 0; edgeIdx < componentEdges.size(); edgeIdx++) {
-        if (state.usedEdges().get(edgeIdx)) continue;
-
-        Edge componentEdge = componentEdges.get(edgeIdx);
-        if (!label.equals(componentEdge.label())) continue;
-
-        String mappedSrc = state.mapping().get(cpqSrcName);
-        String mappedTrg = state.mapping().get(cpqTrgName);
-        if (mappedSrc != null && !mappedSrc.equals(componentEdge.source())) continue;
-        if (mappedTrg != null && !mappedTrg.equals(componentEdge.target())) continue;
-        if (mappedSrc == null && state.usedNodes().contains(componentEdge.source())) continue;
-        if (mappedTrg == null && state.usedNodes().contains(componentEdge.target())) continue;
-
-        Map<String, String> nextMapping = new HashMap<>(state.mapping());
-        Set<String> nextUsedNodes = new HashSet<>(state.usedNodes());
-        if (mappedSrc == null) {
-          nextMapping.put(cpqSrcName, componentEdge.source());
-          nextUsedNodes.add(componentEdge.source());
-        }
-        if (mappedTrg == null) {
-          nextMapping.put(cpqTrgName, componentEdge.target());
-          nextUsedNodes.add(componentEdge.target());
-        }
-
-        BitSet nextUsedEdges = (BitSet) state.usedEdges().clone();
-        nextUsedEdges.set(edgeIdx);
-
-        stack.push(new MatchState(state.index() + 1, nextUsedEdges, nextMapping, nextUsedNodes));
-      }
-    }
-
-    return false;
   }
 
   private int getOriginalVarOrder(String node, Map<String, String> originalVarMap) {
@@ -521,47 +299,5 @@ public final class CPQEngine {
       hash = 31 * hash + Objects.hash(entry.getKey(), entry.getValue());
     }
     return hash;
-  }
-
-  private String buildFailureDiagnostic(
-      int componentIndex, String signature, ComponentRules rules, boolean joinNodesEmpty) {
-    if (rules == null) {
-      return null;
-    }
-    if (rules.rawRules().isEmpty()) {
-      return "Partition component#"
-          + componentIndex
-          + " rejected: no CPQ construction rules for bits "
-          + signature;
-    }
-    if (!joinNodesEmpty && rules.joinFilteredRules().isEmpty()) {
-      return "Partition component#"
-          + componentIndex
-          + " rejected: endpoints not on join nodes for bits "
-          + signature;
-    }
-    return null;
-  }
-
-  private record MatchState(
-      int index, BitSet usedEdges, Map<String, String> mapping, Set<String> usedNodes) {}
-
-  private record RuleCacheKey(String signature, Set<String> joinNodes, int edgeCount) {
-    RuleCacheKey {
-      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
-    }
-  }
-
-  private record ComponentCacheKey(
-      String signature,
-      Set<String> joinNodes,
-      Set<String> freeVars,
-      int componentSize,
-      int totalComponents,
-      int varContextHash) {
-    ComponentCacheKey {
-      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
-      freeVars = (freeVars == null || freeVars.isEmpty()) ? Set.of() : Set.copyOf(freeVars);
-    }
   }
 }

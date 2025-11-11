@@ -1,10 +1,5 @@
 package decomposition.partitions;
 
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
-import decomposition.util.BitsetUtils;
-import decomposition.util.GraphUtils;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -13,6 +8,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import decomposition.model.Component;
+import decomposition.model.Edge;
+import decomposition.model.Partition;
+import decomposition.util.BitsetUtils;
+import decomposition.util.GraphUtils;
 
 /**
  * Generates: 1) All non-empty, connected, edge-induced subgraphs ("components") of an input CQ edge
@@ -46,7 +47,7 @@ public final class PartitionGenerator {
     Objects.requireNonNull(edges, "edges");
     int edgeCount = edges.size();
     List<Component> components = new ArrayList<>();
-    Set<String> seen = new HashSet<>(); // canonical strings of visited BitSets
+    Set<String> seen = new HashSet<>();
 
     // Start a DFS expansion from every single edge;
     // the global 'seen' ensures each connected edge-set is visited once.
