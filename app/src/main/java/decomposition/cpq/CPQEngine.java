@@ -1,5 +1,20 @@
 package decomposition.cpq;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+
 import decomposition.cpq.model.CacheStats;
 import decomposition.cpq.model.ComponentKey;
 import decomposition.cpq.model.ComponentRules;
@@ -19,20 +34,6 @@ import dev.roanh.gmark.lang.cq.QueryGraphCQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * End-to-end CPQ engine: handles rule synthesis, memoization, component analysis, and tuple
@@ -314,14 +315,14 @@ public final class CPQEngine {
     }
 
     // Add candidate if valid
-    if (isValidComponent(candidate, originalVarMap)) {
+    if (isValidComponent(candidate)) {
       variants.add(candidate);
     }
 
     // Second variant: reversed (if not self-loop)
     if (!candidate.source().equals(candidate.target())) {
       KnownComponent reversed = createReversedVariant(candidate, originalVarMap);
-      if (reversed != null && isValidComponent(reversed, originalVarMap)) {
+      if (reversed != null && isValidComponent(reversed)) {
         variants.add(reversed);
       }
     }
@@ -380,7 +381,7 @@ public final class CPQEngine {
     return operands;
   }
 
-  private boolean isValidComponent(KnownComponent rule, Map<String, String> originalVarMap) {
+  private boolean isValidComponent(KnownComponent rule) {
     // Get component edges
     List<Edge> componentEdges = new ArrayList<>(rule.edges().cardinality());
     BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
