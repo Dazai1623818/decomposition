@@ -14,6 +14,7 @@ import decomposition.model.Partition;
 import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,7 @@ final class CPQEngineCacheTest {
     CQExtractor extractor = new CQExtractor();
     ExtractionResult extraction = extractor.extract(query, Set.of());
     List<Edge> edges = extraction.edges();
+    Map<String, String> varMap = extraction.variableNodeMap();
 
     PartitionGenerator generator = new PartitionGenerator(0);
     List<Component> components = generator.enumerateConnectedComponents(edges);
@@ -37,9 +39,9 @@ final class CPQEngineCacheTest {
     CPQEngine engine = new CPQEngine(edges, stats);
 
     PartitionAnalysis first =
-        engine.analyzePartition(partition, joinNodes, extraction.freeVariables());
+        engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varMap);
     PartitionAnalysis second =
-        engine.analyzePartition(partition, joinNodes, extraction.freeVariables());
+        engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varMap);
 
     assertTrue(
         first != null && second != null, "Expected at least one component construction rule set");

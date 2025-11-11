@@ -1,17 +1,25 @@
 package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.cpq.model.ComponentRules;
+import decomposition.extract.CQExtractor;
+import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -28,12 +36,14 @@ final class CPQEngineTest {
 
   @Test
   void singleEdgeIncludesInverseVariant() {
-    CPQEngine engine = new CPQEngine(sampleEdges());
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(4);
 
-    List<KnownComponent> rules = engine.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits, varMap);
 
     CPQ expectedInverse = CPQ.parse("r5⁻");
     String expectedStr = expectedInverse.toString();
@@ -50,12 +60,14 @@ final class CPQEngineTest {
 
   @Test
   void singleEdgeIncludesBacktrackLoops() {
-    CPQEngine engine = new CPQEngine(sampleEdges());
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(0);
 
-    List<KnownComponent> rules = engine.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits, varMap);
 
     String sourceLoop = CPQ.parse("((r1 ◦ r1⁻) ∩ id)").toString();
     String targetLoop = CPQ.parse("((r1⁻ ◦ r1) ∩ id)").toString();
@@ -80,14 +92,16 @@ final class CPQEngineTest {
 
   @Test
   void threeEdgeComponentSupportsIntersectionWithInverse() {
-    CPQEngine engine = new CPQEngine(sampleEdges());
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(2);
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> rules = engine.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits, varMap);
 
     CPQ expected = CPQ.parse("((r3◦r4) ∩ r5⁻)");
     String expectedStr = expected.toString();
@@ -104,7 +118,9 @@ final class CPQEngineTest {
 
   @Test
   void conjunctionDeduplicationEliminatesCommutativeDuplicates() {
-    CPQEngine engine = new CPQEngine(sampleEdges());
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     // Create a component with 4 edges that would generate conjunctions
     BitSet edgeBits = new BitSet();
@@ -113,7 +129,7 @@ final class CPQEngineTest {
     edgeBits.set(2); // r3
     edgeBits.set(3); // r4
 
-    List<KnownComponent> rules = engine.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits, varMap);
 
     // Count unique CPQ strings for components with same source and target
     long countAtoC =
@@ -169,7 +185,9 @@ final class CPQEngineTest {
 
   @Test
   void loopsAreAnchoredWithIdentity() {
-    CPQEngine engine = new CPQEngine(sampleEdges());
+    List<Edge> edges = sampleEdges();
+    CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     BitSet edgeBits = new BitSet();
     edgeBits.set(0);
@@ -178,7 +196,7 @@ final class CPQEngineTest {
     edgeBits.set(3);
     edgeBits.set(4);
 
-    List<KnownComponent> rules = engine.constructionRules(edgeBits);
+    List<KnownComponent> rules = engine.constructionRules(edgeBits, varMap);
 
     String anchored = CPQ.parse("(r1⁻◦(((r4⁻◦r3⁻) ∩ r5)◦r2⁻)) ∩ id").toString();
     assertTrue(
@@ -192,9 +210,46 @@ final class CPQEngineTest {
   }
 
   @Test
+  void variableMappingsArePreservedForConstructionRules() {
+    CQ cq = CQ.empty();
+    VarCQ x = cq.addFreeVariable("x");
+    VarCQ y = cq.addFreeVariable("y");
+    VarCQ z = cq.addBoundVariable("z");
+    cq.addAtom(x, new Predicate(1, "knows"), z);
+    cq.addAtom(z, new Predicate(2, "worksAt"), y);
+
+    CQExtractor extractor = new CQExtractor();
+    ExtractionResult extraction = extractor.extract(cq, Set.of("x", "y"));
+    List<Edge> edges = extraction.edges();
+    Map<String, String> varMap = extraction.variableNodeMap();
+    CPQEngine engine = new CPQEngine(edges);
+
+    BitSet bits = new BitSet(edges.size());
+    bits.set(0, edges.size());
+
+    List<KnownComponent> rules = engine.constructionRules(bits, Set.of("x", "y"), varMap);
+    assertFalse(rules.isEmpty(), "Expected at least one construction rule for simple CQ");
+
+    KnownComponent component = rules.get(0);
+    assertEquals(
+        component.source(),
+        component.getNodeForVar("x"),
+        "Source node must align with original variable x");
+    assertEquals(
+        component.target(),
+        component.getNodeForVar("y"),
+        "Target node must align with original variable y");
+    assertEquals("z", component.getVarForNode("z"), "Intermediate variable should remain mapped");
+    assertTrue(
+        component.varToNodeMap().containsKey("z"),
+        "Variable mapping should preserve bound variables");
+  }
+
+  @Test
   void joinNodeEnforcementExamples() {
     List<Edge> edges = sampleEdges();
     CPQEngine engine = new CPQEngine(edges);
+    Map<String, String> varMap = identityVarMap(edges);
 
     int desiredSamples = 10;
     List<Scenario> enforcedScenarios =
@@ -219,8 +274,9 @@ final class CPQEngineTest {
             new Scenario(componentForEdges(edges, 4), Set.of("A", "C"), 1));
 
     List<String> enforcedExamples =
-        collectExamples(engine, enforcedScenarios, desiredSamples, false);
-    List<String> relaxedExamples = collectExamples(engine, relaxedScenarios, desiredSamples, true);
+        collectExamples(engine, varMap, enforcedScenarios, desiredSamples, false);
+    List<String> relaxedExamples =
+        collectExamples(engine, varMap, relaxedScenarios, desiredSamples, true);
 
     System.out.println("Join-node enforcement ON (" + enforcedExamples.size() + " samples):");
     enforcedExamples.forEach(System.out::println);
@@ -241,12 +297,20 @@ final class CPQEngineTest {
   }
 
   private static List<String> collectExamples(
-      CPQEngine engine, List<Scenario> scenarios, int desiredCount, boolean expectRelaxed) {
+      CPQEngine engine,
+      Map<String, String> varToNodeMap,
+      List<Scenario> scenarios,
+      int desiredCount,
+      boolean expectRelaxed) {
     Set<String> summaries = new LinkedHashSet<>();
     for (Scenario scenario : scenarios) {
       ComponentRules rules =
           engine.componentRules(
-              scenario.component(), scenario.joinNodes(), Set.of(), scenario.totalComponents());
+              scenario.component(),
+              scenario.joinNodes(),
+              Set.of(),
+              scenario.totalComponents(),
+              varToNodeMap);
       if (expectRelaxed) {
         assertEquals(
             rules.rawRules(),
@@ -283,6 +347,15 @@ final class CPQEngineTest {
 
   private static String formatSummary(KnownComponent kc) {
     return kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]";
+  }
+
+  private static Map<String, String> identityVarMap(List<Edge> edges) {
+    Map<String, String> mapping = new LinkedHashMap<>();
+    for (Edge edge : edges) {
+      mapping.putIfAbsent(edge.source(), edge.source());
+      mapping.putIfAbsent(edge.target(), edge.target());
+    }
+    return Collections.unmodifiableMap(new LinkedHashMap<>(mapping));
   }
 
   private record Scenario(Component component, Set<String> joinNodes, int totalComponents) {}

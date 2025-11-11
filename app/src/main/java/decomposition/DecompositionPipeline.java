@@ -1,5 +1,12 @@
 package decomposition;
 
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import decomposition.cpq.CPQEngine;
 import decomposition.cpq.KnownComponent;
 import decomposition.cpq.model.CacheStats;
@@ -19,12 +26,6 @@ import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline {
@@ -42,6 +43,7 @@ public final class DecompositionPipeline {
     // Extract graph + context
     final ExtractionResult extraction = extractor.extract(cq, explicitFreeVariables);
     final List<Edge> edges = extraction.edges();
+    final Map<String, String> varToNodeMap = extraction.variableNodeMap();
     final int edgeCount = edges.size();
 
     final BitSet fullBits = new BitSet(edgeCount);
@@ -116,11 +118,12 @@ public final class DecompositionPipeline {
       final Set<String> joinNodes = fp.joinNodes();
 
       final PartitionAnalysis analysis =
-          engine.analyzePartition(partition, joinNodes, extraction.freeVariables());
+          engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varToNodeMap);
 
       if (analysis == null) {
         // Collect simple per-component reasons
-        addComponentDiagnostics(diagnostics, partition, edges, extraction.freeVariables(), engine);
+        addComponentDiagnostics(
+            diagnostics, partition, edges, extraction.freeVariables(), varToNodeMap, engine);
         continue;
       }
 
@@ -146,7 +149,7 @@ public final class DecompositionPipeline {
           JoinNodeUtils.computeJoinNodes(
               List.of(new Component(fullBits, vertices)), extraction.freeVariables());
       final List<KnownComponent> globalCandidates =
-          engine.constructionRules(fullBits, globalJoinNodes);
+          engine.constructionRules(fullBits, globalJoinNodes, varToNodeMap);
       globalCatalogue = globalCandidates;
       finalComponent = selectPreferredFinalComponent(globalCandidates);
     }
@@ -178,6 +181,7 @@ public final class DecompositionPipeline {
       Partition partition,
       List<Edge> allEdges,
       Set<String> freeVars,
+      Map<String, String> varToNodeMap,
       CPQEngine engine) {
 
     final int edgeCount = allEdges.size();
@@ -185,7 +189,7 @@ public final class DecompositionPipeline {
     for (Component c : partition.components()) {
       i++;
       final var ruleSet =
-          engine.componentRules(c, Set.of(), freeVars, partition.components().size());
+          engine.componentRules(c, Set.of(), freeVars, partition.components().size(), varToNodeMap);
       final String sig = BitsetUtils.signature(c.edgeBits(), edgeCount);
       if (ruleSet.rawRules().isEmpty()) {
         diagnostics.add(

@@ -12,6 +12,7 @@ import decomposition.util.JoinNodeUtils;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +22,7 @@ final class PartitionTwelveRegressionTest {
   void fullComponentRetainsLoopAnchoredAtFreeVariable() {
     ExtractionResult extraction = new CQExtractor().extract(Example.example6(), Set.of("A"));
     List<Edge> edges = extraction.edges();
+    Map<String, String> varMap = extraction.variableNodeMap();
     CPQEngine engine = new CPQEngine(edges);
 
     BitSet fullBits = new BitSet(edges.size());
@@ -35,7 +37,7 @@ final class PartitionTwelveRegressionTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(List.of(component), extraction.freeVariables());
 
-    List<KnownComponent> rules = engine.constructionRules(fullBits, joinNodes);
+    List<KnownComponent> rules = engine.constructionRules(fullBits, joinNodes, varMap);
 
     assertFalse(
         rules.isEmpty(), "Expected at least one CPQ construction rule for the full component");

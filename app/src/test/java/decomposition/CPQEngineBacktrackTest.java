@@ -14,7 +14,10 @@ import decomposition.partitions.PartitionGenerator;
 import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.BitSet;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -27,6 +30,7 @@ final class CPQEngineBacktrackTest {
     CQExtractor extractor = new CQExtractor();
     ExtractionResult extraction = extractor.extract(cq, Set.of("D"));
     List<Edge> edges = extraction.edges();
+    Map<String, String> varMap = identityVarMap(edges);
 
     CPQEngine engine = new CPQEngine(edges);
 
@@ -37,7 +41,7 @@ final class CPQEngineBacktrackTest {
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4 ◦ r4⁻) ∩ id"));
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4⁻ ◦ r4) ∩ id"));
 
-    List<KnownComponent> rules = engine.constructionRules(r4Bits);
+    List<KnownComponent> rules = engine.constructionRules(r4Bits, varMap);
     Edge r4 = edges.get(r4Index);
 
     assertFalse(rules.isEmpty(), "Expected CPQ construction rules for single edge component");
@@ -106,7 +110,8 @@ final class CPQEngineBacktrackTest {
         JoinNodeUtils.computeJoinNodes(
             singleEdgePartition.components(), extraction.freeVariables());
     assertTrue(
-        engine.analyzePartition(singleEdgePartition, joinNodes, extraction.freeVariables()) != null,
+        engine.analyzePartition(singleEdgePartition, joinNodes, extraction.freeVariables(), varMap)
+            != null,
         "Single-edge partition should now be a valid CPQ decomposition");
   }
 
@@ -116,6 +121,7 @@ final class CPQEngineBacktrackTest {
     CQExtractor extractor = new CQExtractor();
     ExtractionResult extraction = extractor.extract(cq, Set.of("A"));
     List<Edge> edges = extraction.edges();
+    Map<String, String> varMap = identityVarMap(edges);
 
     CPQEngine engine = new CPQEngine(edges);
 
@@ -123,7 +129,7 @@ final class CPQEngineBacktrackTest {
     BitSet selfLoopBits = new BitSet(edges.size());
     selfLoopBits.set(selfLoopIndex);
 
-    List<KnownComponent> rules = engine.constructionRules(selfLoopBits);
+    List<KnownComponent> rules = engine.constructionRules(selfLoopBits, varMap);
 
     assertEquals(1, rules.size(), "Self-loop should produce a single structural rule");
     KnownComponent loop = rules.get(0);
@@ -153,5 +159,14 @@ final class CPQEngineBacktrackTest {
       }
     }
     throw new IllegalArgumentException("No self-loop edge found");
+  }
+
+  private Map<String, String> identityVarMap(List<Edge> edges) {
+    Map<String, String> mapping = new LinkedHashMap<>();
+    for (Edge edge : edges) {
+      mapping.putIfAbsent(edge.source(), edge.source());
+      mapping.putIfAbsent(edge.target(), edge.target());
+    }
+    return Collections.unmodifiableMap(new LinkedHashMap<>(mapping));
   }
 }

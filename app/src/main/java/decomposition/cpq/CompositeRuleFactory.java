@@ -5,6 +5,7 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -67,6 +68,9 @@ final class CompositeRuleFactory {
     if (!left.target().equals(right.source())) {
       return;
     }
+    if (!left.varToNodeMap().equals(right.varToNodeMap())) {
+      return;
+    }
     String expression = "(" + left.cpq() + " ◦ " + right.cpq() + ")";
     String derivation =
         "Concatenation: ["
@@ -75,12 +79,16 @@ final class CompositeRuleFactory {
             + right.cpqRule()
             + "] via "
             + left.target();
-    emitIfParsable(edgeBits, expression, left.source(), right.target(), derivation, sink);
+    emitIfParsable(
+        edgeBits, expression, left.source(), right.target(), derivation, left.varToNodeMap(), sink);
   }
 
   private static void tryIntersect(
       BitSet edgeBits, KnownComponent left, KnownComponent right, List<KnownComponent> sink) {
     if (!left.source().equals(right.source()) || !left.target().equals(right.target())) {
+      return;
+    }
+    if (!left.varToNodeMap().equals(right.varToNodeMap())) {
       return;
     }
     String expression = "(" + left.cpq() + " ∩ " + right.cpq() + ")";
@@ -93,7 +101,8 @@ final class CompositeRuleFactory {
             + left.source()
             + "→"
             + left.target();
-    emitIfParsable(edgeBits, expression, left.source(), left.target(), derivation, sink);
+    emitIfParsable(
+        edgeBits, expression, left.source(), left.target(), derivation, left.varToNodeMap(), sink);
   }
 
   private static void emitIfParsable(
@@ -102,10 +111,11 @@ final class CompositeRuleFactory {
       String source,
       String target,
       String derivation,
+      Map<String, String> varToNodeMap,
       List<KnownComponent> sink) {
     try {
       CPQ cpq = CPQ.parse(expression);
-      sink.add(new KnownComponent(cpq, edgeBits, source, target, derivation));
+      sink.add(new KnownComponent(cpq, edgeBits, source, target, derivation, varToNodeMap));
     } catch (RuntimeException ex) {
       // Ignore unparsable synthesized expression.
     }

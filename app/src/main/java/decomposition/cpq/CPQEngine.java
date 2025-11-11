@@ -1,20 +1,5 @@
 package decomposition.cpq;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-
 import decomposition.cpq.model.CacheStats;
 import decomposition.cpq.model.ComponentKey;
 import decomposition.cpq.model.ComponentRules;
@@ -34,6 +19,21 @@ import dev.roanh.gmark.lang.cq.QueryGraphCQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * End-to-end CPQ engine: handles rule synthesis, memoization, component analysis, and tuple
@@ -62,22 +62,27 @@ public final class CPQEngine {
   // Rule construction
   // --------------------------------------------------------------------------
 
-  public List<KnownComponent> constructionRules(BitSet edgeSubset) {
-    return constructionRules(edgeSubset, Set.of());
+  public List<KnownComponent> constructionRules(
+      BitSet edgeSubset, Map<String, String> originalVarMap) {
+    return constructionRules(edgeSubset, Set.of(), originalVarMap);
   }
 
-  public List<KnownComponent> constructionRules(BitSet edgeSubset, Set<String> requestedJoinNodes) {
+  public List<KnownComponent> constructionRules(
+      BitSet edgeSubset, Set<String> requestedJoinNodes, Map<String, String> originalVarMap) {
     Objects.requireNonNull(edgeSubset, "edgeSubset");
-    return deriveRules(edgeSubset, normalize(requestedJoinNodes));
+    Objects.requireNonNull(originalVarMap, "originalVarMap");
+    return deriveRules(edgeSubset, normalize(requestedJoinNodes), originalVarMap);
   }
 
   public ComponentRules componentRules(
       Component component,
       Set<String> requestedJoinNodes,
       Set<String> freeVariables,
-      int totalComponents) {
+      int totalComponents,
+      Map<String, String> originalVarMap) {
 
     Objects.requireNonNull(component, "component");
+    Objects.requireNonNull(originalVarMap, "originalVarMap");
 
     Set<String> joinNodes = normalize(requestedJoinNodes);
     Set<String> freeVars = normalize(freeVariables);
@@ -87,6 +92,7 @@ public final class CPQEngine {
             BitsetUtils.signature(component.edgeBits(), edges.size()),
             joinNodes,
             freeVars,
+            originalVarMap,
             component.edgeCount(),
             totalComponents);
 
@@ -99,7 +105,7 @@ public final class CPQEngine {
     cacheStats.recordMiss();
 
     // Build component rules directly
-    List<KnownComponent> raw = deriveRules(component.edgeBits(), joinNodes);
+    List<KnownComponent> raw = deriveRules(component.edgeBits(), joinNodes, originalVarMap);
 
     // Filter by join-node roles for multi-edge components
     List<KnownComponent> joinFiltered = raw;
@@ -117,6 +123,7 @@ public final class CPQEngine {
       List<String> ordered = new ArrayList<>(joinNodes);
       ordered.sort(
           Comparator.comparing((String node) -> freeVars.contains(node) ? 0 : 1)
+              .thenComparingInt(node -> getOriginalVarOrder(node, originalVarMap))
               .thenComparing(node -> node));
       String preferredSource = ordered.get(0);
       String preferredTarget = ordered.get(1);
@@ -143,9 +150,13 @@ public final class CPQEngine {
   // --------------------------------------------------------------------------
 
   public PartitionAnalysis analyzePartition(
-      Partition partition, Set<String> requestedJoinNodes, Set<String> freeVariables) {
+      Partition partition,
+      Set<String> requestedJoinNodes,
+      Set<String> freeVariables,
+      Map<String, String> originalVarMap) {
 
     Objects.requireNonNull(partition, "partition");
+    Objects.requireNonNull(originalVarMap, "originalVarMap");
 
     Set<String> joinNodes = normalize(requestedJoinNodes);
     Set<String> freeVars = normalize(freeVariables);
@@ -154,7 +165,8 @@ public final class CPQEngine {
 
     List<ComponentRules> perComponent = new ArrayList<>(totalComponents);
     for (Component component : components) {
-      ComponentRules rules = componentRules(component, joinNodes, freeVars, totalComponents);
+      ComponentRules rules =
+          componentRules(component, joinNodes, freeVars, totalComponents, originalVarMap);
       if (rules.finalRules().isEmpty()) {
         return null;
       }
@@ -201,8 +213,10 @@ public final class CPQEngine {
   // Core recursive derivation
   // --------------------------------------------------------------------------
 
-  private List<KnownComponent> deriveRules(BitSet edgeSubset, Set<String> requestedJoinNodes) {
+  private List<KnownComponent> deriveRules(
+      BitSet edgeSubset, Set<String> requestedJoinNodes, Map<String, String> originalVarMap) {
     if (edgeSubset.isEmpty()) return List.of();
+    Objects.requireNonNull(originalVarMap, "originalVarMap");
 
     Set<String> localJoinNodes =
         JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
@@ -212,6 +226,7 @@ public final class CPQEngine {
             BitsetUtils.signature(edgeSubset, edges.size()),
             localJoinNodes,
             requestedJoinNodes,
+            originalVarMap,
             edgeSubset.cardinality(),
             edges.size());
 
@@ -222,13 +237,15 @@ public final class CPQEngine {
     int edgeCount = edgeSubset.cardinality();
 
     if (edgeCount == 1) {
-      rules.addAll(SingleEdgeRuleFactory.build(edges.get(edgeSubset.nextSetBit(0)), edgeSubset));
+      rules.addAll(
+          SingleEdgeRuleFactory.build(
+              edges.get(edgeSubset.nextSetBit(0)), edgeSubset, originalVarMap));
     } else {
       if (localJoinNodes.size() <= 1) {
-        rules.addAll(LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes));
+        rules.addAll(LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes, originalVarMap));
       }
       Function<BitSet, List<KnownComponent>> resolver =
-          subset -> deriveRules(subset, requestedJoinNodes);
+          subset -> deriveRules(subset, requestedJoinNodes, originalVarMap);
       rules.addAll(CompositeRuleFactory.build(edgeSubset, edges.size(), resolver));
     }
 
@@ -239,7 +256,7 @@ public final class CPQEngine {
 
     for (KnownComponent rule : rules) {
       // Generate variants for this rule
-      List<KnownComponent> variants = generateVariants(rule);
+      List<KnownComponent> variants = generateVariants(rule, originalVarMap);
 
       for (KnownComponent variant : variants) {
         ComponentKey compKey =
@@ -253,7 +270,8 @@ public final class CPQEngine {
     return result;
   }
 
-  private List<KnownComponent> generateVariants(KnownComponent rule) {
+  private List<KnownComponent> generateVariants(
+      KnownComponent rule, Map<String, String> originalVarMap) {
     List<KnownComponent> variants = new ArrayList<>(2);
 
     // First variant: anchored (if loop)
@@ -268,7 +286,8 @@ public final class CPQEngine {
                   rule.edges(),
                   rule.source(),
                   rule.target(),
-                  rule.derivation() + " + anchored with id");
+                  rule.derivation() + " + anchored with id",
+                  originalVarMap);
         }
       } catch (RuntimeException ignored) {
         // Keep original if graph extraction fails
@@ -276,14 +295,14 @@ public final class CPQEngine {
     }
 
     // Add candidate if valid
-    if (isValidComponent(candidate)) {
+    if (isValidComponent(candidate, originalVarMap)) {
       variants.add(candidate);
     }
 
     // Second variant: reversed (if not self-loop)
     if (!candidate.source().equals(candidate.target())) {
-      KnownComponent reversed = createReversedVariant(candidate);
-      if (reversed != null && isValidComponent(reversed)) {
+      KnownComponent reversed = createReversedVariant(candidate, originalVarMap);
+      if (reversed != null && isValidComponent(reversed, originalVarMap)) {
         variants.add(reversed);
       }
     }
@@ -291,7 +310,8 @@ public final class CPQEngine {
     return variants.isEmpty() ? List.of() : List.copyOf(variants);
   }
 
-  private KnownComponent createReversedVariant(KnownComponent rule) {
+  private KnownComponent createReversedVariant(
+      KnownComponent rule, Map<String, String> originalVarMap) {
     try {
       CPQ reversedCpq = reverseCpq(rule.cpq());
       return new KnownComponent(
@@ -299,7 +319,8 @@ public final class CPQEngine {
           rule.edges(),
           rule.target(),
           rule.source(),
-          rule.derivation() + " + reversed orientation");
+          rule.derivation() + " + reversed orientation",
+          originalVarMap);
     } catch (RuntimeException ex) {
       return null;
     }
@@ -340,7 +361,7 @@ public final class CPQEngine {
     return operands;
   }
 
-  private boolean isValidComponent(KnownComponent rule) {
+  private boolean isValidComponent(KnownComponent rule, Map<String, String> originalVarMap) {
     // Get component edges
     List<Edge> componentEdges = new ArrayList<>(rule.edges().cardinality());
     BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
@@ -371,6 +392,7 @@ public final class CPQEngine {
       targetVar = cpqGraph.getVertexLabel(cpqGraph.getTargetVertex());
 
       if (cpqEdges.size() != componentEdges.size()) return false;
+
     } catch (RuntimeException ex) {
       return false;
     }
@@ -452,6 +474,20 @@ public final class CPQEngine {
     return false;
   }
 
+  private int getOriginalVarOrder(String node, Map<String, String> originalVarMap) {
+    if (node == null || originalVarMap == null || originalVarMap.isEmpty()) {
+      return Integer.MAX_VALUE;
+    }
+    int idx = 0;
+    for (Map.Entry<String, String> entry : originalVarMap.entrySet()) {
+      if (Objects.equals(node, entry.getValue())) {
+        return idx;
+      }
+      idx++;
+    }
+    return Integer.MAX_VALUE;
+  }
+
   private static Set<String> normalize(Set<String> values) {
     return (values == null || values.isEmpty()) ? Set.of() : Set.copyOf(values);
   }
@@ -460,10 +496,19 @@ public final class CPQEngine {
       int index, BitSet usedEdges, Map<String, String> mapping, Set<String> usedNodes) {}
 
   private record CacheKey(
-      String signature, Set<String> joinNodes, Set<String> freeVars, int sizeHintA, int sizeHintB) {
+      String signature,
+      Set<String> joinNodes,
+      Set<String> freeVars,
+      Map<String, String> varToNodeMap,
+      int sizeHintA,
+      int sizeHintB) {
     CacheKey {
       joinNodes = Set.copyOf(joinNodes);
       freeVars = Set.copyOf(freeVars);
+      varToNodeMap =
+          (varToNodeMap == null || varToNodeMap.isEmpty())
+              ? Map.of()
+              : Collections.unmodifiableMap(new LinkedHashMap<>(varToNodeMap));
     }
   }
 }

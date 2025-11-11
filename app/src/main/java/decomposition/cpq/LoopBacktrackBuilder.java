@@ -14,7 +14,11 @@ final class LoopBacktrackBuilder {
 
   private LoopBacktrackBuilder() {}
 
-  static List<KnownComponent> build(List<Edge> edges, BitSet edgeBits, Set<String> allowedAnchors) {
+  static List<KnownComponent> build(
+      List<Edge> edges,
+      BitSet edgeBits,
+      Set<String> allowedAnchors,
+      Map<String, String> varToNodeMap) {
     Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edges, edgeBits);
     if (adjacency.isEmpty()) {
       return List.of();
@@ -36,7 +40,8 @@ final class LoopBacktrackBuilder {
               edgeBits,
               anchor,
               anchor,
-              "Loop via backtracking anchored at '" + anchor + "'"));
+              "Loop via backtracking anchored at '" + anchor + "'",
+              varToNodeMap));
     }
     return results;
   }

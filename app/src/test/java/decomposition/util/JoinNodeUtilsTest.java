@@ -10,7 +10,9 @@ import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -158,6 +160,9 @@ final class JoinNodeUtilsTest {
     CPQ cpq = CPQ.parse("r1");
     BitSet bits = new BitSet();
     bits.set(0);
-    return new KnownComponent(cpq, bits, source, target, "test");
+    Map<String, String> mapping = new LinkedHashMap<>();
+    mapping.put(source, source);
+    mapping.put(target, target);
+    return new KnownComponent(cpq, bits, source, target, "test", mapping);
   }
 }

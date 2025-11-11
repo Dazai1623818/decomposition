@@ -8,8 +8,11 @@ import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphNode;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -17,10 +20,14 @@ import java.util.stream.Collectors;
 /** Extracts a neutral intermediate representation from a gMark CQ. */
 public final class CQExtractor {
 
-  public record ExtractionResult(List<Edge> edges, Set<String> freeVariables) {
+  public record ExtractionResult(
+      List<Edge> edges, Set<String> freeVariables, Map<String, String> variableNodeMap) {
     public ExtractionResult {
       edges = List.copyOf(edges);
       freeVariables = Set.copyOf(freeVariables);
+      variableNodeMap =
+          Collections.unmodifiableMap(
+              new LinkedHashMap<>(Objects.requireNonNull(variableNodeMap, "variableNodeMap")));
     }
   }
 
@@ -29,6 +36,7 @@ public final class CQExtractor {
 
     UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
 
+    Map<String, String> variableNodeMap = extractVariableNodeMap(graph);
     List<Edge> edges = new ArrayList<>();
     long nextSyntheticId = 0L;
     for (GraphEdge<VarCQ, AtomCQ> edge : graph.getEdges()) {
@@ -36,12 +44,9 @@ public final class CQExtractor {
       if (atom.getSource() == null || atom.getTarget() == null) {
         throw new IllegalArgumentException("Non-binary CQ atom encountered: " + atom);
       }
-      edges.add(
-          new Edge(
-              atom.getSource().getName(),
-              atom.getTarget().getName(),
-              atom.getLabel(),
-              nextSyntheticId++));
+      String sourceVar = atom.getSource().getName();
+      String targetVar = atom.getTarget().getName();
+      edges.add(new Edge(sourceVar, targetVar, atom.getLabel(), nextSyntheticId++));
     }
 
     Set<String> freeVariables =
@@ -49,7 +54,7 @@ public final class CQExtractor {
             ? validateFreeVariables(explicitFreeVariables, cq)
             : deriveFreeVariables(cq);
 
-    return new ExtractionResult(edges, freeVariables);
+    return new ExtractionResult(edges, freeVariables, variableNodeMap);
   }
 
   private Set<String> deriveFreeVariables(CQ cq) {
@@ -74,5 +79,14 @@ public final class CQExtractor {
         .map(GraphNode::getData)
         .map(VarCQ::getName)
         .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  private Map<String, String> extractVariableNodeMap(UniqueGraph<VarCQ, AtomCQ> graph) {
+    Map<String, String> mapping = new LinkedHashMap<>();
+    for (GraphNode<VarCQ, AtomCQ> node : graph.getNodes()) {
+      String name = node.getData().getName();
+      mapping.putIfAbsent(name, name);
+    }
+    return mapping;
   }
 }
