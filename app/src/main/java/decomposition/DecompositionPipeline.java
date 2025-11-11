@@ -1,12 +1,5 @@
 package decomposition;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import decomposition.cpq.CPQEngine;
 import decomposition.cpq.KnownComponent;
 import decomposition.cpq.model.CacheStats;
@@ -26,6 +19,12 @@ import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline {
@@ -53,7 +52,9 @@ public final class DecompositionPipeline {
     // Enumerate + filter partitions
     final PartitionGenerator generator = new PartitionGenerator(opts.maxPartitions());
     final List<Component> components = generator.enumerateConnectedComponents(edges);
-    final List<Partition> partitions = generator.enumeratePartitions(edges, components);
+    final List<Partition> partitions =
+        generator.enumeratePartitions(
+            edges, components, extraction.freeVariables(), MAX_JOIN_NODES);
 
     final FilterResult filterResult =
         new PartitionFilter(MAX_JOIN_NODES).filter(partitions, extraction.freeVariables());
@@ -183,7 +184,11 @@ public final class DecompositionPipeline {
       Set<String> freeVars,
       Map<String, String> varToNodeMap,
       CPQEngine engine) {
-
+    List<String> cached = engine.lastComponentDiagnostics();
+    if (cached != null && !cached.isEmpty()) {
+      diagnostics.addAll(cached);
+      return;
+    }
     final int edgeCount = allEdges.size();
     int i = 0;
     for (Component c : partition.components()) {

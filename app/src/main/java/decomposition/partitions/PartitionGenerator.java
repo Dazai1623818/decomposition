@@ -67,17 +67,40 @@ public final class PartitionGenerator {
    * @param components precomputed connected components (should include single-edge comps)
    */
   public List<Partition> enumeratePartitions(List<Edge> edges, List<Component> components) {
+    return enumeratePartitions(edges, components, null, -1);
+  }
+
+  /**
+   * Enumerates partitions while enforcing optional join-node constraints per component.
+   *
+   * @param edges original edge list
+   * @param components precomputed connected components
+   * @param freeVariables set of free variables to treat as implicit join nodes (may be null)
+   * @param maxJoinNodes maximum allowed join nodes per component; &lt;= 0 disables the check
+   */
+  public List<Partition> enumeratePartitions(
+      List<Edge> edges, List<Component> components, Set<String> freeVariables, int maxJoinNodes) {
     Objects.requireNonNull(edges, "edges");
     Objects.requireNonNull(components, "components");
 
     int edgeCount = edges.size();
     BitSet allEdges = BitsetUtils.allOnes(edgeCount); // target: all edges covered
     Map<Integer, List<Component>> componentsByEdge = indexComponentsByEdge(edgeCount, components);
+    Set<String> normalizedFreeVars =
+        (freeVariables == null || freeVariables.isEmpty()) ? Set.of() : Set.copyOf(freeVariables);
 
     List<Partition> partitions = new ArrayList<>();
     // Backtrack by always choosing the smallest-index uncovered edge
     // and trying all components that cover it and don't overlap used edges.
-    backtrack(allEdges, new BitSet(edgeCount), new ArrayList<>(), partitions, componentsByEdge);
+    backtrack(
+        allEdges,
+        new BitSet(edgeCount),
+        new ArrayList<>(),
+        partitions,
+        componentsByEdge,
+        normalizedFreeVars,
+        maxJoinNodes,
+        new HashMap<>());
     return partitions;
   }
 
@@ -162,7 +185,10 @@ public final class PartitionGenerator {
       BitSet used,
       List<Component> chosen,
       List<Partition> output,
-      Map<Integer, List<Component>> componentsByEdge) {
+      Map<Integer, List<Component>> componentsByEdge,
+      Set<String> freeVariables,
+      int maxJoinNodes,
+      Map<String, Integer> multiplicity) {
     // Success: all edges are covered exactly once
     if (used.equals(allEdges)) {
       output.add(new Partition(chosen));
@@ -189,14 +215,67 @@ public final class PartitionGenerator {
         continue;
       }
 
+      if (violatesJoinLimit(candidate, freeVariables, maxJoinNodes, multiplicity)) {
+        continue;
+      }
+
       // Extend the cover
       BitSet nextUsed = (BitSet) used.clone();
       nextUsed.or(bits);
 
       List<Component> nextChosen = new ArrayList<>(chosen);
       nextChosen.add(candidate);
+      incrementMultiplicity(candidate, multiplicity);
 
-      backtrack(allEdges, nextUsed, nextChosen, output, componentsByEdge);
+      backtrack(
+          allEdges,
+          nextUsed,
+          nextChosen,
+          output,
+          componentsByEdge,
+          freeVariables,
+          maxJoinNodes,
+          multiplicity);
+
+      decrementMultiplicity(candidate, multiplicity);
+    }
+  }
+
+  private boolean violatesJoinLimit(
+      Component component,
+      Set<String> freeVariables,
+      int maxJoinNodes,
+      Map<String, Integer> multiplicity) {
+    if (maxJoinNodes <= 0) {
+      return false;
+    }
+    long joinNodes =
+        component.vertices().stream()
+            .filter(
+                v -> {
+                  int nextCount = multiplicity.getOrDefault(v, 0) + 1;
+                  return nextCount >= 2 || freeVariables.contains(v);
+                })
+            .count();
+    return joinNodes > maxJoinNodes;
+  }
+
+  private void incrementMultiplicity(Component component, Map<String, Integer> multiplicity) {
+    for (String vertex : component.vertices()) {
+      multiplicity.merge(vertex, 1, Integer::sum);
+    }
+  }
+
+  private void decrementMultiplicity(Component component, Map<String, Integer> multiplicity) {
+    for (String vertex : component.vertices()) {
+      multiplicity.compute(
+          vertex,
+          (key, count) -> {
+            if (count == null || count <= 1) {
+              return null;
+            }
+            return count - 1;
+          });
     }
   }
 }

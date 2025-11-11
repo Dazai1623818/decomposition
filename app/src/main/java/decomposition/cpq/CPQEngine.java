@@ -22,7 +22,6 @@ import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -41,12 +40,21 @@ import java.util.function.Function;
  */
 public final class CPQEngine {
   private final List<Edge> edges;
-  private final Map<CacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
-  private final Map<CacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
+  private final Map<RuleCacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
+  private final Map<ComponentCacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
   private final CacheStats cacheStats;
+  private volatile List<String> lastComponentDiagnostics = List.of();
 
   public CPQEngine(List<Edge> edges) {
     this(edges, new CacheStats());
+  }
+
+  /**
+   * Returns the diagnostics recorded during the last failed {@link #analyzePartition} call. Empty
+   * when no failure has been recorded.
+   */
+  public List<String> lastComponentDiagnostics() {
+    return lastComponentDiagnostics;
   }
 
   public CPQEngine(List<Edge> edges, CacheStats stats) {
@@ -87,14 +95,14 @@ public final class CPQEngine {
     Set<String> joinNodes = normalize(requestedJoinNodes);
     Set<String> freeVars = normalize(freeVariables);
 
-    CacheKey key =
-        new CacheKey(
+    ComponentCacheKey key =
+        new ComponentCacheKey(
             BitsetUtils.signature(component.edgeBits(), edges.size()),
             joinNodes,
             freeVars,
-            originalVarMap,
             component.edgeCount(),
-            totalComponents);
+            totalComponents,
+            varContextHash(originalVarMap));
 
     ComponentRules cached = componentCache.get(key);
     if (cached != null) {
@@ -162,12 +170,25 @@ public final class CPQEngine {
     Set<String> freeVars = normalize(freeVariables);
     List<Component> components = partition.components();
     int totalComponents = components.size();
+    lastComponentDiagnostics = List.of();
+    List<String> failureDiagnostics = new ArrayList<>();
 
     List<ComponentRules> perComponent = new ArrayList<>(totalComponents);
-    for (Component component : components) {
+    for (int idx = 0; idx < totalComponents; idx++) {
+      Component component = components.get(idx);
       ComponentRules rules =
           componentRules(component, joinNodes, freeVars, totalComponents, originalVarMap);
+
+      String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
+      String failureMessage =
+          buildFailureDiagnostic(idx + 1, componentSig, rules, joinNodes.isEmpty());
+      if (failureMessage != null) {
+        failureDiagnostics.add(failureMessage);
+      }
+
       if (rules.finalRules().isEmpty()) {
+        lastComponentDiagnostics =
+            failureDiagnostics.isEmpty() ? List.of() : List.copyOf(failureDiagnostics);
         return null;
       }
       perComponent.add(rules);
@@ -176,6 +197,7 @@ public final class CPQEngine {
     List<KnownComponent> preferred = perComponent.stream().map(ComponentRules::preferred).toList();
     List<Integer> ruleCounts = perComponent.stream().map(r -> r.finalRules().size()).toList();
 
+    lastComponentDiagnostics = List.of();
     return new PartitionAnalysis(perComponent, preferred, ruleCounts);
   }
 
@@ -221,14 +243,11 @@ public final class CPQEngine {
     Set<String> localJoinNodes =
         JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
 
-    CacheKey key =
-        new CacheKey(
+    RuleCacheKey key =
+        new RuleCacheKey(
             BitsetUtils.signature(edgeSubset, edges.size()),
             localJoinNodes,
-            requestedJoinNodes,
-            originalVarMap,
-            edgeSubset.cardinality(),
-            edges.size());
+            edgeSubset.cardinality());
 
     List<KnownComponent> cached = ruleCache.get(key);
     if (cached != null) return cached;
@@ -492,23 +511,56 @@ public final class CPQEngine {
     return (values == null || values.isEmpty()) ? Set.of() : Set.copyOf(values);
   }
 
+  private static int varContextHash(Map<String, String> originalVarMap) {
+    if (originalVarMap == null || originalVarMap.isEmpty()) {
+      return 0;
+    }
+    int hash = 1;
+    for (Map.Entry<String, String> entry : originalVarMap.entrySet()) {
+      hash = 31 * hash + Objects.hash(entry.getKey(), entry.getValue());
+    }
+    return hash;
+  }
+
+  private String buildFailureDiagnostic(
+      int componentIndex, String signature, ComponentRules rules, boolean joinNodesEmpty) {
+    if (rules == null) {
+      return null;
+    }
+    if (rules.rawRules().isEmpty()) {
+      return "Partition component#"
+          + componentIndex
+          + " rejected: no CPQ construction rules for bits "
+          + signature;
+    }
+    if (!joinNodesEmpty && rules.joinFilteredRules().isEmpty()) {
+      return "Partition component#"
+          + componentIndex
+          + " rejected: endpoints not on join nodes for bits "
+          + signature;
+    }
+    return null;
+  }
+
   private record MatchState(
       int index, BitSet usedEdges, Map<String, String> mapping, Set<String> usedNodes) {}
 
-  private record CacheKey(
+  private record RuleCacheKey(String signature, Set<String> joinNodes, int edgeCount) {
+    RuleCacheKey {
+      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
+    }
+  }
+
+  private record ComponentCacheKey(
       String signature,
       Set<String> joinNodes,
       Set<String> freeVars,
-      Map<String, String> varToNodeMap,
-      int sizeHintA,
-      int sizeHintB) {
-    CacheKey {
-      joinNodes = Set.copyOf(joinNodes);
-      freeVars = Set.copyOf(freeVars);
-      varToNodeMap =
-          (varToNodeMap == null || varToNodeMap.isEmpty())
-              ? Map.of()
-              : Collections.unmodifiableMap(new LinkedHashMap<>(varToNodeMap));
+      int componentSize,
+      int totalComponents,
+      int varContextHash) {
+    ComponentCacheKey {
+      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
+      freeVars = (freeVars == null || freeVars.isEmpty()) ? Set.of() : Set.copyOf(freeVars);
     }
   }
 }
