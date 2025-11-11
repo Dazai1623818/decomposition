@@ -1,10 +1,10 @@
 package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import org.junit.jupiter.api.Test;
 
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
+import org.junit.jupiter.api.Test;
 
 final class CPQPathInspectionTest {
 

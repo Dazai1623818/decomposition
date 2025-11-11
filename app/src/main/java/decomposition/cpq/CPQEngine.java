@@ -29,7 +29,7 @@ public final class CPQEngine {
   private final Map<RuleCacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
   private final Map<ComponentCacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
   private final CacheStats cacheStats;
-  private final ComponentEdgeMatcher componentValidator;
+  private final ComponentEdgeMatcher edgeMatcher;
   private final ReverseLoopGenerator reverseLoopGenerator;
   private final PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
 
@@ -48,8 +48,8 @@ public final class CPQEngine {
   public CPQEngine(List<Edge> edges, CacheStats stats) {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
     this.cacheStats = Objects.requireNonNull(stats, "stats");
-    this.componentValidator = new ComponentEdgeMatcher(this.edges);
-    this.reverseLoopGenerator = new ReverseLoopGenerator(componentValidator);
+    this.edgeMatcher = new ComponentEdgeMatcher(this.edges);
+    this.reverseLoopGenerator = new ReverseLoopGenerator(edgeMatcher);
   }
 
   public CacheStats cacheStats() {
@@ -115,7 +115,6 @@ public final class CPQEngine {
               .toList();
     }
 
-    // Prefer canonical orientation
     List<KnownComponent> finals = joinFiltered;
     if (joinNodes.size() == 2 && !joinFiltered.isEmpty()) {
       List<String> ordered = new ArrayList<>(joinNodes);

@@ -1,5 +1,10 @@
 package decomposition.partitions;
 
+import decomposition.model.Component;
+import decomposition.model.Edge;
+import decomposition.model.Partition;
+import decomposition.util.BitsetUtils;
+import decomposition.util.GraphUtils;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -8,12 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
-import decomposition.util.BitsetUtils;
-import decomposition.util.GraphUtils;
 
 /**
  * Generates: 1) All non-empty, connected, edge-induced subgraphs ("components") of an input CQ edge
