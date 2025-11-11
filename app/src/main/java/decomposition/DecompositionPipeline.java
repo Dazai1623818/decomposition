@@ -82,8 +82,8 @@ public final class DecompositionPipeline {
           "time_budget_exceeded_after_partitioning");
     }
 
-    // Engine
-    final CPQEnumerator engine = new CPQEnumerator(edges);
+    // Enumerator
+    final CPQEnumerator enumerator = new CPQEnumerator(edges);
 
     // Working accumulators
     KnownComponent finalComponent = null;
@@ -100,7 +100,7 @@ public final class DecompositionPipeline {
     int idx = 0;
     for (FilteredPartition fp : filteredWithJoins) {
       if (isOverBudget(opts, timing)) {
-        lastCacheSnapshot = engine.cacheStats().snapshot();
+        lastCacheSnapshot = enumerator.cacheStats().snapshot();
         return buildResult(
             extraction,
             vertices,
@@ -121,12 +121,12 @@ public final class DecompositionPipeline {
       final Set<String> joinNodes = fp.joinNodes();
 
       final PartitionAnalysis analysis =
-          engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varToNodeMap);
+          enumerator.analyzePartition(partition, joinNodes, extraction.freeVariables(), varToNodeMap);
 
       if (analysis == null) {
         // Collect simple per-component reasons
         addComponentDiagnostics(
-            diagnostics, partition, edges, extraction.freeVariables(), varToNodeMap, engine);
+            diagnostics, partition, edges, extraction.freeVariables(), varToNodeMap, enumerator);
         continue;
       }
 
@@ -140,7 +140,7 @@ public final class DecompositionPipeline {
       }
 
       final List<List<KnownComponent>> tuples =
-          wantTuples ? engine.enumerateTuples(analysis, tupleLimit) : List.of();
+          wantTuples ? enumerator.enumerateTuples(analysis, tupleLimit) : List.of();
 
       partitionEvaluations.add(
           new PartitionEvaluation(partition, idx, analysis.ruleCounts(), tuples));
@@ -152,7 +152,7 @@ public final class DecompositionPipeline {
           JoinNodeUtils.computeJoinNodes(
               List.of(new Component(fullBits, vertices)), extraction.freeVariables());
       final List<KnownComponent> globalCandidates =
-          engine.constructionRules(fullBits, globalJoinNodes, varToNodeMap);
+          enumerator.constructionRules(fullBits, globalJoinNodes, varToNodeMap);
       globalCatalogue = globalCandidates;
       finalComponent = selectPreferredFinalComponent(globalCandidates);
     }
@@ -161,7 +161,7 @@ public final class DecompositionPipeline {
     final long elapsed = timing.elapsedMillis();
     final String termination = isOverBudget(opts, elapsed) ? "time_budget_exceeded" : null;
 
-    lastCacheSnapshot = engine.cacheStats().snapshot();
+    lastCacheSnapshot = enumerator.cacheStats().snapshot();
     return buildResult(
         extraction,
         vertices,
@@ -185,8 +185,8 @@ public final class DecompositionPipeline {
       List<Edge> allEdges,
       Set<String> freeVars,
       Map<String, String> varToNodeMap,
-      CPQEnumerator engine) {
-    List<String> cached = engine.lastComponentDiagnostics();
+      CPQEnumerator enumerator) {
+    List<String> cached = enumerator.lastComponentDiagnostics();
     if (cached != null && !cached.isEmpty()) {
       diagnostics.addAll(cached);
       return;
@@ -196,7 +196,8 @@ public final class DecompositionPipeline {
     for (Component c : partition.components()) {
       i++;
       final var ruleSet =
-          engine.componentRules(c, Set.of(), freeVars, partition.components().size(), varToNodeMap);
+          enumerator.componentRules(
+              c, Set.of(), freeVars, partition.components().size(), varToNodeMap);
       final String sig = BitsetUtils.signature(c.edgeBits(), edgeCount);
       if (ruleSet.rawRules().isEmpty()) {
         diagnostics.add(
