@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.model.ComponentRules;
+import decomposition.cpq.model.ComponentCPQExpressions;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
@@ -304,8 +304,8 @@ final class CPQEnumeratorTest {
       boolean expectRelaxed) {
     Set<String> summaries = new LinkedHashSet<>();
     for (Scenario scenario : scenarios) {
-      ComponentRules rules =
-          engine.componentRules(
+      ComponentCPQExpressions rules =
+          engine.componentCPQExpressions(
               scenario.component(),
               scenario.joinNodes(),
               Set.of(),

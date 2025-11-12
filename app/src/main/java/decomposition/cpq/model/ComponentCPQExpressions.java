@@ -5,13 +5,13 @@ import decomposition.model.Component;
 import java.util.List;
 import java.util.Objects;
 
-public record ComponentRules(
+public record ComponentCPQExpressions(
     Component component,
     List<KnownComponent> rawRules,
     List<KnownComponent> joinFilteredRules,
     List<KnownComponent> finalRules) {
 
-  public ComponentRules {
+  public ComponentCPQExpressions {
     Objects.requireNonNull(component, "component");
     rawRules = List.copyOf(Objects.requireNonNull(rawRules, "rawRules"));
     joinFilteredRules = List.copyOf(Objects.requireNonNull(joinFilteredRules, "joinFilteredRules"));

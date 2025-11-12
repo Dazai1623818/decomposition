@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 public record PartitionAnalysis(
-    List<ComponentRules> components,
+    List<ComponentCPQExpressions> components,
     List<KnownComponent> preferredPerComponent,
     List<Integer> ruleCounts) {
 

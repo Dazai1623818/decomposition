@@ -1,8 +1,8 @@
 package decomposition.cpq;
 
 import decomposition.cpq.model.CacheStats;
+import decomposition.cpq.model.ComponentCPQExpressions;
 import decomposition.cpq.model.ComponentKey;
-import decomposition.cpq.model.ComponentRules;
 import decomposition.cpq.model.PartitionAnalysis;
 import decomposition.model.Component;
 import decomposition.model.Edge;
@@ -27,7 +27,8 @@ import java.util.function.Function;
 public final class CPQEnumerator {
   private final List<Edge> edges;
   private final Map<RuleCacheKey, List<KnownComponent>> ruleCache = new ConcurrentHashMap<>();
-  private final Map<ComponentCacheKey, ComponentRules> componentCache = new ConcurrentHashMap<>();
+  private final Map<ComponentCacheKey, ComponentCPQExpressions> componentCache =
+      new ConcurrentHashMap<>();
   private final CacheStats cacheStats;
   private final ComponentEdgeMatcher edgeMatcher;
   private final ReverseLoopGenerator reverseLoopGenerator;
@@ -69,10 +70,10 @@ public final class CPQEnumerator {
       BitSet edgeSubset, Set<String> requestedJoinNodes, Map<String, String> originalVarMap) {
     Objects.requireNonNull(edgeSubset, "edgeSubset");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
-    return deriveRules(edgeSubset, normalize(requestedJoinNodes), originalVarMap);
+    return componentToCPQExpressions(edgeSubset, normalize(requestedJoinNodes), originalVarMap);
   }
 
-  public ComponentRules componentRules(
+  public ComponentCPQExpressions componentCPQExpressions(
       Component component,
       Set<String> requestedJoinNodes,
       Set<String> freeVariables,
@@ -94,7 +95,7 @@ public final class CPQEnumerator {
             totalComponents,
             varContextHash(originalVarMap));
 
-    ComponentRules cached = componentCache.get(key);
+    ComponentCPQExpressions cached = componentCache.get(key);
     if (cached != null) {
       cacheStats.recordHit();
       return cached;
@@ -103,7 +104,8 @@ public final class CPQEnumerator {
     cacheStats.recordMiss();
 
     // Build component rules directly
-    List<KnownComponent> raw = deriveRules(component.edgeBits(), joinNodes, originalVarMap);
+    List<KnownComponent> raw =
+        componentToCPQExpressions(component.edgeBits(), joinNodes, originalVarMap);
 
     // Filter by join-node roles for multi-edge components
     List<KnownComponent> joinFiltered = raw;
@@ -137,7 +139,8 @@ public final class CPQEnumerator {
       }
     }
 
-    ComponentRules computed = new ComponentRules(component, raw, joinFiltered, finals);
+    ComponentCPQExpressions computed =
+        new ComponentCPQExpressions(component, raw, joinFiltered, finals);
     componentCache.put(key, computed);
     return computed;
   }
@@ -161,11 +164,11 @@ public final class CPQEnumerator {
     int totalComponents = components.size();
     partitionDiagnostics.beginPartition();
 
-    List<ComponentRules> perComponent = new ArrayList<>(totalComponents);
+    List<ComponentCPQExpressions> perComponent = new ArrayList<>(totalComponents);
     for (int idx = 0; idx < totalComponents; idx++) {
       Component component = components.get(idx);
-      ComponentRules rules =
-          componentRules(component, joinNodes, freeVars, totalComponents, originalVarMap);
+      ComponentCPQExpressions rules =
+          componentCPQExpressions(component, joinNodes, freeVars, totalComponents, originalVarMap);
 
       String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
       partitionDiagnostics.recordComponent(idx + 1, componentSig, rules, joinNodes.isEmpty());
@@ -177,7 +180,8 @@ public final class CPQEnumerator {
       perComponent.add(rules);
     }
 
-    List<KnownComponent> preferred = perComponent.stream().map(ComponentRules::preferred).toList();
+    List<KnownComponent> preferred =
+        perComponent.stream().map(ComponentCPQExpressions::preferred).toList();
     List<Integer> ruleCounts = perComponent.stream().map(r -> r.finalRules().size()).toList();
 
     partitionDiagnostics.succeedPartition();
@@ -188,7 +192,7 @@ public final class CPQEnumerator {
     if (analysis == null) return List.of();
 
     List<List<KnownComponent>> perComponent =
-        analysis.components().stream().map(ComponentRules::finalRules).toList();
+        analysis.components().stream().map(ComponentCPQExpressions::finalRules).toList();
     if (perComponent.isEmpty()) return List.of();
 
     int n = perComponent.size();
@@ -218,7 +222,7 @@ public final class CPQEnumerator {
   // Core recursive derivation
   // --------------------------------------------------------------------------
 
-  private List<KnownComponent> deriveRules(
+  private List<KnownComponent> componentToCPQExpressions(
       BitSet edgeSubset, Set<String> requestedJoinNodes, Map<String, String> originalVarMap) {
     if (edgeSubset.isEmpty()) return List.of();
     Objects.requireNonNull(originalVarMap, "originalVarMap");
@@ -247,7 +251,7 @@ public final class CPQEnumerator {
         rules.addAll(LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes, originalVarMap));
       }
       Function<BitSet, List<KnownComponent>> resolver =
-          subset -> deriveRules(subset, requestedJoinNodes, originalVarMap);
+          subset -> componentToCPQExpressions(subset, requestedJoinNodes, originalVarMap);
       rules.addAll(CompositeRuleFactory.build(edgeSubset, edges.size(), resolver));
     }
 

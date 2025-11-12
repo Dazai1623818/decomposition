@@ -121,7 +121,8 @@ public final class DecompositionPipeline {
       final Set<String> joinNodes = fp.joinNodes();
 
       final PartitionAnalysis analysis =
-          enumerator.analyzePartition(partition, joinNodes, extraction.freeVariables(), varToNodeMap);
+          enumerator.analyzePartition(
+              partition, joinNodes, extraction.freeVariables(), varToNodeMap);
 
       if (analysis == null) {
         // Collect simple per-component reasons
@@ -196,7 +197,7 @@ public final class DecompositionPipeline {
     for (Component c : partition.components()) {
       i++;
       final var ruleSet =
-          enumerator.componentRules(
+          enumerator.componentCPQExpressions(
               c, Set.of(), freeVars, partition.components().size(), varToNodeMap);
       final String sig = BitsetUtils.signature(c.edgeBits(), edgeCount);
       if (ruleSet.rawRules().isEmpty()) {

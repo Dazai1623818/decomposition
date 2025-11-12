@@ -1,6 +1,6 @@
 package decomposition.cpq;
 
-import decomposition.cpq.model.ComponentRules;
+import decomposition.cpq.model.ComponentCPQExpressions;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,7 +14,7 @@ final class PartitionDiagnostics {
   }
 
   void recordComponent(
-      int componentIndex, String signature, ComponentRules rules, boolean joinNodesEmpty) {
+      int componentIndex, String signature, ComponentCPQExpressions rules, boolean joinNodesEmpty) {
     String message = buildFailureDiagnostic(componentIndex, signature, rules, joinNodesEmpty);
     if (message != null) {
       currentFailures.add(message);
@@ -34,7 +34,7 @@ final class PartitionDiagnostics {
   }
 
   private String buildFailureDiagnostic(
-      int componentIndex, String signature, ComponentRules rules, boolean joinNodesEmpty) {
+      int componentIndex, String signature, ComponentCPQExpressions rules, boolean joinNodesEmpty) {
     if (rules == null) {
       return null;
     }
