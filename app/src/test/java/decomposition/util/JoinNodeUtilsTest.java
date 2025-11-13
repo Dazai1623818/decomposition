@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -92,7 +92,7 @@ final class JoinNodeUtilsTest {
   @Test
   void endpointsRespectJoinNodeRolesWithNoJoinNodes() {
     Component c = makeComponent(Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("a", "b");
+    CPQExpression kc = makeCPQExpression("a", "b");
     assertTrue(
         JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, c, Set.of()),
         "Always respects when no join nodes");
@@ -104,7 +104,7 @@ final class JoinNodeUtilsTest {
     BitSet bits = new BitSet(1);
     bits.set(0);
     Component c = new Component(bits, Set.of("a", "b"));
-    KnownComponent kc = makeKnownComponent("a", "b");
+    CPQExpression kc = makeCPQExpression("a", "b");
 
     assertTrue(
         JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, c, Set.of("a")),
@@ -124,7 +124,7 @@ final class JoinNodeUtilsTest {
     bits.set(0);
     bits.set(1);
     Component c = new Component(bits, Set.of("a", "b", "c"));
-    KnownComponent loop = makeKnownComponent("b", "b");
+    CPQExpression loop = makeCPQExpression("b", "b");
 
     assertTrue(
         JoinNodeUtils.endpointsRespectJoinNodeRoles(loop, c, Set.of("b")),
@@ -138,7 +138,7 @@ final class JoinNodeUtilsTest {
     bits.set(0);
     bits.set(1);
     Component c = new Component(bits, Set.of("a", "b", "c"));
-    KnownComponent kc = makeKnownComponent("a", "c");
+    CPQExpression kc = makeCPQExpression("a", "c");
 
     assertTrue(
         JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, c, Set.of("a", "c")),
@@ -156,13 +156,13 @@ final class JoinNodeUtilsTest {
     return new Component(bits, vertices);
   }
 
-  private KnownComponent makeKnownComponent(String source, String target) {
+  private CPQExpression makeCPQExpression(String source, String target) {
     CPQ cpq = CPQ.parse("r1");
     BitSet bits = new BitSet();
     bits.set(0);
     Map<String, String> mapping = new LinkedHashMap<>();
     mapping.put(source, source);
     mapping.put(target, target);
-    return new KnownComponent(cpq, bits, source, target, "test", mapping);
+    return new CPQExpression(cpq, bits, source, target, "test", mapping);
   }
 }

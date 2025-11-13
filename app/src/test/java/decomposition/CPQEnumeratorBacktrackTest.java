@@ -5,8 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.CPQEnumerator;
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
+import decomposition.cpq.ComponentCacheKey;
+import decomposition.cpq.ComponentExpressionBuilder;
+import decomposition.cpq.PartitionDiagnostics;
+import decomposition.cpq.PartitionExpressionAssembler;
+import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
+import decomposition.cpq.model.CacheStats;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
@@ -19,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +38,7 @@ final class CPQEnumeratorBacktrackTest {
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = identityVarMap(edges);
 
-    CPQEnumerator engine = new CPQEnumerator(edges);
+    ComponentExpressionBuilder resolver = new ComponentExpressionBuilder(edges);
 
     int r4Index = findEdgeIndex(edges, "r4");
     BitSet r4Bits = new BitSet(edges.size());
@@ -41,17 +47,17 @@ final class CPQEnumeratorBacktrackTest {
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4 ◦ r4⁻) ∩ id"));
     assertDoesNotThrow(() -> dev.roanh.gmark.lang.cpq.CPQ.parse("(r4⁻ ◦ r4) ∩ id"));
 
-    List<KnownComponent> rules = engine.constructionRules(r4Bits, varMap);
+    List<CPQExpression> expressions = resolver.build(r4Bits, varMap);
     Edge r4 = edges.get(r4Index);
 
-    assertFalse(rules.isEmpty(), "Expected CPQ construction rules for single edge component");
+    assertFalse(expressions.isEmpty(), "Expected CPQ expressions for single edge component");
     assertTrue(
-        rules.stream()
+        expressions.stream()
             .filter(kc -> kc.source().equals(r4.source()) && kc.target().equals(r4.source()))
             .allMatch(kc -> kc.cpqRule().contains("∩ id")),
         () ->
             "Backtrack loop at source missing ∩ id but saw:\n"
-                + rules.stream()
+                + expressions.stream()
                     .map(
                         kc ->
                             kc.cpqRule()
@@ -63,12 +69,12 @@ final class CPQEnumeratorBacktrackTest {
                                 + kc.derivation())
                     .collect(Collectors.joining("\n")));
     assertTrue(
-        rules.stream()
+        expressions.stream()
             .filter(kc -> kc.source().equals(r4.target()) && kc.target().equals(r4.target()))
             .allMatch(kc -> kc.cpqRule().contains("∩ id")),
         () ->
             "Backtrack loop at target missing ∩ id but saw:\n"
-                + rules.stream()
+                + expressions.stream()
                     .map(
                         kc ->
                             kc.cpqRule()
@@ -81,7 +87,9 @@ final class CPQEnumeratorBacktrackTest {
                     .collect(Collectors.joining("\n")));
 
     Set<List<String>> endpointPairs =
-        rules.stream().map(kc -> List.of(kc.source(), kc.target())).collect(Collectors.toSet());
+        expressions.stream()
+            .map(kc -> List.of(kc.source(), kc.target()))
+            .collect(Collectors.toSet());
 
     Set<List<String>> expectedPairs =
         Set.of(
@@ -109,10 +117,20 @@ final class CPQEnumeratorBacktrackTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(
             singleEdgePartition.components(), extraction.freeVariables());
-    assertTrue(
-        engine.analyzePartition(singleEdgePartition, joinNodes, extraction.freeVariables(), varMap)
-            != null,
-        "Single-edge partition should now be a valid CPQ decomposition");
+    CacheStats stats = new CacheStats();
+    PartitionDiagnostics diagnosticsHelper = new PartitionDiagnostics();
+    Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
+    PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
+    List<List<CPQExpression>> built =
+        synthesizer.synthesize(
+            singleEdgePartition,
+            joinNodes,
+            extraction.freeVariables(),
+            varMap,
+            componentCache,
+            stats,
+            diagnosticsHelper);
+    assertTrue(built != null, "Single-edge partition should now be a valid CPQ decomposition");
   }
 
   @Test
@@ -123,21 +141,21 @@ final class CPQEnumeratorBacktrackTest {
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = identityVarMap(edges);
 
-    CPQEnumerator engine = new CPQEnumerator(edges);
+    ComponentExpressionBuilder resolver = new ComponentExpressionBuilder(edges);
 
     int selfLoopIndex = findSelfLoopEdge(edges);
     BitSet selfLoopBits = new BitSet(edges.size());
     selfLoopBits.set(selfLoopIndex);
 
-    List<KnownComponent> rules = engine.constructionRules(selfLoopBits, varMap);
+    List<CPQExpression> expressions = resolver.build(selfLoopBits, varMap);
 
-    assertEquals(1, rules.size(), "Self-loop should produce a single structural rule");
-    KnownComponent loop = rules.get(0);
+    assertEquals(1, expressions.size(), "Self-loop should produce a single structural expression");
+    CPQExpression loop = expressions.get(0);
     assertTrue(
         loop.cpqRule().contains("∩ id"),
         () ->
             "Self-loop should enforce equality via id but saw: "
-                + rules.stream()
+                + expressions.stream()
                     .map(kc -> kc.cpqRule() + " [" + kc.source() + "→" + kc.target() + "]")
                     .collect(Collectors.joining(", ")));
   }

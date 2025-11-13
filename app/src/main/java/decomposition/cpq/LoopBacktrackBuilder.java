@@ -14,7 +14,7 @@ final class LoopBacktrackBuilder {
 
   private LoopBacktrackBuilder() {}
 
-  static List<KnownComponent> build(
+  static List<CPQExpression> build(
       List<Edge> edges,
       BitSet edgeBits,
       Set<String> allowedAnchors,
@@ -24,7 +24,7 @@ final class LoopBacktrackBuilder {
       return List.of();
     }
 
-    List<KnownComponent> results = new ArrayList<>();
+    List<CPQExpression> results = new ArrayList<>();
     for (String anchor : adjacency.keySet()) {
       if (!isAnchorAllowed(anchor, allowedAnchors)) {
         continue;
@@ -35,7 +35,7 @@ final class LoopBacktrackBuilder {
         continue;
       }
       results.add(
-          new KnownComponent(
+          new CPQExpression(
               loopCpq,
               edgeBits,
               anchor,

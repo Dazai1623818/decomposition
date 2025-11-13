@@ -42,7 +42,7 @@ final class CPQTupleEnumerationExampleTest {
                     new AssertionError(
                         "Expected at least one partition with enumeration tuples for example7"));
 
-    List<List<KnownComponent>> tuples = evaluation.decompositionTuples();
+    List<List<CPQExpression>> tuples = evaluation.decompositionTuples();
     assertFalse(
         tuples.isEmpty(), "Partition evaluation should produce at least one tuple for the example");
 
@@ -52,15 +52,15 @@ final class CPQTupleEnumerationExampleTest {
             + " has "
             + tuples.size()
             + " tuples ("
-            + evaluation.componentRuleCounts()
+            + evaluation.componentExpressionCounts()
             + ")");
 
     int examplesToShow = Math.min(tuples.size(), 5);
     for (int tupleIndex = 0; tupleIndex < examplesToShow; tupleIndex++) {
-      List<KnownComponent> tuple = tuples.get(tupleIndex);
+      List<CPQExpression> tuple = tuples.get(tupleIndex);
       System.out.println("Tuple " + (tupleIndex + 1) + "/" + tuples.size() + ":");
       for (int compIndex = 0; compIndex < tuple.size(); compIndex++) {
-        KnownComponent component = tuple.get(compIndex);
+        CPQExpression component = tuple.get(compIndex);
         System.out.println(
             "  comp#"
                 + (compIndex + 1)

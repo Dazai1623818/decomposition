@@ -144,7 +144,7 @@ final class RandomCPQDecompositionTest {
       return new ReconstructionResult(false, false, Optional.empty());
     }
 
-    List<List<KnownComponent>> tuples = singleComponentEvaluation.get().decompositionTuples();
+    List<List<CPQExpression>> tuples = singleComponentEvaluation.get().decompositionTuples();
     if (tuples.isEmpty() || tuples.get(0).isEmpty()) {
       return new ReconstructionResult(false, false, Optional.empty());
     }

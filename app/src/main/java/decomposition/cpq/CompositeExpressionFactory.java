@@ -10,29 +10,28 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * Generates composite CPQ construction rules by joining subcomponents via concatenation or
- * intersection.
+ * Generates composite CPQ expressions by joining subcomponents via concatenation or intersection.
  */
-final class CompositeRuleFactory {
+final class CompositeExpressionFactory {
 
-  private CompositeRuleFactory() {}
+  private CompositeExpressionFactory() {}
 
-  static List<KnownComponent> build(
+  static List<CPQExpression> build(
       BitSet edgeBits,
       int totalEdgeCount,
-      Function<BitSet, List<KnownComponent>> constructionRuleLookup) {
-    List<KnownComponent> results = new ArrayList<>();
+      Function<BitSet, List<CPQExpression>> constructionRuleLookup) {
+    List<CPQExpression> results = new ArrayList<>();
     forEachSplit(
         edgeBits,
         totalEdgeCount,
         (subsetA, subsetB) -> {
-          List<KnownComponent> left = constructionRuleLookup.apply(subsetA);
-          List<KnownComponent> right = constructionRuleLookup.apply(subsetB);
+          List<CPQExpression> left = constructionRuleLookup.apply(subsetA);
+          List<CPQExpression> right = constructionRuleLookup.apply(subsetB);
           if (left.isEmpty() || right.isEmpty()) {
             return;
           }
-          for (KnownComponent lhs : left) {
-            for (KnownComponent rhs : right) {
+          for (CPQExpression lhs : left) {
+            for (CPQExpression rhs : right) {
               tryConcat(edgeBits, lhs, rhs, results);
               tryIntersect(edgeBits, lhs, rhs, results);
             }
@@ -64,7 +63,7 @@ final class CompositeRuleFactory {
   }
 
   private static void tryConcat(
-      BitSet edgeBits, KnownComponent left, KnownComponent right, List<KnownComponent> sink) {
+      BitSet edgeBits, CPQExpression left, CPQExpression right, List<CPQExpression> sink) {
     if (!left.target().equals(right.source())) {
       return;
     }
@@ -84,7 +83,7 @@ final class CompositeRuleFactory {
   }
 
   private static void tryIntersect(
-      BitSet edgeBits, KnownComponent left, KnownComponent right, List<KnownComponent> sink) {
+      BitSet edgeBits, CPQExpression left, CPQExpression right, List<CPQExpression> sink) {
     if (!left.source().equals(right.source()) || !left.target().equals(right.target())) {
       return;
     }
@@ -112,10 +111,10 @@ final class CompositeRuleFactory {
       String target,
       String derivation,
       Map<String, String> varToNodeMap,
-      List<KnownComponent> sink) {
+      List<CPQExpression> sink) {
     try {
       CPQ cpq = CPQ.parse(expression);
-      sink.add(new KnownComponent(cpq, edgeBits, source, target, derivation, varToNodeMap));
+      sink.add(new CPQExpression(cpq, edgeBits, source, target, derivation, varToNodeMap));
     } catch (RuntimeException ex) {
       // Ignore unparsable synthesized expression.
     }

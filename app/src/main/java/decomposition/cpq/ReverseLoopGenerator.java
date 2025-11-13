@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Creates anchored and reversed variants for derived {@link KnownComponent} instances. */
+/** Creates anchored and reversed variants for derived {@link CPQExpression} instances. */
 final class ReverseLoopGenerator {
   private final ComponentEdgeMatcher validator;
 
@@ -16,16 +16,16 @@ final class ReverseLoopGenerator {
     this.validator = Objects.requireNonNull(validator, "validator");
   }
 
-  List<KnownComponent> generate(KnownComponent rule, Map<String, String> originalVarMap) {
-    List<KnownComponent> variants = new ArrayList<>(2);
+  List<CPQExpression> generate(CPQExpression rule, Map<String, String> originalVarMap) {
+    List<CPQExpression> variants = new ArrayList<>(2);
 
-    KnownComponent candidate = rule;
+    CPQExpression candidate = rule;
     if (rule.source().equals(rule.target())) {
       try {
         if (!rule.cpq().toQueryGraph().isLoop()) {
           CPQ anchoredCpq = CPQ.intersect(rule.cpq(), CPQ.IDENTITY);
           candidate =
-              new KnownComponent(
+              new CPQExpression(
                   anchoredCpq,
                   rule.edges(),
                   rule.source(),
@@ -43,7 +43,7 @@ final class ReverseLoopGenerator {
     }
 
     if (!candidate.source().equals(candidate.target())) {
-      KnownComponent reversed = createReversedVariant(candidate, originalVarMap);
+      CPQExpression reversed = createReversedVariant(candidate, originalVarMap);
       if (reversed != null && validator.isValid(reversed)) {
         variants.add(reversed);
       }
@@ -52,11 +52,11 @@ final class ReverseLoopGenerator {
     return variants.isEmpty() ? List.of() : List.copyOf(variants);
   }
 
-  private KnownComponent createReversedVariant(
-      KnownComponent rule, Map<String, String> originalVarMap) {
+  private CPQExpression createReversedVariant(
+      CPQExpression rule, Map<String, String> originalVarMap) {
     try {
       CPQ reversedCpq = reverseCpq(rule.cpq());
-      return new KnownComponent(
+      return new CPQExpression(
           reversedCpq,
           rule.edges(),
           rule.target(),

@@ -38,7 +38,7 @@ java {
 spotless {
     java {
         target 'src/**/*.java'
-        googleJavaFormat('1.19.1')
+        googleJavaFormat('1.19.2')
         removeUnusedImports()
         trimTrailingWhitespace()
         endWithNewline()

@@ -1,6 +1,6 @@
 package decomposition;
 
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import java.util.Collections;
@@ -18,9 +18,9 @@ public record DecompositionResult(
     List<Partition> allPartitions,
     List<Partition> filteredPartitionList,
     List<Partition> cpqPartitions,
-    List<KnownComponent> recognizedCatalogue,
-    KnownComponent finalComponent,
-    List<KnownComponent> globalCatalogue,
+    List<CPQExpression> recognizedCatalogue,
+    CPQExpression finalExpression,
+    List<CPQExpression> globalCatalogue,
     List<PartitionEvaluation> partitionEvaluations,
     List<String> diagnostics,
     long elapsedMillis,
@@ -47,7 +47,7 @@ public record DecompositionResult(
     diagnostics = List.copyOf(diagnostics);
   }
 
-  public boolean hasFinalComponent() {
-    return finalComponent != null;
+  public boolean hasFinalExpression() {
+    return finalExpression != null;
   }
 }

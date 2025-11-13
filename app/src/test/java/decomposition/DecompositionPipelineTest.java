@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -31,16 +31,16 @@ final class DecompositionPipelineTest {
     assertTrue(
         result.recognizedCatalogue().stream().anyMatch(kc -> "r1".equals(kc.cpqRule())),
         "Recognized catalogue should include the plain edge label");
-    assertTrue(result.hasFinalComponent(), "Final CPQ should be available");
-    assertEquals("r1", result.finalComponent().cpqRule(), "Single edge rule should match label");
+    assertTrue(result.hasFinalExpression(), "Final CPQ should be available");
+    assertEquals("r1", result.finalExpression().cpqRule(), "Single edge rule should match label");
     assertEquals(
         1, result.partitionEvaluations().size(), "Exactly one partition evaluation expected");
     assertEquals(
         1,
-        result.partitionEvaluations().get(0).componentRuleCounts().size(),
+        result.partitionEvaluations().get(0).componentExpressionCounts().size(),
         "Single component in the partition");
     assertTrue(
-        result.partitionEvaluations().get(0).componentRuleCounts().get(0) >= 1,
+        result.partitionEvaluations().get(0).componentExpressionCounts().get(0) >= 1,
         "Single component should have at least one construction rule");
   }
 
@@ -102,7 +102,7 @@ final class DecompositionPipelineTest {
     PartitionEvaluation evaluation = singleEdgePartition.orElseThrow();
 
     assertTrue(
-        evaluation.componentRuleCounts().stream().allMatch(count -> count > 0),
+        evaluation.componentExpressionCounts().stream().allMatch(count -> count > 0),
         "Every single-edge component must yield at least one construction rule");
     assertFalse(
         evaluation.decompositionTuples().isEmpty(),
@@ -182,7 +182,7 @@ final class DecompositionPipelineTest {
 
     PartitionEvaluation evaluation = singleComponent.orElseThrow();
     assertTrue(
-        evaluation.componentRuleCounts().get(0) >= 1,
+        evaluation.componentExpressionCounts().get(0) >= 1,
         "Single component should have at least one construction rule");
 
     assertFalse(
@@ -195,7 +195,7 @@ final class DecompositionPipelineTest {
         "Recognized catalogue should include the full 4-edge component");
 
     // Verify the decomposition is valid regardless of orientation
-    KnownComponent fullComponent = evaluation.decompositionTuples().get(0).get(0);
+    CPQExpression fullComponent = evaluation.decompositionTuples().get(0).get(0);
     assertEquals(
         4, fullComponent.edges().cardinality(), "Single component should cover all 4 edges");
 

@@ -1,43 +1,41 @@
 package decomposition;
 
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.model.Partition;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Captures per-partition evaluation details such as construction rule counts and enumerated tuples.
- */
+/** Captures per-partition evaluation details such as expression counts and enumerated tuples. */
 public record PartitionEvaluation(
     Partition partition,
     int partitionIndex,
-    List<Integer> componentRuleCounts,
-    List<List<KnownComponent>> decompositionTuples) {
+    List<Integer> componentExpressionCounts,
+    List<List<CPQExpression>> decompositionTuples) {
 
   public PartitionEvaluation(
       Partition partition,
       int partitionIndex,
-      List<Integer> componentRuleCounts,
-      List<List<KnownComponent>> decompositionTuples) {
+      List<Integer> componentExpressionCounts,
+      List<List<CPQExpression>> decompositionTuples) {
     this.partition = Objects.requireNonNull(partition, "partition");
     if (partitionIndex < 1) {
       throw new IllegalArgumentException("partitionIndex must be >= 1");
     }
     this.partitionIndex = partitionIndex;
-    this.componentRuleCounts =
-        List.copyOf(Objects.requireNonNull(componentRuleCounts, "componentRuleCounts"));
+    this.componentExpressionCounts =
+        List.copyOf(Objects.requireNonNull(componentExpressionCounts, "componentExpressionCounts"));
     this.decompositionTuples =
         deepCopy(Objects.requireNonNull(decompositionTuples, "decompositionTuples"));
   }
 
   public int componentCount() {
-    return componentRuleCounts.size();
+    return componentExpressionCounts.size();
   }
 
-  private static List<List<KnownComponent>> deepCopy(List<List<KnownComponent>> tuples) {
-    List<List<KnownComponent>> copy = new ArrayList<>(tuples.size());
-    for (List<KnownComponent> tuple : tuples) {
+  private static List<List<CPQExpression>> deepCopy(List<List<CPQExpression>> tuples) {
+    List<List<CPQExpression>> copy = new ArrayList<>(tuples.size());
+    for (List<CPQExpression> tuple : tuples) {
       copy.add(List.copyOf(tuple));
     }
     return List.copyOf(copy);

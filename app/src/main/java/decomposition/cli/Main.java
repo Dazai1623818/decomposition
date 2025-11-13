@@ -7,7 +7,7 @@ import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.cpq.model.CacheStats;
 import decomposition.model.Component;
 import decomposition.profile.PipelineProfiler;
@@ -78,11 +78,11 @@ public final class Main {
       }
 
       if (cliOptions.showVisualization()) {
-        for (KnownComponent component : result.recognizedCatalogue()) {
+        for (CPQExpression component : result.recognizedCatalogue()) {
           GraphPanel.show(component.cpq());
         }
-        if (result.hasFinalComponent()) {
-          GraphPanel.show(result.finalComponent().cpq());
+        if (result.hasFinalExpression()) {
+          GraphPanel.show(result.finalExpression().cpq());
         }
       }
 
@@ -120,29 +120,29 @@ public final class Main {
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       System.out.println("Partition #" + evaluation.partitionIndex() + ":");
       List<Component> components = evaluation.partition().components();
-      List<Integer> ruleCounts = evaluation.componentRuleCounts();
+      List<Integer> expressionCounts = evaluation.componentExpressionCounts();
       for (int i = 0; i < components.size(); i++) {
         var component = components.get(i);
         String signature = BitsetUtils.signature(component.edgeBits(), totalEdges);
-        int rulesForComponent = ruleCounts.get(i);
+        int expressionsForComponent = expressionCounts.get(i);
         System.out.println(
             "  Component #"
                 + (i + 1)
                 + " ["
                 + signature
-                + "] construction_rules="
-                + rulesForComponent);
+                + "] expressions="
+                + expressionsForComponent);
       }
       if (options.mode() == Mode.ENUMERATE) {
-        List<List<KnownComponent>> tuples = evaluation.decompositionTuples();
+        List<List<CPQExpression>> tuples = evaluation.decompositionTuples();
         if (tuples.isEmpty()) {
           System.out.println("  Tuples: none");
         } else {
           System.out.println("  Tuples (showing " + tuples.size() + "):");
           for (int i = 0; i < tuples.size(); i++) {
-            List<KnownComponent> tuple = tuples.get(i);
+            List<CPQExpression> tuple = tuples.get(i);
             List<String> fragments = new ArrayList<>(tuple.size());
-            for (KnownComponent component : tuple) {
+            for (CPQExpression component : tuple) {
               fragments.add(
                   component.cpq().toString()
                       + " ("

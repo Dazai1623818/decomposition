@@ -23,7 +23,7 @@ final class PartitionTwelveRegressionTest {
     ExtractionResult extraction = new CQExtractor().extract(Example.example6(), Set.of("A"));
     List<Edge> edges = extraction.edges();
     Map<String, String> varMap = extraction.variableNodeMap();
-    CPQEnumerator engine = new CPQEnumerator(edges);
+    ComponentExpressionBuilder resolver = new ComponentExpressionBuilder(edges);
 
     BitSet fullBits = new BitSet(edges.size());
     fullBits.set(0, edges.size());
@@ -37,12 +37,12 @@ final class PartitionTwelveRegressionTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(List.of(component), extraction.freeVariables());
 
-    List<KnownComponent> rules = engine.constructionRules(fullBits, joinNodes, varMap);
+    List<CPQExpression> expressions = resolver.build(fullBits, joinNodes, varMap);
 
     assertFalse(
-        rules.isEmpty(), "Expected at least one CPQ construction rule for the full component");
+        expressions.isEmpty(), "Expected at least one CPQ expression for the full component");
     assertTrue(
-        rules.stream()
+        expressions.stream()
             .anyMatch(
                 kc ->
                     "A".equals(kc.source())
@@ -50,7 +50,7 @@ final class PartitionTwelveRegressionTest {
                         && kc.cpq().toString().contains("∩ id")),
         () ->
             "Expected a loop anchored at join node A but saw: "
-                + rules.stream()
+                + expressions.stream()
                     .map(kc -> kc.cpq().toString() + " [" + kc.source() + "→" + kc.target() + "]")
                     .toList());
   }

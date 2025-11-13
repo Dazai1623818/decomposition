@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Matches a {@link KnownComponent}'s CQ/CPQ structure to concrete decomposition edges. */
+/** Matches a {@link CPQExpression}'s CQ/CPQ structure to concrete decomposition edges. */
 final class ComponentEdgeMatcher {
   private final List<Edge> edges;
 
@@ -29,7 +29,7 @@ final class ComponentEdgeMatcher {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
   }
 
-  boolean isValid(KnownComponent rule) {
+  boolean isValid(CPQExpression rule) {
     List<Edge> componentEdges = new ArrayList<>(rule.edges().cardinality());
     BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
     if (componentEdges.isEmpty()) return false;
@@ -70,7 +70,7 @@ final class ComponentEdgeMatcher {
       List<Edge> componentEdges,
       String sourceVar,
       String targetVar,
-      KnownComponent rule) {
+      CPQExpression rule) {
 
     Map<String, String> initialMapping = new HashMap<>();
     Set<String> initialUsedNodes = new HashSet<>();

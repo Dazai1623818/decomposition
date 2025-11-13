@@ -1,6 +1,6 @@
 package decomposition.util;
 
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Utilities for reasoning about join nodes within components and CPQ construction rules. */
+/** Utilities for reasoning about join nodes within components and CPQ expressions. */
 public final class JoinNodeUtils {
 
   private JoinNodeUtils() {}
@@ -143,15 +143,15 @@ public final class JoinNodeUtils {
   }
 
   /**
-   * Checks whether the endpoints of the provided CPQ construction rule respect the directional
-   * roles inferred for the local join nodes of its component.
+   * Checks whether the endpoints of the provided CPQ expression respect the directional roles
+   * inferred for the local join nodes of its component.
    *
-   * @param rule CPQ construction rule to validate
+   * @param rule CPQ expression to validate
    * @param localJoinNodes join nodes present inside the component
    * @return {@code true} if endpoints comply with join node expectations
    */
   public static boolean endpointsRespectJoinNodeRoles(
-      KnownComponent rule, decomposition.model.Component component, Set<String> localJoinNodes) {
+      CPQExpression rule, decomposition.model.Component component, Set<String> localJoinNodes) {
     Objects.requireNonNull(rule, "rule");
     Objects.requireNonNull(component, "component");
     Objects.requireNonNull(localJoinNodes, "localJoinNodes");

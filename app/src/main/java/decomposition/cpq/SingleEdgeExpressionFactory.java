@@ -7,26 +7,26 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 
-/** Generates the CPQ construction rules that arise from a single CQ edge. */
-final class SingleEdgeRuleFactory {
+/** Generates the CPQ expressions that arise from a single CQ edge. */
+final class SingleEdgeExpressionFactory {
 
-  private SingleEdgeRuleFactory() {}
+  private SingleEdgeExpressionFactory() {}
 
-  static List<KnownComponent> build(Edge edge, BitSet edgeBits, Map<String, String> varToNodeMap) {
-    List<KnownComponent> constructionRules = new ArrayList<>();
+  static List<CPQExpression> build(Edge edge, BitSet edgeBits, Map<String, String> varToNodeMap) {
+    List<CPQExpression> expressions = new ArrayList<>();
 
-    addForward(edge, edgeBits, varToNodeMap, constructionRules);
-    addInverse(edge, edgeBits, varToNodeMap, constructionRules);
-    addBacktracks(edge, edgeBits, varToNodeMap, constructionRules);
+    addForward(edge, edgeBits, varToNodeMap, expressions);
+    addInverse(edge, edgeBits, varToNodeMap, expressions);
+    addBacktracks(edge, edgeBits, varToNodeMap, expressions);
 
-    return constructionRules;
+    return expressions;
   }
 
   private static void addForward(
-      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<KnownComponent> out) {
+      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<CPQExpression> out) {
     CPQ forward = CPQ.parse(edge.label());
     out.add(
-        new KnownComponent(
+        new CPQExpression(
             forward,
             bits,
             edge.source(),
@@ -42,7 +42,7 @@ final class SingleEdgeRuleFactory {
   }
 
   private static void addInverse(
-      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<KnownComponent> out) {
+      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<CPQExpression> out) {
     if (edge.source().equals(edge.target())) {
       return;
     }
@@ -50,7 +50,7 @@ final class SingleEdgeRuleFactory {
     try {
       CPQ inverse = CPQ.parse(inverseLabel);
       out.add(
-          new KnownComponent(
+          new CPQExpression(
               inverse,
               bits,
               edge.target(),
@@ -69,7 +69,7 @@ final class SingleEdgeRuleFactory {
   }
 
   private static void addBacktracks(
-      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<KnownComponent> out) {
+      Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<CPQExpression> out) {
     if (edge.source().equals(edge.target())) {
       // CQ already a true self-loop (single vertex, src==target); no extra backtracking variants
       // needed.
@@ -96,7 +96,7 @@ final class SingleEdgeRuleFactory {
   }
 
   private static void addLoop(
-      List<KnownComponent> out,
+      List<CPQExpression> out,
       String expression,
       BitSet bits,
       String anchor,
@@ -104,7 +104,7 @@ final class SingleEdgeRuleFactory {
       Map<String, String> varToNodeMap) {
     try {
       CPQ cpq = CPQ.parse(expression);
-      out.add(new KnownComponent(cpq, bits, anchor, anchor, derivation, varToNodeMap));
+      out.add(new CPQExpression(cpq, bits, anchor, anchor, derivation, varToNodeMap));
     } catch (RuntimeException ex) {
       // Skip unparsable backtrack form.
     }

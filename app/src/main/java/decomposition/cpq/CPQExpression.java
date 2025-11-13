@@ -25,7 +25,7 @@ import java.util.Objects;
  *       informational.
  * </ul>
  */
-public final class KnownComponent {
+public final class CPQExpression {
   private final CPQ cpq;
   private final BitSet edges;
   private final String source;
@@ -34,7 +34,7 @@ public final class KnownComponent {
   private final Map<String, String> varToNodeMap;
   private final Map<String, String> nodeToVarMap;
 
-  public KnownComponent(
+  public CPQExpression(
       CPQ cpq,
       BitSet edges,
       String source,
@@ -116,7 +116,7 @@ public final class KnownComponent {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof KnownComponent that)) {
+    if (!(o instanceof CPQExpression that)) {
       return false;
     }
     return cpq.equals(that.cpq)
@@ -134,7 +134,7 @@ public final class KnownComponent {
 
   @Override
   public String toString() {
-    return "KnownComponent{"
+    return "CPQExpression{"
         + "cpq="
         + cpq
         + ", edges="

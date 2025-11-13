@@ -3,9 +3,12 @@ package decomposition.partitions;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.Example;
-import decomposition.cpq.CPQEnumerator;
+import decomposition.cpq.CPQExpression;
+import decomposition.cpq.ComponentCacheKey;
+import decomposition.cpq.PartitionDiagnostics;
+import decomposition.cpq.PartitionExpressionAssembler;
+import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.model.CacheStats;
-import decomposition.cpq.model.PartitionAnalysis;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
@@ -16,6 +19,7 @@ import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 
 final class CPQEnumeratorCacheTest {
@@ -36,18 +40,31 @@ final class CPQEnumeratorCacheTest {
     Set<String> joinNodes =
         JoinNodeUtils.computeJoinNodes(partition.components(), extraction.freeVariables());
     CacheStats stats = new CacheStats();
-    CPQEnumerator engine = new CPQEnumerator(edges, stats);
+    PartitionDiagnostics diagnostics = new PartitionDiagnostics();
+    PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
+    Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
 
-    PartitionAnalysis first =
-        engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varMap);
-    PartitionAnalysis second =
-        engine.analyzePartition(partition, joinNodes, extraction.freeVariables(), varMap);
+    List<List<CPQExpression>> first =
+        synthesizer.synthesize(
+            partition,
+            joinNodes,
+            extraction.freeVariables(),
+            varMap,
+            componentCache,
+            stats,
+            diagnostics);
+    List<List<CPQExpression>> second =
+        synthesizer.synthesize(
+            partition,
+            joinNodes,
+            extraction.freeVariables(),
+            varMap,
+            componentCache,
+            stats,
+            diagnostics);
 
-    assertTrue(
-        first != null && second != null, "Expected at least one component construction rule set");
-    assertTrue(
-        second.components().size() == first.components().size(),
-        "Repeated lookups should return same count");
+    assertTrue(first != null && second != null, "Expected at least one component expression set");
+    assertTrue(second.size() == first.size(), "Repeated lookups should return same count");
 
     CacheStats snapshot = stats.snapshot();
     assertTrue(snapshot.misses() > 0, "Initial population should record cache misses");

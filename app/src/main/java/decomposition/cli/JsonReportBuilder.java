@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
-import decomposition.cpq.KnownComponent;
+import decomposition.cpq.CPQExpression;
 import decomposition.model.Component;
 import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
@@ -25,10 +25,12 @@ final class JsonReportBuilder {
     if (!result.recognizedCatalogue().isEmpty()) {
       root.put("component_cpq_catalog", catalogue(result.recognizedCatalogue()));
     }
-    root.put("final_rule", result.hasFinalComponent() ? result.finalComponent().cpqRule() : null);
     root.put(
-        "final_rule_derivation",
-        result.hasFinalComponent() ? result.finalComponent().derivation() : null);
+        "final_expression",
+        result.hasFinalExpression() ? result.finalExpression().cpqRule() : null);
+    root.put(
+        "final_expression_derivation",
+        result.hasFinalExpression() ? result.finalExpression().derivation() : null);
     if (!result.globalCatalogue().isEmpty()) {
       root.put("global_cpq_catalog", catalogue(result.globalCatalogue()));
     }
@@ -67,14 +69,14 @@ final class JsonReportBuilder {
     return candidates;
   }
 
-  private List<Map<String, Object>> catalogue(List<KnownComponent> components) {
+  private List<Map<String, Object>> catalogue(List<CPQExpression> components) {
     List<Map<String, Object>> list = new ArrayList<>();
-    for (KnownComponent component : components) {
+    for (CPQExpression component : components) {
       Map<String, Object> map = new LinkedHashMap<>();
       map.put("edges", BitsetUtils.toIndexList(component.edges()));
       map.put("source", component.source());
       map.put("target", component.target());
-      map.put("rule", component.cpqRule());
+      map.put("expression", component.cpqRule());
       map.put("derivation", component.derivation());
       list.add(map);
     }
@@ -100,7 +102,7 @@ final class JsonReportBuilder {
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       Map<String, Object> map = new LinkedHashMap<>();
       map.put("index", evaluation.partitionIndex());
-      map.put("component_rules", evaluation.componentRuleCounts());
+      map.put("component_expressions", evaluation.componentExpressionCounts());
       map.put("components", componentSummaries(evaluation.partition()));
       if (!evaluation.decompositionTuples().isEmpty()) {
         map.put("tuples", tupleSummaries(evaluation.decompositionTuples()));
@@ -110,11 +112,11 @@ final class JsonReportBuilder {
     return summaries;
   }
 
-  private List<List<Map<String, Object>>> tupleSummaries(List<List<KnownComponent>> tuples) {
+  private List<List<Map<String, Object>>> tupleSummaries(List<List<CPQExpression>> tuples) {
     List<List<Map<String, Object>>> list = new ArrayList<>();
-    for (List<KnownComponent> tuple : tuples) {
+    for (List<CPQExpression> tuple : tuples) {
       List<Map<String, Object>> tupleEntries = new ArrayList<>();
-      for (KnownComponent component : tuple) {
+      for (CPQExpression component : tuple) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("edges", BitsetUtils.toIndexList(component.edges()));
         map.put("source", component.source());
