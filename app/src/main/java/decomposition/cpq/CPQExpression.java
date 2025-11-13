@@ -1,6 +1,6 @@
 package decomposition.cpq;
 
-import decomposition.cpq.model.ComponentKey;
+import decomposition.cpq.model.CacheStats.ComponentKey;
 import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;

@@ -2,7 +2,8 @@ package decomposition.partitions;
 
 import decomposition.model.Component;
 import decomposition.model.Partition;
-import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinAnalysis;
+import decomposition.util.JoinAnalysisBuilder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,8 +21,6 @@ public final class PartitionFilter {
   public record FilterResult(
       List<FilteredPartition> partitions, List<String> diagnostics, int consideredCount) {}
 
-  public record FilteredPartition(Partition partition, Set<String> joinNodes) {}
-
   public FilterResult filter(List<Partition> partitions, Set<String> freeVariables) {
     Objects.requireNonNull(partitions, "partitions");
     Objects.requireNonNull(freeVariables, "freeVariables");
@@ -32,12 +31,10 @@ public final class PartitionFilter {
     int index = 0;
     for (Partition partition : partitions) {
       index++;
-      Map<String, Integer> multiplicity = JoinNodeUtils.computeVertexMultiplicity(partition);
-      String failure = violatesConstraints(partition, freeVariables, multiplicity);
+      JoinAnalysis analysis = JoinAnalysisBuilder.analyzePartition(partition, freeVariables);
+      String failure = violatesConstraints(partition, freeVariables, analysis.multiplicity());
       if (failure == null) {
-        Set<String> joinNodes =
-            JoinNodeUtils.computeJoinNodesFromMultiplicity(multiplicity, freeVariables);
-        accepted.add(new FilteredPartition(partition, joinNodes));
+        accepted.add(new FilteredPartition(partition, analysis));
       } else {
         diagnostics.add("Partition#" + index + " rejected: " + failure);
       }

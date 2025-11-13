@@ -9,7 +9,6 @@ import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Partition;
 import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
 import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
-import decomposition.util.Timing;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

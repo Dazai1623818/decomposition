@@ -1,33 +1,5 @@
 package decomposition;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-
-import decomposition.cpq.CPQExpression;
-import decomposition.cpq.ComponentCacheKey;
-import decomposition.cpq.PartitionDiagnostics;
-import decomposition.cpq.PartitionExpressionAssembler;
-import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
-import decomposition.cpq.model.CacheStats;
-import decomposition.extract.CQExtractor;
-import decomposition.extract.CQExtractor.ExtractionResult;
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
-import decomposition.partitions.PartitionFilter;
-import decomposition.partitions.PartitionFilter.FilterResult;
-import decomposition.partitions.PartitionFilter.FilteredPartition;
-import decomposition.partitions.PartitionGenerator;
-import decomposition.pipeline.DecompositionPipelineCache;
-import decomposition.pipeline.DecompositionPipelineCacheProvider;
-import decomposition.pipeline.DecompositionPipelineState.GlobalResult;
-import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
-import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
-import decomposition.pipeline.DecompositionPipelineState.SynthesisState;
 import static decomposition.util.DecompositionPipelineUtils.addComponentDiagnostics;
 import static decomposition.util.DecompositionPipelineUtils.buildResult;
 import static decomposition.util.DecompositionPipelineUtils.earlyExitAfterPartitioning;
@@ -35,10 +7,38 @@ import static decomposition.util.DecompositionPipelineUtils.enumerateTuples;
 import static decomposition.util.DecompositionPipelineUtils.overBudget;
 import static decomposition.util.DecompositionPipelineUtils.resolveOptions;
 import static decomposition.util.DecompositionPipelineUtils.selectPreferredFinalComponent;
+
+import decomposition.cpq.CPQExpression;
+import decomposition.cpq.PartitionDiagnostics;
+import decomposition.cpq.PartitionExpressionAssembler;
+import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
+import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
+import decomposition.cpq.model.CacheStats;
+import decomposition.extract.CQExtractor;
+import decomposition.extract.CQExtractor.ExtractionResult;
+import decomposition.model.Component;
+import decomposition.model.Edge;
+import decomposition.model.Partition;
+import decomposition.partitions.FilteredPartition;
+import decomposition.partitions.PartitionFilter;
+import decomposition.partitions.PartitionFilter.FilterResult;
+import decomposition.partitions.PartitionGenerator;
+import decomposition.pipeline.DecompositionPipelineCache;
+import decomposition.pipeline.DecompositionPipelineCacheProvider;
+import decomposition.pipeline.DecompositionPipelineState.GlobalResult;
+import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
+import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
+import decomposition.pipeline.DecompositionPipelineState.SynthesisState;
 import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline implements DecompositionPipelineCacheProvider {
@@ -148,12 +148,9 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
 
       idx++;
       Partition partition = fp.partition();
-      Set<String> joinNodes = fp.joinNodes();
-
       List<List<CPQExpression>> componentExpressions =
           state.synthesizer.synthesize(
-              partition,
-              joinNodes,
+              fp,
               ctx.extraction().freeVariables(),
               ctx.varToNodeMap(),
               state.componentCache,

@@ -4,8 +4,10 @@ import decomposition.cpq.model.CacheStats;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
+import decomposition.partitions.FilteredPartition;
 import decomposition.util.BitsetUtils;
 import decomposition.util.DecompositionPipelineUtils;
+import decomposition.util.JoinAnalysis;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -35,22 +37,23 @@ public final class PartitionExpressionAssembler {
   }
 
   public List<List<CPQExpression>> synthesize(
-      Partition partition,
-      Set<String> requestedJoinNodes,
+      FilteredPartition filteredPartition,
       Set<String> freeVariables,
       Map<String, String> originalVarMap,
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
       CacheStats cacheStats,
       PartitionDiagnostics partitionDiagnostics) {
 
-    Objects.requireNonNull(partition, "partition");
+    Objects.requireNonNull(filteredPartition, "filteredPartition");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
     Objects.requireNonNull(componentCache, "componentCache");
     Objects.requireNonNull(cacheStats, "cacheStats");
     Objects.requireNonNull(partitionDiagnostics, "partitionDiagnostics");
-
+    Partition partition = filteredPartition.partition();
+    JoinAnalysis joinAnalysis =
+        Objects.requireNonNull(filteredPartition.joinAnalysis(), "joinAnalysis");
     partitionDiagnostics.beginPartition();
-    Set<String> joinNodes = JoinNodeUtils.normalizeNodeSet(requestedJoinNodes);
+    Set<String> joinNodes = JoinNodeUtils.normalizeNodeSet(joinAnalysis.globalJoinNodes());
     Set<String> freeVars = JoinNodeUtils.normalizeNodeSet(freeVariables);
     List<Component> components = partition.components();
     int totalComponents = components.size();
@@ -72,7 +75,8 @@ public final class PartitionExpressionAssembler {
       if (cached == null) {
         List<CPQExpression> raw =
             buildRawExpressions(component.edgeBits(), joinNodes, originalVarMap);
-        List<CPQExpression> joinFiltered = applyJoinFiltering(raw, component, joinNodes);
+        Set<String> localJoinNodes = joinAnalysis.joinNodesForComponent(component);
+        List<CPQExpression> joinFiltered = applyJoinFiltering(raw, component, localJoinNodes);
         List<CPQExpression> finals =
             applyOrientationPreferences(joinFiltered, joinNodes, freeVars, originalVarMap);
         cached = cacheFinalExpressions(componentCache, key, raw, joinFiltered, finals);
@@ -128,13 +132,12 @@ public final class PartitionExpressionAssembler {
   }
 
   private List<CPQExpression> applyJoinFiltering(
-      List<CPQExpression> raw, Component component, Set<String> joinNodes) {
-    if (joinNodes.isEmpty() || component.edgeCount() <= 1) {
+      List<CPQExpression> raw, Component component, Set<String> localJoinNodes) {
+    if (localJoinNodes.isEmpty() || component.edgeCount() <= 1) {
       return raw;
     }
-    Set<String> local = JoinNodeUtils.localJoinNodes(component, joinNodes);
     return raw.stream()
-        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, local))
+        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
         .toList();
   }
 
@@ -191,5 +194,20 @@ public final class PartitionExpressionAssembler {
         cached.hasRawExpressions(),
         cached.hasJoinFilteredExpressions(),
         joinNodes.isEmpty());
+  }
+
+  /** Key used for memoizing cached component expression sets. */
+  public static record ComponentCacheKey(
+      String signature,
+      Set<String> joinNodes,
+      Set<String> freeVars,
+      int componentSize,
+      int totalComponents,
+      int varContextHash) {
+
+    public ComponentCacheKey {
+      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
+      freeVars = (freeVars == null || freeVars.isEmpty()) ? Set.of() : Set.copyOf(freeVars);
+    }
   }
 }

@@ -4,17 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.Example;
 import decomposition.cpq.CPQExpression;
-import decomposition.cpq.ComponentCacheKey;
 import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
+import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
-import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinAnalysis;
+import decomposition.util.JoinAnalysisBuilder;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +38,9 @@ final class CPQEnumeratorCacheTest {
     List<Partition> partitions = generator.enumeratePartitions(edges, components);
     Partition partition = partitions.get(0);
 
-    Set<String> joinNodes =
-        JoinNodeUtils.computeJoinNodes(partition.components(), extraction.freeVariables());
+    JoinAnalysis analysis =
+        JoinAnalysisBuilder.analyzePartition(partition, extraction.freeVariables());
+    FilteredPartition filteredPartition = new FilteredPartition(partition, analysis);
     CacheStats stats = new CacheStats();
     PartitionDiagnostics diagnostics = new PartitionDiagnostics();
     PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
@@ -46,8 +48,7 @@ final class CPQEnumeratorCacheTest {
 
     List<List<CPQExpression>> first =
         synthesizer.synthesize(
-            partition,
-            joinNodes,
+            filteredPartition,
             extraction.freeVariables(),
             varMap,
             componentCache,
@@ -55,8 +56,7 @@ final class CPQEnumeratorCacheTest {
             diagnostics);
     List<List<CPQExpression>> second =
         synthesizer.synthesize(
-            partition,
-            joinNodes,
+            filteredPartition,
             extraction.freeVariables(),
             varMap,
             componentCache,

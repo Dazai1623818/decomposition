@@ -1,6 +1,7 @@
 package decomposition.cpq;
 
-import decomposition.cpq.model.ComponentKey;
+import decomposition.cpq.model.CacheStats.ComponentKey;
+import decomposition.cpq.model.CacheStats.RuleCacheKey;
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;

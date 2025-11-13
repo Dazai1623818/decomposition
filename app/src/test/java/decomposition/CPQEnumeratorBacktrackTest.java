@@ -6,17 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.cpq.CPQExpression;
-import decomposition.cpq.ComponentCacheKey;
 import decomposition.cpq.ComponentExpressionBuilder;
 import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
+import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
+import decomposition.partitions.FilteredPartition;
 import decomposition.partitions.PartitionGenerator;
-import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinAnalysis;
+import decomposition.util.JoinAnalysisBuilder;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.BitSet;
 import java.util.Collections;
@@ -114,17 +116,16 @@ final class CPQEnumeratorBacktrackTest {
             .findFirst()
             .orElseThrow();
 
-    Set<String> joinNodes =
-        JoinNodeUtils.computeJoinNodes(
-            singleEdgePartition.components(), extraction.freeVariables());
+    JoinAnalysis analysis =
+        JoinAnalysisBuilder.analyzePartition(singleEdgePartition, extraction.freeVariables());
+    FilteredPartition filteredPartition = new FilteredPartition(singleEdgePartition, analysis);
     CacheStats stats = new CacheStats();
     PartitionDiagnostics diagnosticsHelper = new PartitionDiagnostics();
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
     PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
     List<List<CPQExpression>> built =
         synthesizer.synthesize(
-            singleEdgePartition,
-            joinNodes,
+            filteredPartition,
             extraction.freeVariables(),
             varMap,
             componentCache,

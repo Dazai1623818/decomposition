@@ -3,7 +3,7 @@ package decomposition.cpq;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-import decomposition.cpq.model.ComponentKey;
+import decomposition.cpq.model.CacheStats.ComponentKey;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
