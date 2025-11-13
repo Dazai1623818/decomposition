@@ -77,6 +77,28 @@ public final class JoinNodeUtils {
   }
 
   /**
+   * Normalizes the provided node set to an immutable empty set when null/empty, otherwise returns a
+   * defensive copy.
+   */
+  public static Set<String> normalizeNodeSet(Set<String> values) {
+    return (values == null || values.isEmpty()) ? Set.of() : Set.copyOf(values);
+  }
+
+  public static int originalVariableOrder(String node, Map<String, String> originalVarMap) {
+    if (node == null || originalVarMap == null || originalVarMap.isEmpty()) {
+      return Integer.MAX_VALUE;
+    }
+    int idx = 0;
+    for (Map.Entry<String, String> entry : originalVarMap.entrySet()) {
+      if (Objects.equals(node, entry.getValue())) {
+        return idx;
+      }
+      idx++;
+    }
+    return Integer.MAX_VALUE;
+  }
+
+  /**
    * Computes vertex multiplicity for a partition: how many components each vertex appears in.
    *
    * @param partition the partition to analyze

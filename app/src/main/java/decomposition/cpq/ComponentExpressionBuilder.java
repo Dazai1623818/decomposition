@@ -59,40 +59,72 @@ public final class ComponentExpressionBuilder {
             localJoinNodes,
             edgeSubset.cardinality());
 
-    List<CPQExpression> cached = ruleCache.get(key);
+    List<CPQExpression> cached = resolveCached(key);
     if (cached != null) {
       return cached;
     }
 
-    List<CPQExpression> expressions = new ArrayList<>();
     int edgeCount = edgeSubset.cardinality();
-
-    if (edgeCount == 1) {
+    List<CPQExpression> expressions = new ArrayList<>();
+    expressions.addAll(
+        generateBaseExpressions(edgeSubset, edgeCount, localJoinNodes, originalVarMap));
+    if (edgeCount > 1) {
       expressions.addAll(
-          SingleEdgeExpressionFactory.build(
-              edges.get(edgeSubset.nextSetBit(0)), edgeSubset, originalVarMap));
-    } else {
-      if (localJoinNodes.size() <= 1) {
-        expressions.addAll(
-            LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes, originalVarMap));
-      }
-      Function<BitSet, List<CPQExpression>> resolver =
-          subset -> recurse(subset, requestedJoinNodes, originalVarMap);
-      expressions.addAll(CompositeExpressionFactory.build(edgeSubset, edges.size(), resolver));
+          generateCompositeExpressions(edgeSubset, requestedJoinNodes, originalVarMap));
     }
 
-    Map<ComponentKey, CPQExpression> unique = new LinkedHashMap<>();
-    for (CPQExpression expression : expressions) {
-      List<CPQExpression> variants = reverseLoopGenerator.generate(expression, originalVarMap);
-      for (CPQExpression variant : variants) {
-        ComponentKey compKey =
-            new ComponentKey(variant.edges(), variant.source(), variant.target());
-        unique.putIfAbsent(compKey, variant);
-      }
-    }
-
-    List<CPQExpression> result = unique.isEmpty() ? List.of() : List.copyOf(unique.values());
+    List<CPQExpression> expanded = expandLoopVariants(expressions, originalVarMap);
+    List<CPQExpression> result = dedupeExpressions(expanded);
     ruleCache.put(key, result);
     return result;
+  }
+
+  private List<CPQExpression> resolveCached(RuleCacheKey key) {
+    return ruleCache.get(key);
+  }
+
+  private List<CPQExpression> generateBaseExpressions(
+      BitSet edgeSubset,
+      int edgeCount,
+      Set<String> localJoinNodes,
+      Map<String, String> originalVarMap) {
+    if (edgeCount == 1) {
+      return SingleEdgeExpressionFactory.build(
+          edges.get(edgeSubset.nextSetBit(0)), edgeSubset, originalVarMap);
+    }
+    List<CPQExpression> base = new ArrayList<>();
+    if (localJoinNodes.size() <= 1) {
+      base.addAll(LoopBacktrackBuilder.build(edges, edgeSubset, localJoinNodes, originalVarMap));
+    }
+    return base;
+  }
+
+  private List<CPQExpression> generateCompositeExpressions(
+      BitSet edgeSubset, Set<String> requestedJoinNodes, Map<String, String> originalVarMap) {
+    Function<BitSet, List<CPQExpression>> resolver =
+        subset -> recurse(subset, requestedJoinNodes, originalVarMap);
+    return CompositeExpressionFactory.build(edgeSubset, edges.size(), resolver);
+  }
+
+  private List<CPQExpression> expandLoopVariants(
+      List<CPQExpression> expressions, Map<String, String> originalVarMap) {
+    List<CPQExpression> expanded = new ArrayList<>();
+    for (CPQExpression expression : expressions) {
+      expanded.addAll(reverseLoopGenerator.generate(expression, originalVarMap));
+    }
+    return expanded;
+  }
+
+  private List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
+    if (expressions.isEmpty()) {
+      return List.of();
+    }
+    Map<ComponentKey, CPQExpression> unique = new LinkedHashMap<>();
+    for (CPQExpression expression : expressions) {
+      ComponentKey compKey =
+          new ComponentKey(expression.edges(), expression.source(), expression.target());
+      unique.putIfAbsent(compKey, expression);
+    }
+    return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
   }
 }

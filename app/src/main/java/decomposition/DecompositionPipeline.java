@@ -1,12 +1,18 @@
 package decomposition;
 
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentCacheKey;
 import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.model.CacheStats;
-import decomposition.cpq.model.ComponentKey;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
@@ -16,237 +22,210 @@ import decomposition.partitions.PartitionFilter;
 import decomposition.partitions.PartitionFilter.FilterResult;
 import decomposition.partitions.PartitionFilter.FilteredPartition;
 import decomposition.partitions.PartitionGenerator;
+import decomposition.pipeline.DecompositionPipelineCache;
+import decomposition.pipeline.DecompositionPipelineCacheProvider;
+import decomposition.pipeline.DecompositionPipelineState.GlobalResult;
+import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
+import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
+import decomposition.pipeline.DecompositionPipelineState.SynthesisState;
+import static decomposition.util.DecompositionPipelineUtils.addComponentDiagnostics;
+import static decomposition.util.DecompositionPipelineUtils.buildResult;
+import static decomposition.util.DecompositionPipelineUtils.earlyExitAfterPartitioning;
+import static decomposition.util.DecompositionPipelineUtils.enumerateTuples;
+import static decomposition.util.DecompositionPipelineUtils.overBudget;
+import static decomposition.util.DecompositionPipelineUtils.resolveOptions;
+import static decomposition.util.DecompositionPipelineUtils.selectPreferredFinalComponent;
 import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
-public final class DecompositionPipeline {
+public final class DecompositionPipeline implements DecompositionPipelineCacheProvider {
   private static final int MAX_JOIN_NODES = 2;
 
   private final CQExtractor extractor = new CQExtractor();
-  private CacheStats lastCacheSnapshot;
+  private final DecompositionPipelineCache pipelineCache = new DecompositionPipelineCache();
 
   public DecompositionResult execute(
       CQ cq, Set<String> explicitFreeVariables, DecompositionOptions options) {
-    lastCacheSnapshot = null;
-    final DecompositionOptions opts = (options != null) ? options : DecompositionOptions.defaults();
+    pipelineCache.reset();
     final Timing timing = Timing.start();
+    final DecompositionOptions opts = resolveOptions(options);
 
-    // Extract graph + context
-    final ExtractionResult extraction = extractor.extract(cq, explicitFreeVariables);
-    final List<Edge> edges = extraction.edges();
-    final Map<String, String> varToNodeMap = extraction.variableNodeMap();
-    final int edgeCount = edges.size();
+    PipelineContext ctx = extractContext(cq, explicitFreeVariables);
+    PartitionSets parts = enumerateAndFilterPartitions(ctx, opts);
 
-    final BitSet fullBits = new BitSet(edgeCount);
-    fullBits.set(0, edgeCount);
-    final Set<String> vertices = GraphUtils.vertices(fullBits, edges);
-
-    // Enumerate + filter partitions
-    final PartitionGenerator generator = new PartitionGenerator(opts.maxPartitions());
-    final List<Component> components = generator.enumerateConnectedComponents(edges);
-    final List<Partition> partitions =
-        generator.enumeratePartitions(
-            edges, components, extraction.freeVariables(), MAX_JOIN_NODES);
-
-    final FilterResult filterResult =
-        new PartitionFilter(MAX_JOIN_NODES).filter(partitions, extraction.freeVariables());
-    final List<FilteredPartition> filteredWithJoins = filterResult.partitions();
-    final List<Partition> filtered =
-        filteredWithJoins.stream().map(FilteredPartition::partition).toList();
-
-    final List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
-    final Map<ComponentKey, CPQExpression> recognizedCatalogueMap = new LinkedHashMap<>();
-
-    // Early exit on time
-    if (isOverBudget(opts, timing)) {
-      return buildResult(
-          extraction,
-          vertices,
-          partitions,
-          filtered,
-          List.of(),
-          List.of(),
-          null,
-          List.of(),
-          List.of(),
-          diagnostics,
-          timing.elapsedMillis(),
-          "time_budget_exceeded_after_partitioning");
+    if (overBudget(opts, timing)) {
+      return earlyExitAfterPartitioning(ctx, parts, timing);
     }
 
-    final PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
-    final CacheStats cacheStats = new CacheStats();
-    final PartitionDiagnostics partitionDiagnosticsHelper = new PartitionDiagnostics();
-    final Map<ComponentCacheKey, CachedComponentExpressions> componentCache =
-        new ConcurrentHashMap<>();
+    SynthesisState state = initSynthesisState(ctx, opts);
 
-    // Working accumulators
-    CPQExpression finalExpression = null;
-    final List<Partition> cpqPartitions = new ArrayList<>();
-    final List<PartitionEvaluation> partitionEvaluations = new ArrayList<>();
-    List<CPQExpression> globalCatalogue = List.of();
+    DecompositionResult validationExit = processFilteredPartitions(ctx, parts, state, opts, timing);
+    if (validationExit != null) {
+      pipelineCache.update(state.cacheStats);
+      return validationExit;
+    }
 
-    // Precompute tuple limit
-    final boolean wantTuples = opts.mode().enumerateTuples();
-    final boolean singleTuplePerPartition = opts.singleTuplePerPartition();
-    final int tupleLimit =
+    GlobalResult globalResult = computeGlobalCandidates(ctx, state, opts, timing);
+
+    pipelineCache.update(state.cacheStats);
+    return buildFinalResult(ctx, parts, state, opts, timing, globalResult);
+  }
+
+  private PipelineContext extractContext(CQ cq, Set<String> explicitFreeVariables) {
+    ExtractionResult extraction = extractor.extract(cq, explicitFreeVariables);
+    List<Edge> edges = extraction.edges();
+    int edgeCount = edges.size();
+    BitSet fullBits = new BitSet(edgeCount);
+    fullBits.set(0, edgeCount);
+    Set<String> vertices = GraphUtils.vertices(fullBits, edges);
+    return new PipelineContext(
+        extraction, edges, extraction.variableNodeMap(), vertices, fullBits, edgeCount);
+  }
+
+  private PartitionSets enumerateAndFilterPartitions(
+      PipelineContext ctx, DecompositionOptions opts) {
+    PartitionGenerator generator = new PartitionGenerator(opts.maxPartitions());
+    List<Component> components = generator.enumerateConnectedComponents(ctx.edges());
+    List<Partition> partitions =
+        generator.enumeratePartitions(
+            ctx.edges(), components, ctx.extraction().freeVariables(), MAX_JOIN_NODES);
+
+    FilterResult filterResult =
+        new PartitionFilter(MAX_JOIN_NODES).filter(partitions, ctx.extraction().freeVariables());
+    List<FilteredPartition> filteredWithJoins = filterResult.partitions();
+    List<Partition> filtered =
+        filteredWithJoins.stream().map(FilteredPartition::partition).toList();
+
+    List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
+    return new PartitionSets(partitions, filteredWithJoins, filtered, diagnostics);
+  }
+
+  private SynthesisState initSynthesisState(PipelineContext ctx, DecompositionOptions opts) {
+    PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(ctx.edges());
+    CacheStats cacheStats = new CacheStats();
+    PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
+    Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
+    boolean wantTuples = opts.mode().enumerateTuples();
+    boolean singleTuplePerPartition = opts.singleTuplePerPartition();
+    int tupleLimit =
         singleTuplePerPartition ? 1 : (opts.enumerationLimit() <= 0 ? 1 : opts.enumerationLimit());
+    return new SynthesisState(
+        synthesizer, cacheStats, partitionDiagnostics, componentCache, wantTuples, tupleLimit);
+  }
 
+  private DecompositionResult processFilteredPartitions(
+      PipelineContext ctx,
+      PartitionSets parts,
+      SynthesisState state,
+      DecompositionOptions opts,
+      Timing timing) {
+
+    List<FilteredPartition> filteredWithJoins = parts.filteredWithJoins();
+    List<Partition> filtered = parts.filtered();
+    List<String> diagnostics = parts.diagnostics();
+    int edgeCount = ctx.edgeCount();
     int idx = 0;
+
     for (FilteredPartition fp : filteredWithJoins) {
-      if (isOverBudget(opts, timing)) {
-        lastCacheSnapshot = cacheStats.snapshot();
+      if (overBudget(opts, timing)) {
         return buildResult(
-            extraction,
-            vertices,
-            partitions,
+            ctx.extraction(),
+            ctx.vertices(),
+            parts.partitions(),
             filtered,
-            cpqPartitions,
-            new ArrayList<>(recognizedCatalogueMap.values()),
-            finalExpression,
-            globalCatalogue,
-            partitionEvaluations,
+            state.cpqPartitions,
+            new ArrayList<>(state.recognizedCatalogue.values()),
+            null,
+            List.of(),
+            state.partitionEvaluations,
             diagnostics,
             timing.elapsedMillis(),
             "time_budget_exceeded_during_validation");
       }
 
       idx++;
-      final Partition partition = fp.partition();
-      final Set<String> joinNodes = fp.joinNodes();
+      Partition partition = fp.partition();
+      Set<String> joinNodes = fp.joinNodes();
 
-      final List<List<CPQExpression>> componentExpressions =
-          synthesizer.synthesize(
+      List<List<CPQExpression>> componentExpressions =
+          state.synthesizer.synthesize(
               partition,
               joinNodes,
-              extraction.freeVariables(),
-              varToNodeMap,
-              componentCache,
-              cacheStats,
-              partitionDiagnosticsHelper);
+              ctx.extraction().freeVariables(),
+              ctx.varToNodeMap(),
+              state.componentCache,
+              state.cacheStats,
+              state.partitionDiagnostics);
 
       if (componentExpressions == null) {
-        addComponentDiagnostics(diagnostics, partitionDiagnosticsHelper);
+        addComponentDiagnostics(diagnostics, state.partitionDiagnostics);
         continue;
       }
 
-      cpqPartitions.add(partition);
+      state.cpqPartitions.add(partition);
 
-      // Recognize all finals into catalogue
       for (List<CPQExpression> compExpressions : componentExpressions) {
-        for (CPQExpression k : compExpressions) {
-          recognizedCatalogueMap.putIfAbsent(k.toKey(edgeCount), k);
+        for (CPQExpression expression : compExpressions) {
+          state.recognizedCatalogue.putIfAbsent(expression.toKey(edgeCount), expression);
         }
       }
 
-      final List<List<CPQExpression>> tuples =
-          wantTuples
-              ? PartitionExpressionAssembler.enumerateTuples(componentExpressions, tupleLimit)
-              : List.of();
+      List<List<CPQExpression>> tuples =
+          state.wantTuples ? enumerateTuples(componentExpressions, state.tupleLimit) : List.of();
 
-      partitionEvaluations.add(
+      state.partitionEvaluations.add(
           new PartitionEvaluation(
               partition, idx, componentExpressions.stream().map(List::size).toList(), tuples));
     }
 
-    // Global candidate at the end if still within budget
-    if (!isOverBudget(opts, timing)) {
-      final Set<String> globalJoinNodes =
-          JoinNodeUtils.computeJoinNodes(
-              List.of(new Component(fullBits, vertices)), extraction.freeVariables());
-      final List<CPQExpression> globalCandidates =
-          synthesizer.synthesizeGlobal(fullBits, globalJoinNodes, varToNodeMap);
-      globalCatalogue = globalCandidates;
-      finalExpression = selectPreferredFinalComponent(globalCandidates);
+    return null;
+  }
+
+  private GlobalResult computeGlobalCandidates(
+      PipelineContext ctx, SynthesisState state, DecompositionOptions opts, Timing timing) {
+    if (overBudget(opts, timing)) {
+      return new GlobalResult(List.of(), null);
     }
 
-    // Final time check
-    final long elapsed = timing.elapsedMillis();
-    final String termination = isOverBudget(opts, elapsed) ? "time_budget_exceeded" : null;
+    Set<String> globalJoinNodes =
+        JoinNodeUtils.computeJoinNodes(
+            List.of(new Component(ctx.fullBits(), ctx.vertices())),
+            ctx.extraction().freeVariables());
+    List<CPQExpression> globalCandidates =
+        state.synthesizer.synthesizeGlobal(ctx.fullBits(), globalJoinNodes, ctx.varToNodeMap());
+    return new GlobalResult(globalCandidates, selectPreferredFinalComponent(globalCandidates));
+  }
 
-    lastCacheSnapshot = cacheStats.snapshot();
+  private DecompositionResult buildFinalResult(
+      PipelineContext ctx,
+      PartitionSets parts,
+      SynthesisState state,
+      DecompositionOptions opts,
+      Timing timing,
+      GlobalResult globalResult) {
+
+    long elapsed = timing.elapsedMillis();
+    String termination = overBudget(opts, elapsed) ? "time_budget_exceeded" : null;
     return buildResult(
-        extraction,
-        vertices,
-        partitions,
-        filtered,
-        cpqPartitions,
-        new ArrayList<>(recognizedCatalogueMap.values()),
-        finalExpression,
-        globalCatalogue,
-        partitionEvaluations,
-        diagnostics,
+        ctx.extraction(),
+        ctx.vertices(),
+        parts.partitions(),
+        parts.filtered(),
+        state.cpqPartitions,
+        new ArrayList<>(state.recognizedCatalogue.values()),
+        globalResult.finalExpression(),
+        globalResult.globalCatalogue(),
+        state.partitionEvaluations,
+        parts.diagnostics(),
         elapsed,
         termination);
   }
 
-  // ——— helpers (small, focused) ————————————————————————————————————————————————
-
-  private void addComponentDiagnostics(
-      List<String> diagnostics, PartitionDiagnostics partitionDiagnostics) {
-    List<String> cached = partitionDiagnostics.lastComponentDiagnostics();
-    if (cached != null && !cached.isEmpty()) {
-      diagnostics.addAll(cached);
-    } else {
-      diagnostics.add("Partition rejected but component diagnostics were unavailable.");
-    }
-  }
-
-  private CPQExpression selectPreferredFinalComponent(List<CPQExpression> rules) {
-    return (rules == null || rules.isEmpty()) ? null : rules.get(0);
-  }
-
-  private boolean isOverBudget(DecompositionOptions opts, Timing t) {
-    return opts.timeBudgetMs() > 0 && t.elapsedMillis() > opts.timeBudgetMs();
-  }
-
-  private boolean isOverBudget(DecompositionOptions opts, long elapsedMillis) {
-    return opts.timeBudgetMs() > 0 && elapsedMillis > opts.timeBudgetMs();
-  }
-
-  private DecompositionResult buildResult(
-      ExtractionResult extraction,
-      Set<String> vertices,
-      List<Partition> partitions,
-      List<Partition> filteredPartitions,
-      List<Partition> cpqPartitions,
-      List<CPQExpression> recognizedCatalogue,
-      CPQExpression finalExpression,
-      List<CPQExpression> globalCatalogue,
-      List<PartitionEvaluation> partitionEvaluations,
-      List<String> diagnostics,
-      long elapsedMillis,
-      String terminationReason) {
-
-    return new DecompositionResult(
-        extraction.edges(),
-        extraction.freeVariables(),
-        vertices.size(),
-        partitions.size(),
-        filteredPartitions.size(),
-        partitions,
-        filteredPartitions,
-        (cpqPartitions != null) ? cpqPartitions : List.of(),
-        (recognizedCatalogue != null) ? recognizedCatalogue : List.of(),
-        finalExpression,
-        (globalCatalogue != null) ? globalCatalogue : List.of(),
-        (partitionEvaluations != null) ? partitionEvaluations : List.of(),
-        diagnostics,
-        elapsedMillis,
-        terminationReason);
-  }
-
-  public CacheStats lastCacheSnapshot() {
-    return lastCacheSnapshot;
+  @Override
+  public DecompositionPipelineCache pipelineCache() {
+    return pipelineCache;
   }
 }
