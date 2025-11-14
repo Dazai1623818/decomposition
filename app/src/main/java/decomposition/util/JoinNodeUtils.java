@@ -3,11 +3,8 @@ package decomposition.util;
 import decomposition.cpq.CPQExpression;
 import decomposition.model.Component;
 import decomposition.model.Edge;
-import decomposition.model.Partition;
 import java.util.BitSet;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,63 +15,6 @@ import java.util.Set;
 public final class JoinNodeUtils {
 
   private JoinNodeUtils() {}
-
-  /**
-   * Computes the set of join nodes given a collection of components and optional free variables. A
-   * vertex qualifies as a join node if it either appears in at least two components or is a free
-   * variable.
-   */
-  public static Set<String> computeJoinNodes(
-      Collection<Component> components, Set<String> freeVariables) {
-    Objects.requireNonNull(components, "components");
-    Map<String, Integer> counts = new HashMap<>();
-    for (Component component : components) {
-      for (String vertex : component.vertices()) {
-        counts.merge(vertex, 1, Integer::sum);
-      }
-    }
-    return computeJoinNodesFromCounts(counts, freeVariables);
-  }
-
-  /**
-   * Computes the set of join nodes from precomputed component variable sets and optional free
-   * variables. A vertex qualifies as a join node if it either appears in at least two components or
-   * is a free variable.
-   */
-  public static Set<String> computeJoinNodesFromVariables(
-      Collection<? extends Set<String>> componentVariables, Set<String> freeVariables) {
-    Objects.requireNonNull(componentVariables, "componentVariables");
-    Map<String, Integer> counts = new HashMap<>();
-    for (Set<String> vars : componentVariables) {
-      for (String var : vars) {
-        counts.merge(var, 1, Integer::sum);
-      }
-    }
-    return computeJoinNodesFromCounts(counts, freeVariables);
-  }
-
-  /**
-   * Computes the set of join nodes from a vertex multiplicity map and optional free variables. A
-   * vertex qualifies as a join node if it either appears at least twice or is a free variable.
-   *
-   * @param vertexMultiplicity map from vertex to its occurrence count across components
-   * @param freeVariables optional set of free variables (always treated as join nodes)
-   * @return immutable set of join nodes
-   */
-  public static Set<String> computeJoinNodesFromMultiplicity(
-      Map<String, Integer> vertexMultiplicity, Set<String> freeVariables) {
-    Objects.requireNonNull(vertexMultiplicity, "vertexMultiplicity");
-    Set<String> joinNodes = new HashSet<>();
-    if (freeVariables != null && !freeVariables.isEmpty()) {
-      joinNodes.addAll(freeVariables);
-    }
-    for (Map.Entry<String, Integer> entry : vertexMultiplicity.entrySet()) {
-      if (entry.getValue() >= 2) {
-        joinNodes.add(entry.getKey());
-      }
-    }
-    return joinNodes.isEmpty() ? Set.of() : Collections.unmodifiableSet(joinNodes);
-  }
 
   /**
    * Normalizes the provided node set to an immutable empty set when null/empty, otherwise returns a
@@ -96,28 +36,6 @@ public final class JoinNodeUtils {
       idx++;
     }
     return Integer.MAX_VALUE;
-  }
-
-  /**
-   * Computes vertex multiplicity for a partition: how many components each vertex appears in.
-   *
-   * @param partition the partition to analyze
-   * @return map from vertex name to occurrence count
-   */
-  public static Map<String, Integer> computeVertexMultiplicity(Partition partition) {
-    Objects.requireNonNull(partition, "partition");
-    Map<String, Integer> counts = new HashMap<>();
-    for (Component component : partition.components()) {
-      for (String vertex : component.vertices()) {
-        counts.merge(vertex, 1, Integer::sum);
-      }
-    }
-    return counts;
-  }
-
-  private static Set<String> computeJoinNodesFromCounts(
-      Map<String, Integer> counts, Set<String> freeVariables) {
-    return computeJoinNodesFromMultiplicity(counts, freeVariables);
   }
 
   /** Computes the subset of join nodes that are present within the given component. */

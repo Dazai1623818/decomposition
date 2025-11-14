@@ -70,7 +70,7 @@ final class CompositeExpressionFactory {
     if (!left.varToNodeMap().equals(right.varToNodeMap())) {
       return;
     }
-    String expression = "(" + left.cpq() + " ◦ " + right.cpq() + ")";
+    CPQ concatenated = CPQ.concat(List.of(left.cpq(), right.cpq()));
     String derivation =
         "Concatenation: ["
             + left.cpqRule()
@@ -79,7 +79,13 @@ final class CompositeExpressionFactory {
             + "] via "
             + left.target();
     emitIfParsable(
-        edgeBits, expression, left.source(), right.target(), derivation, left.varToNodeMap(), sink);
+        edgeBits,
+        concatenated,
+        left.source(),
+        right.target(),
+        derivation,
+        left.varToNodeMap(),
+        sink);
   }
 
   private static void tryIntersect(
@@ -90,7 +96,7 @@ final class CompositeExpressionFactory {
     if (!left.varToNodeMap().equals(right.varToNodeMap())) {
       return;
     }
-    String expression = "(" + left.cpq() + " ∩ " + right.cpq() + ")";
+    CPQ intersection = CPQ.intersect(List.of(left.cpq(), right.cpq()));
     String derivation =
         "Intersection: ["
             + left.cpqRule()
@@ -101,22 +107,23 @@ final class CompositeExpressionFactory {
             + "→"
             + left.target();
     emitIfParsable(
-        edgeBits, expression, left.source(), left.target(), derivation, left.varToNodeMap(), sink);
+        edgeBits,
+        intersection,
+        left.source(),
+        left.target(),
+        derivation,
+        left.varToNodeMap(),
+        sink);
   }
 
   private static void emitIfParsable(
       BitSet edgeBits,
-      String expression,
+      CPQ cpq,
       String source,
       String target,
       String derivation,
       Map<String, String> varToNodeMap,
       List<CPQExpression> sink) {
-    try {
-      CPQ cpq = CPQ.parse(expression);
-      sink.add(new CPQExpression(cpq, edgeBits, source, target, derivation, varToNodeMap));
-    } catch (RuntimeException ex) {
-      // Ignore unparsable synthesized expression.
-    }
+    sink.add(new CPQExpression(cpq, edgeBits, source, target, derivation, varToNodeMap));
   }
 }

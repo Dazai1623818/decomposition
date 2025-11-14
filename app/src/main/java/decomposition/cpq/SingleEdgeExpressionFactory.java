@@ -24,7 +24,7 @@ final class SingleEdgeExpressionFactory {
 
   private static void addForward(
       Edge edge, BitSet bits, Map<String, String> varToNodeMap, List<CPQExpression> out) {
-    CPQ forward = CPQ.parse(edge.label());
+    CPQ forward = CPQ.label(edge.predicate());
     out.add(
         new CPQExpression(
             forward,
@@ -46,26 +46,21 @@ final class SingleEdgeExpressionFactory {
     if (edge.source().equals(edge.target())) {
       return;
     }
-    String inverseLabel = edge.label() + "⁻";
-    try {
-      CPQ inverse = CPQ.parse(inverseLabel);
-      out.add(
-          new CPQExpression(
-              inverse,
-              bits,
-              edge.target(),
-              edge.source(),
-              "Inverse atom on label '"
-                  + edge.label()
-                  + "' ("
-                  + edge.target()
-                  + "→"
-                  + edge.source()
-                  + ")",
-              varToNodeMap));
-    } catch (RuntimeException ex) {
-      // Ignore labels whose inverse cannot be parsed.
-    }
+    CPQ inverse = CPQ.label(edge.predicate().getInverse());
+    out.add(
+        new CPQExpression(
+            inverse,
+            bits,
+            edge.target(),
+            edge.source(),
+            "Inverse atom on label '"
+                + edge.label()
+                + "' ("
+                + edge.target()
+                + "→"
+                + edge.source()
+                + ")",
+            varToNodeMap));
   }
 
   private static void addBacktracks(
@@ -78,9 +73,14 @@ final class SingleEdgeExpressionFactory {
     // Backtracking loops revisit the start vertex via an inverse step, so the resulting CPQ still
     // has src==target
     // even though the underlying CQ edge connects two distinct nodes.
+    CPQ forward = CPQ.label(edge.predicate());
+    CPQ inverse = CPQ.label(edge.predicate().getInverse());
+    CPQ sourceLoopBody = CPQ.concat(List.of(forward, inverse));
+    CPQ targetLoopBody = CPQ.concat(List.of(inverse, forward));
+
     addLoop(
         out,
-        "((" + edge.label() + " ◦ " + edge.label() + "⁻) ∩ id)",
+        CPQ.intersect(List.of(sourceLoopBody, CPQ.id())),
         bits,
         edge.source(),
         "Backtrack loop via '" + edge.label() + "' at " + edge.source(),
@@ -88,7 +88,7 @@ final class SingleEdgeExpressionFactory {
 
     addLoop(
         out,
-        "((" + edge.label() + "⁻ ◦ " + edge.label() + ") ∩ id)",
+        CPQ.intersect(List.of(targetLoopBody, CPQ.id())),
         bits,
         edge.target(),
         "Backtrack loop via '" + edge.label() + "' at " + edge.target(),
@@ -97,16 +97,11 @@ final class SingleEdgeExpressionFactory {
 
   private static void addLoop(
       List<CPQExpression> out,
-      String expression,
+      CPQ cpq,
       BitSet bits,
       String anchor,
       String derivation,
       Map<String, String> varToNodeMap) {
-    try {
-      CPQ cpq = CPQ.parse(expression);
-      out.add(new CPQExpression(cpq, bits, anchor, anchor, derivation, varToNodeMap));
-    } catch (RuntimeException ex) {
-      // Skip unparsable backtrack form.
-    }
+    out.add(new CPQExpression(cpq, bits, anchor, anchor, derivation, varToNodeMap));
   }
 }

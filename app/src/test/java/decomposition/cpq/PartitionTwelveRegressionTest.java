@@ -8,7 +8,8 @@ import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Component;
 import decomposition.model.Edge;
-import decomposition.util.JoinNodeUtils;
+import decomposition.model.Partition;
+import decomposition.util.JoinAnalysisBuilder;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
@@ -35,7 +36,9 @@ final class PartitionTwelveRegressionTest {
     }
     Component component = new Component(fullBits, vertices);
     Set<String> joinNodes =
-        JoinNodeUtils.computeJoinNodes(List.of(component), extraction.freeVariables());
+        JoinAnalysisBuilder.analyzePartition(
+                new Partition(List.of(component)), extraction.freeVariables())
+            .globalJoinNodes();
 
     List<CPQExpression> expressions = resolver.build(fullBits, joinNodes, varMap);
 

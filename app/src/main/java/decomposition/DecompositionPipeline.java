@@ -30,7 +30,7 @@ import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
 import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
 import decomposition.pipeline.DecompositionPipelineState.SynthesisState;
 import decomposition.util.GraphUtils;
-import decomposition.util.JoinNodeUtils;
+import decomposition.util.JoinAnalysisBuilder;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
@@ -188,9 +188,10 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
     }
 
     Set<String> globalJoinNodes =
-        JoinNodeUtils.computeJoinNodes(
-            List.of(new Component(ctx.fullBits(), ctx.vertices())),
-            ctx.extraction().freeVariables());
+        JoinAnalysisBuilder.analyzePartition(
+                new Partition(List.of(new Component(ctx.fullBits(), ctx.vertices()))),
+                ctx.extraction().freeVariables())
+            .globalJoinNodes();
     List<CPQExpression> globalCandidates =
         state.synthesizer.synthesizeGlobal(ctx.fullBits(), globalJoinNodes, ctx.varToNodeMap());
     return new GlobalResult(globalCandidates, selectPreferredFinalComponent(globalCandidates));

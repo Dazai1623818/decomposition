@@ -23,52 +23,6 @@ final class JoinNodeUtilsTest {
   private static final Predicate P3 = new Predicate(3, "r3");
 
   @Test
-  void computeJoinNodesWithNoOverlap() {
-    Component c1 = makeComponent(Set.of("a", "b"));
-    Component c2 = makeComponent(Set.of("c", "d"));
-    Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(List.of(c1, c2), Set.of());
-    assertTrue(joinNodes.isEmpty(), "No join nodes when components are disjoint");
-  }
-
-  @Test
-  void computeJoinNodesWithSingleOverlap() {
-    Component c1 = makeComponent(Set.of("a", "b"));
-    Component c2 = makeComponent(Set.of("b", "c"));
-    Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(List.of(c1, c2), Set.of());
-    assertEquals(Set.of("b"), joinNodes, "Vertex 'b' appears in both components");
-  }
-
-  @Test
-  void computeJoinNodesWithMultipleOverlaps() {
-    Component c1 = makeComponent(Set.of("a", "b", "c"));
-    Component c2 = makeComponent(Set.of("b", "c", "d"));
-    Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(List.of(c1, c2), Set.of());
-    assertEquals(Set.of("b", "c"), joinNodes, "Both b and c are join nodes");
-  }
-
-  @Test
-  void computeJoinNodesIncludesFreeVariables() {
-    Component c1 = makeComponent(Set.of("a", "b"));
-    Set<String> joinNodes = JoinNodeUtils.computeJoinNodes(List.of(c1), Set.of("a", "x"));
-    assertEquals(Set.of("a", "x"), joinNodes, "Free variables are always join nodes");
-  }
-
-  @Test
-  void computeJoinNodesFromVariablesMatchesFromComponents() {
-    Component c1 = makeComponent(Set.of("a", "b"));
-    Component c2 = makeComponent(Set.of("b", "c"));
-    List<Component> components = List.of(c1, c2);
-    Set<String> freeVars = Set.of("a");
-
-    Set<String> fromComponents = JoinNodeUtils.computeJoinNodes(components, freeVars);
-    Set<String> fromVariables =
-        JoinNodeUtils.computeJoinNodesFromVariables(
-            List.of(c1.vertices(), c2.vertices()), freeVars);
-
-    assertEquals(fromComponents, fromVariables, "Both methods should produce identical results");
-  }
-
-  @Test
   void localJoinNodesWithEmptyJoinNodes() {
     Component c = makeComponent(Set.of("a", "b", "c"));
     Set<String> local = JoinNodeUtils.localJoinNodes(c, Set.of());
