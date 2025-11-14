@@ -6,7 +6,6 @@ import decomposition.util.JoinAnalysis;
 import decomposition.util.JoinAnalysisBuilder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -32,7 +31,7 @@ public final class PartitionFilter {
     for (Partition partition : partitions) {
       index++;
       JoinAnalysis analysis = JoinAnalysisBuilder.analyzePartition(partition, freeVariables);
-      String failure = violatesConstraints(partition, freeVariables, analysis.multiplicity());
+      String failure = violatesConstraints(partition, freeVariables, analysis);
       if (failure == null) {
         accepted.add(new FilteredPartition(partition, analysis));
       } else {
@@ -44,13 +43,13 @@ public final class PartitionFilter {
   }
 
   private String violatesConstraints(
-      Partition partition, Set<String> freeVariables, Map<String, Integer> multiplicity) {
+      Partition partition, Set<String> freeVariables, JoinAnalysis analysis) {
     if (partition.components().size() > 1) {
       // Free variables must remain visible as join nodes. Presence (multiplicity > 0) suffices,
       // because join-node computation later always includes free vars while also allowing
       // additional shared vertices to act as joins.
       for (String freeVar : freeVariables) {
-        int count = multiplicity.getOrDefault(freeVar, 0);
+        int count = analysis.multiplicity().getOrDefault(freeVar, 0);
         if (count == 0) {
           return "free var " + freeVar + " absent from partition";
         }
@@ -58,14 +57,8 @@ public final class PartitionFilter {
     }
 
     for (Component component : partition.components()) {
-      long joinNodes =
-          component.vertices().stream()
-              .filter(
-                  v ->
-                      multiplicity.getOrDefault(v, 0) >= 2
-                          || (freeVariables != null && freeVariables.contains(v)))
-              .count();
-      if (joinNodes > maxJoinNodesPerComponent) {
+      Set<String> localJoinNodes = analysis.joinNodesForComponent(component);
+      if (localJoinNodes.size() > maxJoinNodesPerComponent) {
         return "component had >" + maxJoinNodesPerComponent + " join nodes";
       }
     }

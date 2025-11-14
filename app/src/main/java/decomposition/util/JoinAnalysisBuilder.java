@@ -13,6 +13,8 @@ public final class JoinAnalysisBuilder {
   private JoinAnalysisBuilder() {}
 
   public static JoinAnalysis analyzePartition(Partition partition, Set<String> freeVariables) {
+    Set<String> normalizedFreeVars =
+        freeVariables == null || freeVariables.isEmpty() ? Set.of() : Set.copyOf(freeVariables);
     Map<String, Integer> multiplicity = new HashMap<>();
 
     for (Component component : partition.components()) {
@@ -24,12 +26,12 @@ public final class JoinAnalysisBuilder {
     Set<String> globalJoinNodes = new HashSet<>();
     for (Map.Entry<String, Integer> entry : multiplicity.entrySet()) {
       String vertex = entry.getKey();
-      if (entry.getValue() > 1 || freeVariables.contains(vertex)) {
+      if (entry.getValue() > 1 || normalizedFreeVars.contains(vertex)) {
         globalJoinNodes.add(vertex);
       }
     }
 
-    globalJoinNodes.addAll(freeVariables);
+    globalJoinNodes.addAll(normalizedFreeVars);
 
     return new JoinAnalysis(
         Collections.unmodifiableMap(multiplicity), Collections.unmodifiableSet(globalJoinNodes));

@@ -62,6 +62,7 @@ public final class PartitionExpressionAssembler {
 
     for (int idx = 0; idx < totalComponents; idx++) {
       Component component = components.get(idx);
+      Set<String> localJoinNodes = filteredPartition.joinNodesForComponent(component);
       ComponentCacheKey key =
           new ComponentCacheKey(
               BitsetUtils.signature(component.edgeBits(), edges.size()),
@@ -75,14 +76,15 @@ public final class PartitionExpressionAssembler {
       if (cached == null) {
         List<CPQExpression> raw =
             buildRawExpressions(component.edgeBits(), joinNodes, originalVarMap);
-        Set<String> localJoinNodes = joinAnalysis.joinNodesForComponent(component);
         List<CPQExpression> joinFiltered = applyJoinFiltering(raw, component, localJoinNodes);
         List<CPQExpression> finals =
             applyOrientationPreferences(joinFiltered, joinNodes, freeVars, originalVarMap);
-        cached = cacheFinalExpressions(componentCache, key, raw, joinFiltered, finals);
+        cached =
+            cacheFinalExpressions(
+                componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
       }
 
-      recordComponentDiagnostics(idx, component, cached, joinNodes, partitionDiagnostics);
+      recordComponentDiagnostics(idx, component, filteredPartition, cached, partitionDiagnostics);
 
       List<CPQExpression> finalExpressions = cached.finalExpressions();
       if (finalExpressions.isEmpty()) {
@@ -106,10 +108,15 @@ public final class PartitionExpressionAssembler {
   public record CachedComponentExpressions(
       List<CPQExpression> finalExpressions,
       boolean hasRawExpressions,
-      boolean hasJoinFilteredExpressions) {
+      boolean hasJoinFilteredExpressions,
+      List<CPQExpression> diagnosticCandidates) {
 
     public CachedComponentExpressions {
       finalExpressions = List.copyOf(Objects.requireNonNull(finalExpressions, "finalExpressions"));
+      diagnosticCandidates =
+          diagnosticCandidates == null || diagnosticCandidates.isEmpty()
+              ? List.of()
+              : List.copyOf(diagnosticCandidates);
     }
   }
 
@@ -171,12 +178,18 @@ public final class PartitionExpressionAssembler {
       ComponentCacheKey key,
       List<CPQExpression> raw,
       List<CPQExpression> joinFiltered,
-      List<CPQExpression> finals) {
+      List<CPQExpression> finals,
+      boolean localJoinNodesEmpty) {
+    List<CPQExpression> diagnosticCandidates =
+        (!localJoinNodesEmpty && joinFiltered.isEmpty() && !raw.isEmpty())
+            ? List.copyOf(raw)
+            : List.of();
     CachedComponentExpressions cached =
         new CachedComponentExpressions(
             finals.isEmpty() ? List.of() : List.copyOf(finals),
             !raw.isEmpty(),
-            !joinFiltered.isEmpty());
+            !joinFiltered.isEmpty(),
+            diagnosticCandidates);
     componentCache.put(key, cached);
     return cached;
   }
@@ -184,16 +197,18 @@ public final class PartitionExpressionAssembler {
   private void recordComponentDiagnostics(
       int idx,
       Component component,
+      FilteredPartition filteredPartition,
       CachedComponentExpressions cached,
-      Set<String> joinNodes,
       PartitionDiagnostics partitionDiagnostics) {
     String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
     partitionDiagnostics.recordComponent(
         idx + 1,
+        component,
+        filteredPartition,
         componentSig,
         cached.hasRawExpressions(),
         cached.hasJoinFilteredExpressions(),
-        joinNodes.isEmpty());
+        cached.diagnosticCandidates());
   }
 
   /** Key used for memoizing cached component expression sets. */

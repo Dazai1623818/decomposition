@@ -10,6 +10,10 @@ public record FilteredPartition(Partition partition, JoinAnalysis joinAnalysis) 
     return joinAnalysis.globalJoinNodes();
   }
 
+  public Set<String> joinNodesForComponent(decomposition.model.Component component) {
+    return joinAnalysis.joinNodesForComponent(component);
+  }
+
   public Map<String, Integer> multiplicity() {
     return joinAnalysis.multiplicity();
   }
