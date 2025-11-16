@@ -8,3 +8,5 @@ app/temp
 temp
 vis.ipynb.gradle-home
 temp/
+
+*.edge

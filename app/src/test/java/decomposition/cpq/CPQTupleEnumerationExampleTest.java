@@ -25,7 +25,6 @@ final class CPQTupleEnumerationExampleTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
-            defaults.maxCovers(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
             singleTupleOnly);

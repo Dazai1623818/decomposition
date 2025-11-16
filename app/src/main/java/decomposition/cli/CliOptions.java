@@ -13,7 +13,6 @@ record CliOptions(
     Set<String> freeVariables,
     Mode mode,
     int maxPartitions,
-    int maxCovers,
     long timeBudgetMs,
     int enumerationLimit,
     boolean singleTuplePerPartition,

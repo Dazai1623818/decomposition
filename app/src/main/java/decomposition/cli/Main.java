@@ -9,6 +9,7 @@ import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.model.CacheStats;
+import decomposition.eval.QueryEvaluationRunner;
 import decomposition.model.Component;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
@@ -48,13 +49,16 @@ public final class Main {
         ProfileOptions profileOptions = parseProfileArgs(args);
         return runProfile(profileOptions);
       }
+      if ("evaluate".equalsIgnoreCase(command)) {
+        EvaluateCliOptions evaluateOptions = parseEvaluateArgs(args);
+        return runEvaluate(evaluateOptions);
+      }
 
       CliOptions cliOptions = parseArgs(args);
       DecompositionOptions pipelineOptions =
           new DecompositionOptions(
               cliOptions.mode(),
               cliOptions.maxPartitions(),
-              cliOptions.maxCovers(),
               cliOptions.timeBudgetMs(),
               cliOptions.enumerationLimit(),
               cliOptions.singleTuplePerPartition());
@@ -103,6 +107,17 @@ public final class Main {
     PipelineProfiler profiler = new PipelineProfiler();
     PipelineProfile report = profiler.profile(options.queries(), options.options());
     printProfileReport(report, options.options());
+    return 0;
+  }
+
+  private int runEvaluate(EvaluateCliOptions options) throws IOException {
+    QueryEvaluationRunner runner = new QueryEvaluationRunner();
+    runner.run(
+        new QueryEvaluationRunner.EvaluateOptions(
+            options.exampleName(),
+            options.graphPath(),
+            options.nativeLibrary(),
+            options.decompositionInputs()));
     return 0;
   }
 
@@ -169,8 +184,6 @@ public final class Main {
             + options.mode()
             + ", maxPartitions="
             + options.maxPartitions()
-            + ", maxCovers="
-            + options.maxCovers()
             + ", timeBudgetMs="
             + options.timeBudgetMs()
             + ", enumerationLimit="
@@ -240,6 +253,25 @@ public final class Main {
     }
   }
 
+  private record EvaluateCliOptions(
+      String exampleName, Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
+    EvaluateCliOptions {
+      if (exampleName == null || exampleName.isBlank()) {
+        exampleName = "example1";
+      }
+      if (graphPath == null) {
+        throw new IllegalArgumentException("graph path must be provided");
+      }
+      if (nativeLibrary == null) {
+        throw new IllegalArgumentException("native library path must be provided");
+      }
+      decompositionInputs =
+          decompositionInputs == null
+              ? List.of()
+              : List.copyOf(new ArrayList<>(decompositionInputs));
+    }
+  }
+
   private CliOptions parseArgs(String[] args) {
     if (args == null || args.length == 0) {
       throw new IllegalArgumentException("Missing command. Use: decompose [options]");
@@ -272,7 +304,6 @@ public final class Main {
     String examplesRaw = null;
     String modeRaw = null;
     String maxPartitionsRaw = null;
-    String maxCoversRaw = null;
     String timeBudgetRaw = null;
     String limitRaw = null;
     boolean singleTuple = false;
@@ -303,8 +334,6 @@ public final class Main {
         case "--mode" -> modeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--max-partitions" ->
             maxPartitionsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
-        case "--max-covers" ->
-            maxCoversRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--time-budget-ms" ->
             timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--limit" ->
@@ -337,8 +366,6 @@ public final class Main {
     int maxPartitions =
         parseInt(
             maxPartitionsRaw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions");
-    int maxCovers =
-        parseInt(maxCoversRaw, DecompositionOptions.defaults().maxCovers(), "--max-covers");
     long timeBudget =
         parseLong(
             timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
@@ -393,8 +420,51 @@ public final class Main {
     }
 
     DecompositionOptions options =
-        new DecompositionOptions(mode, maxPartitions, maxCovers, timeBudget, limit, singleTuple);
+        new DecompositionOptions(mode, maxPartitions, timeBudget, limit, singleTuple);
     return new ProfileOptions(queries, options);
+  }
+
+  private EvaluateCliOptions parseEvaluateArgs(String[] args) {
+    if (args.length == 0 || !"evaluate".equalsIgnoreCase(args[0])) {
+      throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
+    }
+    String exampleName = "example1";
+    Path graphPath = Paths.get("graph_huge.edge");
+    Path nativeLibrary = Paths.get("lib", "libnauty.so");
+    List<Path> decompositionInputs = new ArrayList<>();
+
+    for (int i = 1; i < args.length; i++) {
+      String rawArg = args[i];
+      String option = rawArg;
+      String inlineValue = null;
+      if (rawArg.startsWith("--")) {
+        int equalsIndex = rawArg.indexOf('=');
+        if (equalsIndex > 0) {
+          option = rawArg.substring(0, equalsIndex);
+          inlineValue = rawArg.substring(equalsIndex + 1);
+          if (inlineValue.isEmpty()) {
+            inlineValue = null;
+          }
+        }
+      }
+
+      switch (option) {
+        case "--example" ->
+            exampleName = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+        case "--graph" ->
+            graphPath = Path.of(inlineValue != null ? inlineValue : nextValue(args, ++i, option));
+        case "--native-lib" ->
+            nativeLibrary =
+                Path.of(inlineValue != null ? inlineValue : nextValue(args, ++i, option));
+        case "--decomposition" -> {
+          String value = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
+          decompositionInputs.add(Path.of(value));
+        }
+        default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
+      }
+    }
+
+    return new EvaluateCliOptions(exampleName, graphPath, nativeLibrary, decompositionInputs);
   }
 
   private CliOptions parseDecomposeArgs(String[] args) {
@@ -409,7 +479,6 @@ public final class Main {
     String freeVarsRaw = null;
     String modeRaw = null;
     String maxPartitionsRaw = null;
-    String maxCoversRaw = null;
     String timeBudgetRaw = null;
     String outputPath = null;
     String limitRaw = null;
@@ -447,8 +516,6 @@ public final class Main {
         case "--mode" -> modeRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--max-partitions" ->
             maxPartitionsRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
-        case "--max-covers" ->
-            maxCoversRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--time-budget-ms" ->
             timeBudgetRaw = inlineValue != null ? inlineValue : nextValue(args, ++i, option);
         case "--limit" ->
@@ -504,8 +571,6 @@ public final class Main {
     int maxPartitions =
         parseInt(
             maxPartitionsRaw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions");
-    int maxCovers =
-        parseInt(maxCoversRaw, DecompositionOptions.defaults().maxCovers(), "--max-covers");
     long timeBudget =
         parseLong(
             timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
@@ -540,7 +605,6 @@ public final class Main {
         freeVars,
         mode,
         maxPartitions,
-        maxCovers,
         timeBudget,
         limit,
         singleTuplePerPartition,

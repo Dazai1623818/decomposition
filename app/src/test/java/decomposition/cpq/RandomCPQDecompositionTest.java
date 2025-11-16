@@ -31,7 +31,6 @@ final class RandomCPQDecompositionTest {
       new DecompositionOptions(
           DecompositionOptions.Mode.ENUMERATE,
           DEFAULT_OPTIONS.maxPartitions(),
-          DEFAULT_OPTIONS.maxCovers(),
           DEFAULT_OPTIONS.timeBudgetMs(),
           DEFAULT_OPTIONS.enumerationLimit(),
           TestDefaults.singleTuplePerPartition());
@@ -111,7 +110,6 @@ final class RandomCPQDecompositionTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             100_000,
-            500,
             1, // 1ms time budget - very tight
             100,
             TestDefaults.singleTuplePerPartition());

@@ -16,6 +16,7 @@ dependencies {
     implementation 'dev.roanh.gmark:gmark:2.1'
     implementation 'com.google.guava:guava:32.1.2-jre'
     implementation 'com.google.code.gson:gson:2.10.1'
+    implementation files('lib/Index-v1.0.jar')
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

@@ -54,7 +54,6 @@ final class DecompositionPipelineTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.VALIDATE,
             defaults.maxPartitions(),
-            defaults.maxCovers(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
             TestDefaults.singleTuplePerPartition());
@@ -80,7 +79,6 @@ final class DecompositionPipelineTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
-            defaults.maxCovers(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
             TestDefaults.singleTuplePerPartition());
@@ -163,7 +161,6 @@ final class DecompositionPipelineTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
-            defaults.maxCovers(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
             TestDefaults.singleTuplePerPartition());
@@ -223,7 +220,6 @@ final class DecompositionPipelineTest {
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
-            defaults.maxCovers(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
             true);

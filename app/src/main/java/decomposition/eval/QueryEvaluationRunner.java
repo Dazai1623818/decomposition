@@ -1,0 +1,151 @@
+package decomposition.eval;
+
+import dev.roanh.cpqindex.Index;
+import dev.roanh.cpqindex.IndexUtil;
+import dev.roanh.cpqindex.ProgressListener;
+import dev.roanh.gmark.lang.cq.CQ;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/** Executes the Leapfrog evaluation workflow over a graph index and optional decompositions. */
+public final class QueryEvaluationRunner {
+  private static final int MAX_RESULTS_TO_PRINT = 99_999;
+
+  public void run(EvaluateOptions options) throws IOException {
+    System.load(options.nativeLibrary().toAbsolutePath().toString());
+
+    Index index;
+    try {
+      index =
+          new Index(
+              IndexUtil.readGraph(options.graphPath()),
+              1,
+              false,
+              true,
+              Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
+              -1,
+              ProgressListener.NONE);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new IOException("Index construction interrupted", ex);
+    }
+    index.sort();
+
+    LeapfrogEdgeJoiner joiner = LeapfrogEdgeJoiner.fromIndex(index);
+    System.out.println("Loaded labels: " + joiner.labels());
+
+    ExampleQuery example = selectExample(options.exampleName());
+    CQ cq = example.cq();
+    List<Map<String, Integer>> results = joiner.execute(cq);
+
+    System.out.println(
+        "Executing example '" + options.exampleName() + "' expressed in gMark notation.");
+    System.out.println("gMark CQ: " + cq.toFormalSyntax());
+    System.out.println("Result count: " + results.size());
+    results.stream()
+        .limit(MAX_RESULTS_TO_PRINT)
+        .forEach(assignment -> System.out.println(formatAssignment(assignment)));
+    if (results.size() > MAX_RESULTS_TO_PRINT) {
+      System.out.println("... truncated ...");
+    }
+
+    List<DecompositionTask> tasks = new ArrayList<>();
+    example
+        .decomposition()
+        .ifPresent(
+            decomposition ->
+                tasks.add(
+                    new DecompositionTask("example-" + options.exampleName(), decomposition)));
+
+    if (!options.decompositionInputs().isEmpty()) {
+      PartitionDecompositionLoader loader = PartitionDecompositionLoader.forQuery(cq);
+      for (Path input : options.decompositionInputs()) {
+        List<PartitionDecompositionLoader.NamedDecomposition> loaded = loader.load(input);
+        if (loaded.isEmpty()) {
+          System.out.println("No decompositions found in " + input);
+          continue;
+        }
+        boolean directory = Files.isDirectory(input);
+        for (PartitionDecompositionLoader.NamedDecomposition named : loaded) {
+          String label = directory ? input + "/" + named.name() : input.toString();
+          tasks.add(new DecompositionTask(label, named.decomposition()));
+        }
+      }
+    }
+
+    if (!tasks.isEmpty()) {
+      JoinedDecompositionExecutor executor = new JoinedDecompositionExecutor(joiner);
+      for (DecompositionTask task : tasks) {
+        List<Map<String, Integer>> joinedResults = executor.execute(task.decomposition());
+        System.out.println(
+            "Decomposition '" + task.label() + "' result count: " + joinedResults.size());
+        reportDecompositionComparison(task.label(), results, joinedResults);
+      }
+    }
+  }
+
+  private ExampleQuery selectExample(String exampleName) {
+    if ("example1".equalsIgnoreCase(exampleName)) {
+      return ExampleQueries.example1();
+    }
+    throw new IllegalArgumentException(
+        "Unknown example '" + exampleName + "'. Available examples: example1");
+  }
+
+  private static String formatAssignment(Map<String, Integer> assignment) {
+    Map<String, Integer> ordered = new LinkedHashMap<>(assignment);
+    return ordered.toString();
+  }
+
+  private static void reportDecompositionComparison(
+      String label, List<Map<String, Integer>> baseline, List<Map<String, Integer>> decomposition) {
+    Set<Map<String, Integer>> baselineSet = new LinkedHashSet<>(baseline);
+    Set<Map<String, Integer>> decompositionSet = new LinkedHashSet<>(decomposition);
+    if (baselineSet.equals(decompositionSet)) {
+      System.out.println("Joined decomposition '" + label + "' matches single-edge evaluation.");
+      return;
+    }
+    System.out.println(
+        "Joined decomposition '" + label + "' does NOT match single-edge evaluation.");
+    printDifference("Missing assignments (baseline only):", baselineSet, decompositionSet);
+    printDifference("Extra assignments (decomposition only):", decompositionSet, baselineSet);
+  }
+
+  private static void printDifference(
+      String header, Set<Map<String, Integer>> first, Set<Map<String, Integer>> second) {
+    Set<Map<String, Integer>> difference = new LinkedHashSet<>(first);
+    difference.removeAll(second);
+    if (difference.isEmpty()) {
+      return;
+    }
+    System.out.println(header);
+    difference.stream()
+        .limit(5)
+        .forEach(assignment -> System.out.println("  " + formatAssignment(assignment)));
+    if (difference.size() > 5) {
+      System.out.println("  ... truncated ...");
+    }
+  }
+
+  /** Options forwarded from the CLI for evaluate command runs. */
+  public record EvaluateOptions(
+      String exampleName, Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
+    public EvaluateOptions {
+      Objects.requireNonNull(exampleName, "exampleName");
+      Objects.requireNonNull(graphPath, "graphPath");
+      Objects.requireNonNull(nativeLibrary, "nativeLibrary");
+      decompositionInputs =
+          decompositionInputs == null ? List.of() : List.copyOf(decompositionInputs);
+    }
+  }
+
+  private record DecompositionTask(String label, QueryDecomposition decomposition) {}
+}
