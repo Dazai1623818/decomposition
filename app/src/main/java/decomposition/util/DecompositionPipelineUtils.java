@@ -4,12 +4,8 @@ import decomposition.DecompositionOptions;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
-import decomposition.cpq.PartitionDiagnostics;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Partition;
-import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
-import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,79 +28,6 @@ public final class DecompositionPipelineUtils {
       hash = 31 * hash + Objects.hash(entry.getKey(), entry.getValue());
     }
     return hash;
-  }
-
-  public static boolean overBudget(DecompositionOptions opts, Timing timing) {
-    return opts.timeBudgetMs() > 0 && timing.elapsedMillis() > opts.timeBudgetMs();
-  }
-
-  public static boolean overBudget(DecompositionOptions opts, long elapsedMillis) {
-    return opts.timeBudgetMs() > 0 && elapsedMillis > opts.timeBudgetMs();
-  }
-
-  public static void addComponentDiagnostics(
-      List<String> diagnostics, PartitionDiagnostics partitionDiagnostics) {
-    List<String> cached = partitionDiagnostics.lastComponentDiagnostics();
-    if (cached != null && !cached.isEmpty()) {
-      diagnostics.addAll(cached);
-    } else {
-      diagnostics.add("Partition rejected but component diagnostics were unavailable.");
-    }
-  }
-
-  public static CPQExpression selectPreferredFinalComponent(List<CPQExpression> rules) {
-    return (rules == null || rules.isEmpty()) ? null : rules.get(0);
-  }
-
-  public static <T> List<List<T>> enumerateTuples(List<List<T>> perComponent, int limit) {
-    if (perComponent == null || perComponent.isEmpty()) {
-      return List.of();
-    }
-
-    int n = perComponent.size();
-    int[] idx = new int[n];
-    List<List<T>> out = new ArrayList<>();
-    while (true) {
-      List<T> tuple = new ArrayList<>(n);
-      for (int i = 0; i < n; i++) {
-        tuple.add(perComponent.get(i).get(idx[i]));
-      }
-      out.add(tuple);
-      if (limit > 0 && out.size() >= limit) {
-        break;
-      }
-
-      int p = n - 1;
-      while (p >= 0) {
-        idx[p]++;
-        if (idx[p] < perComponent.get(p).size()) {
-          break;
-        }
-        idx[p] = 0;
-        p--;
-      }
-      if (p < 0) {
-        break;
-      }
-    }
-    return out;
-  }
-
-  public static DecompositionResult earlyExitAfterPartitioning(
-      PipelineContext ctx, PartitionSets parts, Timing timing) {
-    return buildResult(
-        ctx.extraction(),
-        ctx.vertices(),
-        parts.partitions(),
-        parts.filtered(),
-        List.of(),
-        List.of(),
-        null,
-        List.of(),
-        List.of(),
-        parts.diagnostics(),
-        timing.elapsedMillis(),
-        "time_budget_exceeded_after_partitioning");
   }
 
   public static DecompositionResult buildResult(

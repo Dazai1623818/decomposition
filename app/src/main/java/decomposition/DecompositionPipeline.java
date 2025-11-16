@@ -1,67 +1,76 @@
 package decomposition;
 
-import static decomposition.util.DecompositionPipelineUtils.addComponentDiagnostics;
-import static decomposition.util.DecompositionPipelineUtils.buildResult;
-import static decomposition.util.DecompositionPipelineUtils.earlyExitAfterPartitioning;
-import static decomposition.util.DecompositionPipelineUtils.enumerateTuples;
-import static decomposition.util.DecompositionPipelineUtils.overBudget;
-import static decomposition.util.DecompositionPipelineUtils.resolveOptions;
-import static decomposition.util.DecompositionPipelineUtils.selectPreferredFinalComponent;
-
-import decomposition.cpq.CPQExpression;
-import decomposition.cpq.ComponentExpressionBuilder;
-import decomposition.cpq.PartitionDiagnostics;
-import decomposition.cpq.PartitionExpressionAssembler;
-import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
-import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
-import decomposition.cpq.model.CacheStats;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
-import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.partitions.FilteredPartition;
-import decomposition.partitions.PartitionFilter;
-import decomposition.partitions.PartitionFilter.FilterResult;
-import decomposition.partitions.PartitionGenerator;
+import decomposition.pipeline.CpqSynthesizer;
 import decomposition.pipeline.DecompositionPipelineCache;
 import decomposition.pipeline.DecompositionPipelineCacheProvider;
 import decomposition.pipeline.DecompositionPipelineState.GlobalResult;
 import decomposition.pipeline.DecompositionPipelineState.PartitionSets;
 import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
 import decomposition.pipeline.DecompositionPipelineState.SynthesisState;
+import decomposition.pipeline.DefaultCpqSynthesizer;
+import decomposition.pipeline.DefaultPartitionPruner;
+import decomposition.pipeline.DefaultPartitioner;
+import decomposition.pipeline.DefaultTupleEnumerator;
+import decomposition.pipeline.PartitionPruner;
+import decomposition.pipeline.Partitioner;
+import decomposition.pipeline.TupleEnumerator;
+import decomposition.util.DecompositionPipelineUtils;
 import decomposition.util.GraphUtils;
-import decomposition.util.JoinAnalysisBuilder;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline implements DecompositionPipelineCacheProvider {
-  private static final int MAX_JOIN_NODES = 2;
-
   private final CQExtractor extractor = new CQExtractor();
   private final DecompositionPipelineCache pipelineCache = new DecompositionPipelineCache();
+  private final Partitioner partitioner;
+  private final PartitionPruner partitionPruner;
+  private final CpqSynthesizer cpqSynthesizer;
+  private final TupleEnumerator tupleEnumerator;
+
+  public DecompositionPipeline() {
+    this(
+        new DefaultPartitioner(),
+        new DefaultPartitionPruner(),
+        new DefaultCpqSynthesizer(),
+        new DefaultTupleEnumerator());
+  }
+
+  public DecompositionPipeline(
+      Partitioner partitioner,
+      PartitionPruner partitionPruner,
+      CpqSynthesizer cpqSynthesizer,
+      TupleEnumerator tupleEnumerator) {
+    this.partitioner = Objects.requireNonNull(partitioner, "partitioner");
+    this.partitionPruner = Objects.requireNonNull(partitionPruner, "partitionPruner");
+    this.cpqSynthesizer = Objects.requireNonNull(cpqSynthesizer, "cpqSynthesizer");
+    this.tupleEnumerator = Objects.requireNonNull(tupleEnumerator, "tupleEnumerator");
+  }
 
   public DecompositionResult execute(
       CQ cq, Set<String> explicitFreeVariables, DecompositionOptions options) {
     pipelineCache.reset();
     final Timing timing = Timing.start();
-    final DecompositionOptions opts = resolveOptions(options);
+    final DecompositionOptions opts = DecompositionPipelineUtils.resolveOptions(options);
 
     PipelineContext ctx = extractContext(cq, explicitFreeVariables);
-    PartitionSets parts = enumerateAndFilterPartitions(ctx, opts);
+    List<Partition> partitions = partitioner.enumerate(ctx, opts);
+    PartitionSets parts = partitionPruner.prune(partitions, ctx, opts);
 
-    if (overBudget(opts, timing)) {
-      return earlyExitAfterPartitioning(ctx, parts, timing);
+    if (cpqSynthesizer.overBudget(opts, timing)) {
+      return buildPartitioningExit(ctx, parts, timing);
     }
 
-    SynthesisState state = initSynthesisState(ctx, opts);
+    SynthesisState state = cpqSynthesizer.createState(ctx, opts);
 
     DecompositionResult validationExit = processFilteredPartitions(ctx, parts, state, opts, timing);
     if (validationExit != null) {
@@ -69,7 +78,7 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       return validationExit;
     }
 
-    GlobalResult globalResult = computeGlobalCandidates(ctx, state, opts, timing);
+    GlobalResult globalResult = cpqSynthesizer.computeGlobalResult(ctx, opts, state);
 
     pipelineCache.update(state.cacheStats);
     return buildFinalResult(ctx, parts, state, opts, timing, globalResult);
@@ -86,37 +95,6 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
         extraction, edges, extraction.variableNodeMap(), vertices, fullBits, edgeCount);
   }
 
-  private PartitionSets enumerateAndFilterPartitions(
-      PipelineContext ctx, DecompositionOptions opts) {
-    PartitionGenerator generator = new PartitionGenerator(opts.maxPartitions());
-    List<Component> components = generator.enumerateConnectedComponents(ctx.edges());
-    List<Partition> partitions =
-        generator.enumeratePartitions(
-            ctx.edges(), components, ctx.extraction().freeVariables(), MAX_JOIN_NODES);
-
-    FilterResult filterResult =
-        new PartitionFilter(MAX_JOIN_NODES).filter(partitions, ctx.extraction().freeVariables());
-    List<FilteredPartition> filteredWithJoins = filterResult.partitions();
-    List<Partition> filtered =
-        filteredWithJoins.stream().map(FilteredPartition::partition).toList();
-
-    List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
-    return new PartitionSets(partitions, filteredWithJoins, filtered, diagnostics);
-  }
-
-  private SynthesisState initSynthesisState(PipelineContext ctx, DecompositionOptions opts) {
-    PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(ctx.edges());
-    CacheStats cacheStats = new CacheStats();
-    PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
-    Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
-    boolean wantTuples = opts.mode().enumerateTuples();
-    boolean singleTuplePerPartition = opts.singleTuplePerPartition();
-    int tupleLimit =
-        singleTuplePerPartition ? 1 : (opts.enumerationLimit() <= 0 ? 1 : opts.enumerationLimit());
-    return new SynthesisState(
-        synthesizer, cacheStats, partitionDiagnostics, componentCache, wantTuples, tupleLimit);
-  }
-
   private DecompositionResult processFilteredPartitions(
       PipelineContext ctx,
       PartitionSets parts,
@@ -125,74 +103,19 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       Timing timing) {
 
     List<FilteredPartition> filteredWithJoins = parts.filteredWithJoins();
-    List<Partition> filtered = parts.filtered();
     List<String> diagnostics = parts.diagnostics();
     int idx = 0;
 
     for (FilteredPartition fp : filteredWithJoins) {
-      if (overBudget(opts, timing)) {
-        return buildResult(
-            ctx.extraction(),
-            ctx.vertices(),
-            parts.partitions(),
-            filtered,
-            state.cpqPartitions,
-            dedupeCatalogue(state.recognizedCatalogue),
-            null,
-            List.of(),
-            state.partitionEvaluations,
-            diagnostics,
-            timing.elapsedMillis(),
-            "time_budget_exceeded_during_validation");
+      if (cpqSynthesizer.overBudget(opts, timing)) {
+        return buildBudgetExceededDuringValidation(ctx, parts, state, timing);
       }
 
       idx++;
-      Partition partition = fp.partition();
-      List<List<CPQExpression>> componentExpressions =
-          state.synthesizer.synthesize(
-              fp,
-              ctx.extraction().freeVariables(),
-              ctx.varToNodeMap(),
-              state.componentCache,
-              state.cacheStats,
-              state.partitionDiagnostics);
-
-      if (componentExpressions == null) {
-        addComponentDiagnostics(diagnostics, state.partitionDiagnostics);
-        continue;
-      }
-
-      state.cpqPartitions.add(partition);
-
-      for (List<CPQExpression> compExpressions : componentExpressions) {
-        state.recognizedCatalogue.addAll(compExpressions);
-      }
-
-      List<List<CPQExpression>> tuples =
-          state.wantTuples ? enumerateTuples(componentExpressions, state.tupleLimit) : List.of();
-
-      state.partitionEvaluations.add(
-          new PartitionEvaluation(
-              partition, idx, componentExpressions.stream().map(List::size).toList(), tuples));
+      cpqSynthesizer.processPartition(fp, ctx, opts, state, tupleEnumerator, diagnostics, idx);
     }
 
     return null;
-  }
-
-  private GlobalResult computeGlobalCandidates(
-      PipelineContext ctx, SynthesisState state, DecompositionOptions opts, Timing timing) {
-    if (overBudget(opts, timing)) {
-      return new GlobalResult(List.of(), null);
-    }
-
-    Set<String> globalJoinNodes =
-        JoinAnalysisBuilder.analyzePartition(
-                new Partition(List.of(new Component(ctx.fullBits(), ctx.vertices()))),
-                ctx.extraction().freeVariables())
-            .globalJoinNodes();
-    List<CPQExpression> globalCandidates =
-        state.synthesizer.synthesizeGlobal(ctx.fullBits(), globalJoinNodes, ctx.varToNodeMap());
-    return new GlobalResult(globalCandidates, selectPreferredFinalComponent(globalCandidates));
   }
 
   private DecompositionResult buildFinalResult(
@@ -204,14 +127,14 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       GlobalResult globalResult) {
 
     long elapsed = timing.elapsedMillis();
-    String termination = overBudget(opts, elapsed) ? "time_budget_exceeded" : null;
-    return buildResult(
+    String termination = cpqSynthesizer.overBudget(opts, elapsed) ? "time_budget_exceeded" : null;
+    return DecompositionPipelineUtils.buildResult(
         ctx.extraction(),
         ctx.vertices(),
         parts.partitions(),
         parts.filtered(),
         state.cpqPartitions,
-        dedupeCatalogue(state.recognizedCatalogue),
+        cpqSynthesizer.dedupeCatalogue(state.recognizedCatalogue),
         globalResult.finalExpression(),
         globalResult.globalCatalogue(),
         state.partitionEvaluations,
@@ -220,8 +143,38 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
         termination);
   }
 
-  private static List<CPQExpression> dedupeCatalogue(List<CPQExpression> catalogue) {
-    return ComponentExpressionBuilder.dedupeExpressions(catalogue);
+  private DecompositionResult buildPartitioningExit(
+      PipelineContext ctx, PartitionSets parts, Timing timing) {
+    return DecompositionPipelineUtils.buildResult(
+        ctx.extraction(),
+        ctx.vertices(),
+        parts.partitions(),
+        parts.filtered(),
+        List.of(),
+        List.of(),
+        null,
+        List.of(),
+        List.of(),
+        parts.diagnostics(),
+        timing.elapsedMillis(),
+        "time_budget_exceeded_after_partitioning");
+  }
+
+  private DecompositionResult buildBudgetExceededDuringValidation(
+      PipelineContext ctx, PartitionSets parts, SynthesisState state, Timing timing) {
+    return DecompositionPipelineUtils.buildResult(
+        ctx.extraction(),
+        ctx.vertices(),
+        parts.partitions(),
+        parts.filtered(),
+        state.cpqPartitions,
+        cpqSynthesizer.dedupeCatalogue(state.recognizedCatalogue),
+        null,
+        List.of(),
+        state.partitionEvaluations,
+        parts.diagnostics(),
+        timing.elapsedMillis(),
+        "time_budget_exceeded_during_validation");
   }
 
   @Override

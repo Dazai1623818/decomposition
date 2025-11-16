@@ -1,5 +1,6 @@
 package dev.roanh.gmark.util;
 
+import dev.roanh.gmark.type.IDable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;

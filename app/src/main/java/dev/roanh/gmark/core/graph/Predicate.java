@@ -1,7 +1,7 @@
 package dev.roanh.gmark.core.graph;
 
 import dev.roanh.gmark.output.OutputXML;
-import dev.roanh.gmark.util.IDable;
+import dev.roanh.gmark.type.IDable;
 import dev.roanh.gmark.util.IndentWriter;
 import java.util.Objects;
 
