@@ -9,6 +9,7 @@ import static decomposition.util.DecompositionPipelineUtils.resolveOptions;
 import static decomposition.util.DecompositionPipelineUtils.selectPreferredFinalComponent;
 
 import decomposition.cpq.CPQExpression;
+import decomposition.cpq.ComponentExpressionBuilder;
 import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
@@ -126,7 +127,6 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
     List<FilteredPartition> filteredWithJoins = parts.filteredWithJoins();
     List<Partition> filtered = parts.filtered();
     List<String> diagnostics = parts.diagnostics();
-    int edgeCount = ctx.edgeCount();
     int idx = 0;
 
     for (FilteredPartition fp : filteredWithJoins) {
@@ -137,7 +137,7 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
             parts.partitions(),
             filtered,
             state.cpqPartitions,
-            new ArrayList<>(state.recognizedCatalogue.values()),
+            dedupeCatalogue(state.recognizedCatalogue),
             null,
             List.of(),
             state.partitionEvaluations,
@@ -165,9 +165,7 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       state.cpqPartitions.add(partition);
 
       for (List<CPQExpression> compExpressions : componentExpressions) {
-        for (CPQExpression expression : compExpressions) {
-          state.recognizedCatalogue.putIfAbsent(expression.toKey(edgeCount), expression);
-        }
+        state.recognizedCatalogue.addAll(compExpressions);
       }
 
       List<List<CPQExpression>> tuples =
@@ -213,13 +211,17 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
         parts.partitions(),
         parts.filtered(),
         state.cpqPartitions,
-        new ArrayList<>(state.recognizedCatalogue.values()),
+        dedupeCatalogue(state.recognizedCatalogue),
         globalResult.finalExpression(),
         globalResult.globalCatalogue(),
         state.partitionEvaluations,
         parts.diagnostics(),
         elapsed,
         termination);
+  }
+
+  private static List<CPQExpression> dedupeCatalogue(List<CPQExpression> catalogue) {
+    return ComponentExpressionBuilder.dedupeExpressions(catalogue);
   }
 
   @Override

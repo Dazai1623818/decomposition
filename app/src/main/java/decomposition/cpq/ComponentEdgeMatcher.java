@@ -2,6 +2,7 @@ package decomposition.cpq;
 
 import decomposition.model.Edge;
 import decomposition.util.BitsetUtils;
+import decomposition.util.GraphUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
@@ -34,11 +35,7 @@ final class ComponentEdgeMatcher {
     BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
     if (componentEdges.isEmpty()) return false;
 
-    Set<String> vertices = new HashSet<>();
-    for (Edge edge : componentEdges) {
-      vertices.add(edge.source());
-      vertices.add(edge.target());
-    }
+    Set<String> vertices = GraphUtils.vertices(rule.edges(), edges);
     if (!vertices.contains(rule.source()) || !vertices.contains(rule.target())) return false;
 
     List<GraphEdge<VarCQ, AtomCQ>> cpqEdges;

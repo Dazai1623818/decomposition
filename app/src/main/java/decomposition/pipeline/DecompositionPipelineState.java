@@ -7,14 +7,12 @@ import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
-import decomposition.cpq.model.CacheStats.ComponentKey;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.partitions.FilteredPartition;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +42,7 @@ public final class DecompositionPipelineState {
     public final Map<ComponentCacheKey, CachedComponentExpressions> componentCache;
     public final List<Partition> cpqPartitions = new ArrayList<>();
     public final List<PartitionEvaluation> partitionEvaluations = new ArrayList<>();
-    public final Map<ComponentKey, CPQExpression> recognizedCatalogue = new LinkedHashMap<>();
+    public final List<CPQExpression> recognizedCatalogue = new ArrayList<>();
     public final boolean wantTuples;
     public final int tupleLimit;
 

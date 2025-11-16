@@ -70,13 +70,9 @@ public final class JoinNodeUtils {
       return Set.of();
     }
     Set<String> present = new HashSet<>();
-    for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
-      Edge edge = edges.get(idx);
-      if (joinNodes.contains(edge.source())) {
-        present.add(edge.source());
-      }
-      if (joinNodes.contains(edge.target())) {
-        present.add(edge.target());
+    for (String vertex : GraphUtils.vertices(edgeBits, edges)) {
+      if (joinNodes.contains(vertex)) {
+        present.add(vertex);
       }
     }
     return present.isEmpty() ? Set.of() : Collections.unmodifiableSet(present);

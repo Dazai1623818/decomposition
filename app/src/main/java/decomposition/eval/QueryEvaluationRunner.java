@@ -1,9 +1,9 @@
 package decomposition.eval;
 
 import dev.roanh.cpqindex.Index;
-import dev.roanh.cpqindex.IndexUtil;
 import dev.roanh.cpqindex.ProgressListener;
 import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.util.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,9 +24,11 @@ public final class QueryEvaluationRunner {
 
     Index index;
     try {
+      UniqueGraph<Integer, dev.roanh.gmark.core.graph.Predicate> graph =
+          GraphLoader.load(options.graphPath());
       index =
           new Index(
-              IndexUtil.readGraph(options.graphPath()),
+              graph,
               1,
               false,
               true,

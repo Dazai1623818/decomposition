@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /** Graph utilities used across the decomposition pipeline. */
@@ -23,6 +24,12 @@ public final class GraphUtils {
       vertices.add(edge.target());
     }
     return vertices;
+  }
+
+  public static Set<String> verticesForComponent(Component component, List<Edge> edges) {
+    Objects.requireNonNull(component, "component");
+    Objects.requireNonNull(edges, "edges");
+    return vertices(component.edgeBits(), edges);
   }
 
   public static boolean isConnected(BitSet edgeBits, List<Edge> edges) {

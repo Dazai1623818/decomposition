@@ -116,16 +116,19 @@ public final class ComponentExpressionBuilder {
     return expanded;
   }
 
-  private List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
-    if (expressions.isEmpty()) {
+  public static List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
+    if (expressions == null || expressions.isEmpty()) {
       return List.of();
     }
     Map<ComponentKey, CPQExpression> unique = new LinkedHashMap<>();
     for (CPQExpression expression : expressions) {
-      ComponentKey compKey =
-          new ComponentKey(expression.edges(), expression.source(), expression.target());
-      unique.putIfAbsent(compKey, expression);
+      unique.putIfAbsent(keyOf(expression), expression);
     }
     return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
+  }
+
+  private static ComponentKey keyOf(CPQExpression expression) {
+    Objects.requireNonNull(expression, "expression");
+    return new ComponentKey(expression.edges(), expression.source(), expression.target());
   }
 }
