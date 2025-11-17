@@ -1,5 +1,6 @@
 package decomposition.partitions;
 
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Component;
 import decomposition.model.Partition;
 import decomposition.util.JoinAnalysis;
@@ -18,32 +19,34 @@ public final class PartitionFilter {
   }
 
   public record FilterResult(
-      List<FilteredPartition> partitions, List<String> diagnostics, int consideredCount) {}
+      List<FilteredPartition> partitions,
+      List<PartitionDiagnostic> diagnostics,
+      int consideredCount) {}
 
   public FilterResult filter(List<Partition> partitions, Set<String> freeVariables) {
     Objects.requireNonNull(partitions, "partitions");
     Objects.requireNonNull(freeVariables, "freeVariables");
 
     List<FilteredPartition> accepted = new ArrayList<>();
-    List<String> diagnostics = new ArrayList<>();
+    List<PartitionDiagnostic> diagnostics = new ArrayList<>();
 
     int index = 0;
     for (Partition partition : partitions) {
       index++;
       JoinAnalysis analysis = JoinAnalysisBuilder.analyzePartition(partition, freeVariables);
-      String failure = violatesConstraints(partition, freeVariables, analysis);
+      PartitionDiagnostic failure = violatesConstraints(partition, freeVariables, analysis, index);
       if (failure == null) {
         accepted.add(new FilteredPartition(partition, analysis));
       } else {
-        diagnostics.add("Partition#" + index + " rejected: " + failure);
+        diagnostics.add(failure);
       }
     }
 
     return new FilterResult(List.copyOf(accepted), diagnostics, partitions.size());
   }
 
-  private String violatesConstraints(
-      Partition partition, Set<String> freeVariables, JoinAnalysis analysis) {
+  private PartitionDiagnostic violatesConstraints(
+      Partition partition, Set<String> freeVariables, JoinAnalysis analysis, int partitionIndex) {
     if (partition.components().size() > 1) {
       // Free variables must remain visible as join nodes. Presence (multiplicity > 0) suffices,
       // because join-node computation later always includes free vars while also allowing
@@ -51,16 +54,19 @@ public final class PartitionFilter {
       for (String freeVar : freeVariables) {
         int count = analysis.multiplicity().getOrDefault(freeVar, 0);
         if (count == 0) {
-          return "free var " + freeVar + " absent from partition";
+          return PartitionDiagnostic.freeVariableAbsent(partitionIndex, freeVar);
         }
       }
     }
 
+    int componentIndex = 1;
     for (Component component : partition.components()) {
       Set<String> localJoinNodes = analysis.joinNodesForComponent(component);
       if (localJoinNodes.size() > maxJoinNodesPerComponent) {
-        return "component had >" + maxJoinNodesPerComponent + " join nodes";
+        return PartitionDiagnostic.excessJoinNodes(
+            partitionIndex, componentIndex, maxJoinNodesPerComponent, localJoinNodes.size());
       }
+      componentIndex++;
     }
     return null;
   }

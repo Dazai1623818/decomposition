@@ -5,12 +5,15 @@ import com.google.gson.GsonBuilder;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,12 +35,29 @@ public final class VisualizationExporter {
     if (baseDir == null) {
       return;
     }
-    cleanDirectory(baseDir);
-    writeFreeVariables(baseDir, freeVariables);
-    writePartitionSet(baseDir.resolve("unfiltered"), allPartitions, edges);
-    writePartitionSet(baseDir.resolve("filtered"), filteredPartitions, edges);
-    if (cpqPartitions != null && !cpqPartitions.isEmpty()) {
-      writePartitionSet(baseDir.resolve("cpq"), cpqPartitions, edges);
+    Path targetDir = baseDir.toAbsolutePath().normalize();
+    Path parent = targetDir.getParent();
+    if (parent == null) {
+      parent = targetDir;
+    }
+    Files.createDirectories(parent);
+    String prefix =
+        targetDir.getFileName() != null ? targetDir.getFileName().toString() + "-" : "viz-";
+    Path tempDir = Files.createTempDirectory(parent, prefix);
+    boolean success = false;
+    try {
+      writeFreeVariables(tempDir, freeVariables);
+      writePartitionSet(tempDir.resolve("unfiltered"), allPartitions, edges);
+      writePartitionSet(tempDir.resolve("filtered"), filteredPartitions, edges);
+      if (cpqPartitions != null && !cpqPartitions.isEmpty()) {
+        writePartitionSet(tempDir.resolve("cpq"), cpqPartitions, edges);
+      }
+      moveIntoPlace(tempDir, targetDir);
+      success = true;
+    } finally {
+      if (!success) {
+        deleteRecursively(tempDir);
+      }
     }
   }
 
@@ -76,15 +96,34 @@ public final class VisualizationExporter {
     }
   }
 
-  private static void cleanDirectory(Path baseDir) throws IOException {
-    if (!Files.exists(baseDir)) {
+  private static void moveIntoPlace(Path source, Path target) throws IOException {
+    deleteRecursively(target);
+    try {
+      Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+    } catch (AtomicMoveNotSupportedException ex) {
+      Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  private static void deleteRecursively(Path path) throws IOException {
+    if (path == null || !Files.exists(path)) {
       return;
     }
-    try (var walk = Files.walk(baseDir)) {
-      Iterator<Path> iterator = walk.sorted(Comparator.reverseOrder()).iterator();
-      while (iterator.hasNext()) {
-        Files.deleteIfExists(iterator.next());
-      }
-    }
+    Files.walkFileTree(
+        path,
+        new SimpleFileVisitor<>() {
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+              throws IOException {
+            Files.deleteIfExists(file);
+            return FileVisitResult.CONTINUE;
+          }
+
+          @Override
+          public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+            Files.deleteIfExists(dir);
+            return FileVisitResult.CONTINUE;
+          }
+        });
   }
 }

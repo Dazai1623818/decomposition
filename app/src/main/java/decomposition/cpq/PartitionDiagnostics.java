@@ -1,5 +1,6 @@
 package decomposition.cpq;
 
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Component;
 import decomposition.partitions.FilteredPartition;
 import decomposition.util.JoinNodeUtils;
@@ -10,14 +11,15 @@ import java.util.Set;
 
 /** Tracks diagnostics for the most recent partition analysis. */
 public final class PartitionDiagnostics {
-  private final List<String> currentFailures = new ArrayList<>();
-  private volatile List<String> lastComponentDiagnostics = List.of();
+  private final List<PartitionDiagnostic> currentFailures = new ArrayList<>();
+  private volatile List<PartitionDiagnostic> lastComponentDiagnostics = List.of();
 
   public void beginPartition() {
     currentFailures.clear();
   }
 
   public void recordComponent(
+      int partitionIndex,
       int componentIndex,
       Component component,
       FilteredPartition filteredPartition,
@@ -30,8 +32,9 @@ public final class PartitionDiagnostics {
     Objects.requireNonNull(diagnosticCandidates, "diagnosticCandidates");
 
     Set<String> localJoinNodes = filteredPartition.joinNodesForComponent(component);
-    String message =
+    PartitionDiagnostic message =
         buildFailureDiagnostic(
+            partitionIndex,
             componentIndex,
             component,
             signature,
@@ -52,11 +55,12 @@ public final class PartitionDiagnostics {
     lastComponentDiagnostics = List.of();
   }
 
-  public List<String> lastComponentDiagnostics() {
+  public List<PartitionDiagnostic> lastComponentDiagnostics() {
     return lastComponentDiagnostics;
   }
 
-  private String buildFailureDiagnostic(
+  private PartitionDiagnostic buildFailureDiagnostic(
+      int partitionIndex,
       int componentIndex,
       Component component,
       String signature,
@@ -65,10 +69,8 @@ public final class PartitionDiagnostics {
       Set<String> localJoinNodes,
       List<CPQExpression> diagnosticCandidates) {
     if (!hasRawExpressions) {
-      return "Partition component#"
-          + componentIndex
-          + " rejected: no CPQ expressions for bits "
-          + signature;
+      return PartitionDiagnostic.missingComponentExpressions(
+          partitionIndex, componentIndex, signature);
     }
     if (!localJoinNodes.isEmpty() && !hasJoinFilteredExpressions) {
       boolean anyRespect =
@@ -77,10 +79,8 @@ public final class PartitionDiagnostics {
                   rule ->
                       JoinNodeUtils.endpointsRespectJoinNodeRoles(rule, component, localJoinNodes));
       if (!anyRespect) {
-        return "Partition component#"
-            + componentIndex
-            + " rejected: endpoints not on join nodes for bits "
-            + signature;
+        return PartitionDiagnostic.invalidComponentEndpoints(
+            partitionIndex, componentIndex, signature);
       }
     }
     return null;

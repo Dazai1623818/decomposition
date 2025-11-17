@@ -9,6 +9,7 @@ import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Component;
 import decomposition.model.Partition;
 import decomposition.partitions.FilteredPartition;
@@ -47,7 +48,7 @@ public final class DefaultCpqSynthesizer implements CpqSynthesizer {
       DecompositionOptions options,
       SynthesisState state,
       TupleEnumerator tupleEnumerator,
-      List<String> diagnostics,
+      List<PartitionDiagnostic> diagnostics,
       int partitionIndex) {
 
     List<List<CPQExpression>> componentExpressions =
@@ -57,10 +58,11 @@ public final class DefaultCpqSynthesizer implements CpqSynthesizer {
             context.varToNodeMap(),
             state.componentCache,
             state.cacheStats,
-            state.partitionDiagnostics);
+            state.partitionDiagnostics,
+            partitionIndex);
 
     if (componentExpressions == null) {
-      addComponentDiagnostics(diagnostics, state.partitionDiagnostics);
+      addComponentDiagnostics(diagnostics, state.partitionDiagnostics, partitionIndex);
       return;
     }
 
@@ -109,12 +111,14 @@ public final class DefaultCpqSynthesizer implements CpqSynthesizer {
   }
 
   private void addComponentDiagnostics(
-      List<String> diagnostics, PartitionDiagnostics partitionDiagnostics) {
-    List<String> cached = partitionDiagnostics.lastComponentDiagnostics();
+      List<PartitionDiagnostic> diagnostics,
+      PartitionDiagnostics partitionDiagnostics,
+      int partitionIndex) {
+    List<PartitionDiagnostic> cached = partitionDiagnostics.lastComponentDiagnostics();
     if (cached != null && !cached.isEmpty()) {
       diagnostics.addAll(cached);
     } else {
-      diagnostics.add("Partition rejected but component diagnostics were unavailable.");
+      diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitionIndex));
     }
   }
 

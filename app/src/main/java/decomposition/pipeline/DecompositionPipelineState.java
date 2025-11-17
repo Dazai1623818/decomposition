@@ -7,6 +7,7 @@ import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
@@ -33,7 +34,7 @@ public final class DecompositionPipelineState {
       List<Partition> partitions,
       List<FilteredPartition> filteredWithJoins,
       List<Partition> filtered,
-      List<String> diagnostics) {}
+      List<PartitionDiagnostic> diagnostics) {}
 
   public static final class SynthesisState {
     public final PartitionExpressionAssembler synthesizer;

@@ -1,5 +1,6 @@
 package decomposition;
 
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
@@ -103,7 +104,7 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       Timing timing) {
 
     List<FilteredPartition> filteredWithJoins = parts.filteredWithJoins();
-    List<String> diagnostics = parts.diagnostics();
+    List<PartitionDiagnostic> diagnostics = parts.diagnostics();
     int idx = 0;
 
     for (FilteredPartition fp : filteredWithJoins) {

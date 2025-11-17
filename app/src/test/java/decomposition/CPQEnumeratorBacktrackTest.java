@@ -130,7 +130,8 @@ final class CPQEnumeratorBacktrackTest {
             varMap,
             componentCache,
             stats,
-            diagnosticsHelper);
+            diagnosticsHelper,
+            1);
     assertTrue(built != null, "Single-edge partition should now be a valid CPQ decomposition");
   }
 

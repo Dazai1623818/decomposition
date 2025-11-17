@@ -42,7 +42,8 @@ public final class PartitionExpressionAssembler {
       Map<String, String> originalVarMap,
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
       CacheStats cacheStats,
-      PartitionDiagnostics partitionDiagnostics) {
+      PartitionDiagnostics partitionDiagnostics,
+      int partitionIndex) {
 
     Objects.requireNonNull(filteredPartition, "filteredPartition");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
@@ -84,7 +85,8 @@ public final class PartitionExpressionAssembler {
                 componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
       }
 
-      recordComponentDiagnostics(idx, component, filteredPartition, cached, partitionDiagnostics);
+      recordComponentDiagnostics(
+          partitionIndex, idx, component, filteredPartition, cached, partitionDiagnostics);
 
       List<CPQExpression> finalExpressions = cached.finalExpressions();
       if (finalExpressions.isEmpty()) {
@@ -195,6 +197,7 @@ public final class PartitionExpressionAssembler {
   }
 
   private void recordComponentDiagnostics(
+      int partitionIndex,
       int idx,
       Component component,
       FilteredPartition filteredPartition,
@@ -202,6 +205,7 @@ public final class PartitionExpressionAssembler {
       PartitionDiagnostics partitionDiagnostics) {
     String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
     partitionDiagnostics.recordComponent(
+        partitionIndex,
         idx + 1,
         component,
         filteredPartition,

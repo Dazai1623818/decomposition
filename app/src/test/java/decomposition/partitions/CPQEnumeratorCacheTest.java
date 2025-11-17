@@ -53,7 +53,8 @@ final class CPQEnumeratorCacheTest {
             varMap,
             componentCache,
             stats,
-            diagnostics);
+            diagnostics,
+            1);
     List<List<CPQExpression>> second =
         synthesizer.synthesize(
             filteredPartition,
@@ -61,7 +62,8 @@ final class CPQEnumeratorCacheTest {
             varMap,
             componentCache,
             stats,
-            diagnostics);
+            diagnostics,
+            1);
 
     assertTrue(first != null && second != null, "Expected at least one component expression set");
     assertTrue(second.size() == first.size(), "Repeated lookups should return same count");

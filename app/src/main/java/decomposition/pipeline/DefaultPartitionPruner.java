@@ -1,6 +1,7 @@
 package decomposition.pipeline;
 
 import decomposition.DecompositionOptions;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Partition;
 import decomposition.partitions.FilteredPartition;
 import decomposition.partitions.PartitionFilter;
@@ -21,7 +22,7 @@ public final class DefaultPartitionPruner implements PartitionPruner {
     List<FilteredPartition> filteredWithJoins = filterResult.partitions();
     List<Partition> filtered =
         filteredWithJoins.stream().map(FilteredPartition::partition).toList();
-    List<String> diagnostics = new ArrayList<>(filterResult.diagnostics());
+    List<PartitionDiagnostic> diagnostics = new ArrayList<>(filterResult.diagnostics());
     return new PartitionSets(partitions, filteredWithJoins, filtered, diagnostics);
   }
 }

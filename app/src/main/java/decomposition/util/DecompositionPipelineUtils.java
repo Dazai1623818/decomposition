@@ -4,6 +4,7 @@ import decomposition.DecompositionOptions;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Partition;
 import java.util.List;
@@ -40,7 +41,7 @@ public final class DecompositionPipelineUtils {
       CPQExpression finalExpression,
       List<CPQExpression> globalCatalogue,
       List<PartitionEvaluation> partitionEvaluations,
-      List<String> diagnostics,
+      List<PartitionDiagnostic> diagnostics,
       long elapsedMillis,
       String terminationReason) {
 

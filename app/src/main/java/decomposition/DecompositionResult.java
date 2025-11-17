@@ -1,6 +1,7 @@
 package decomposition;
 
 import decomposition.cpq.CPQExpression;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import java.util.Collections;
@@ -22,7 +23,7 @@ public record DecompositionResult(
     CPQExpression finalExpression,
     List<CPQExpression> globalCatalogue,
     List<PartitionEvaluation> partitionEvaluations,
-    List<String> diagnostics,
+    List<PartitionDiagnostic> diagnostics,
     long elapsedMillis,
     String terminationReason) {
 

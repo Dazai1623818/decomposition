@@ -2,6 +2,7 @@ package decomposition.pipeline;
 
 import decomposition.DecompositionOptions;
 import decomposition.cpq.CPQExpression;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.partitions.FilteredPartition;
 import decomposition.pipeline.DecompositionPipelineState.GlobalResult;
 import decomposition.pipeline.DecompositionPipelineState.PipelineContext;
@@ -19,7 +20,7 @@ public interface CpqSynthesizer {
       DecompositionOptions options,
       SynthesisState state,
       TupleEnumerator tupleEnumerator,
-      List<String> diagnostics,
+      List<PartitionDiagnostic> diagnostics,
       int partitionIndex);
 
   GlobalResult computeGlobalResult(

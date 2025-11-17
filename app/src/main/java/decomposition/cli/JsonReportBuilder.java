@@ -5,12 +5,14 @@ import com.google.gson.GsonBuilder;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
+import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.model.Component;
 import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -34,7 +36,9 @@ final class JsonReportBuilder {
     if (!result.globalCatalogue().isEmpty()) {
       root.put("global_cpq_catalog", catalogue(result.globalCatalogue()));
     }
-    root.put("diagnostics", result.diagnostics());
+    if (!result.diagnostics().isEmpty()) {
+      root.put("diagnostics", diagnosticSummaries(result.diagnostics()));
+    }
     if (!result.filteredPartitionList().isEmpty()) {
       root.put("partitions", partitionSummaries(result.filteredPartitionList()));
     }
@@ -110,6 +114,82 @@ final class JsonReportBuilder {
       summaries.add(map);
     }
     return summaries;
+  }
+
+  private List<Map<String, Object>> diagnosticSummaries(List<PartitionDiagnostic> diagnostics) {
+    List<Map<String, Object>> summaries = new ArrayList<>();
+    for (PartitionDiagnostic diagnostic : diagnostics) {
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("reason", diagnostic.reason().name().toLowerCase(Locale.ROOT));
+      if (diagnostic.partitionIndex() != null) {
+        entry.put("partition_index", diagnostic.partitionIndex());
+      }
+      if (diagnostic.componentIndex() != null) {
+        entry.put("component_index", diagnostic.componentIndex());
+      }
+      entry.put("message", diagnosticMessage(diagnostic));
+      if (!diagnostic.attributes().isEmpty()) {
+        entry.put("attributes", diagnostic.attributes());
+      }
+      summaries.add(entry);
+    }
+    return summaries;
+  }
+
+  private String diagnosticMessage(PartitionDiagnostic diagnostic) {
+    return switch (diagnostic.reason()) {
+      case FREE_VARIABLE_ABSENT ->
+          String.format(
+              Locale.ROOT,
+              "%s rejected: free var %s absent from partition",
+              partitionLabel(diagnostic.partitionIndex()),
+              diagnostic.attributes().get(PartitionDiagnostic.ATTR_FREE_VARIABLE));
+      case EXCESS_JOIN_NODES -> {
+        int limit =
+            ((Number)
+                    diagnostic
+                        .attributes()
+                        .getOrDefault(PartitionDiagnostic.ATTR_MAX_JOIN_NODES, 0))
+                .intValue();
+        int count =
+            ((Number)
+                    diagnostic
+                        .attributes()
+                        .getOrDefault(PartitionDiagnostic.ATTR_JOIN_NODE_COUNT, 0))
+                .intValue();
+        yield String.format(
+            Locale.ROOT,
+            "%s component#%d rejected: component had >%d join nodes (found %d)",
+            partitionLabel(diagnostic.partitionIndex()),
+            diagnostic.componentIndex(),
+            limit,
+            count);
+      }
+      case COMPONENT_EXPRESSIONS_MISSING ->
+          String.format(
+              Locale.ROOT,
+              "%s rejected: no CPQ expressions for bits %s",
+              componentLabel(diagnostic),
+              diagnostic.attributes().get(PartitionDiagnostic.ATTR_SIGNATURE));
+      case COMPONENT_ENDPOINTS_INVALID ->
+          String.format(
+              Locale.ROOT,
+              "%s rejected: endpoints not on join nodes for bits %s",
+              componentLabel(diagnostic),
+              diagnostic.attributes().get(PartitionDiagnostic.ATTR_SIGNATURE));
+      case COMPONENT_DIAGNOSTICS_UNAVAILABLE ->
+          partitionLabel(diagnostic.partitionIndex())
+              + " rejected but component diagnostics were unavailable.";
+    };
+  }
+
+  private String partitionLabel(Integer partitionIndex) {
+    return partitionIndex != null ? "Partition#" + partitionIndex : "Partition";
+  }
+
+  private String componentLabel(PartitionDiagnostic diagnostic) {
+    String base = partitionLabel(diagnostic.partitionIndex()) + " component";
+    return diagnostic.componentIndex() != null ? base + "#" + diagnostic.componentIndex() : base;
   }
 
   private List<List<Map<String, Object>>> tupleSummaries(List<List<CPQExpression>> tuples) {
