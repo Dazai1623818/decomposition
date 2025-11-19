@@ -1,0 +1,5 @@
+[
+  { "component": 0, "source": "A", "label": "1", "target": "B" },
+  { "component": 1, "source": "B", "label": "2", "target": "C" }
+]
+

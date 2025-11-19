@@ -6,14 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Evaluates a {@link QueryDecomposition} by executing individual bags via {@link
- * LeapfrogEdgeJoiner} and combining the partial assignments with a natural join.
- */
+/** Evaluates bags via {@link LeapfrogCpqJoiner} and joins their assignments. */
 final class JoinedDecompositionExecutor {
-  private final LeapfrogEdgeJoiner joiner;
+  private final LeapfrogCpqJoiner joiner;
 
-  JoinedDecompositionExecutor(LeapfrogEdgeJoiner joiner) {
+  JoinedDecompositionExecutor(LeapfrogCpqJoiner joiner) {
     this.joiner = Objects.requireNonNull(joiner, "joiner");
   }
 
@@ -23,7 +20,7 @@ final class JoinedDecompositionExecutor {
   }
 
   private List<Map<String, Integer>> evaluate(QueryDecomposition.Bag bag) {
-    List<Map<String, Integer>> bagResults = joiner.executeAtoms(bag.atoms());
+    List<Map<String, Integer>> bagResults = joiner.executeOptimized(bag.atoms());
     for (QueryDecomposition.Bag child : bag.children()) {
       List<Map<String, Integer>> childResults = evaluate(child);
       bagResults = naturalJoin(bagResults, childResults);

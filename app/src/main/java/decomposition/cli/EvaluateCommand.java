@@ -15,15 +15,17 @@ final class EvaluateCommand {
   int execute(String[] args) throws IOException {
     EvaluateCliOptions options = parseEvaluateArgs(args);
     LOG.info(
-        "Running evaluator for example {} using {} decomposition inputs",
+        "Running evaluator for example {} using {} decomposition inputs (k={})",
         options.exampleName(),
-        options.decompositionInputs().size());
+        options.decompositionInputs().size(),
+        options.k());
     QueryEvaluationRunner runner = new QueryEvaluationRunner();
     runner.run(
         new QueryEvaluationRunner.EvaluateOptions(
             options.exampleName(),
             options.graphPath(),
             options.nativeLibrary(),
+            options.k(),
             options.decompositionInputs()));
     return 0;
   }
@@ -35,6 +37,7 @@ final class EvaluateCommand {
     String exampleName = "example1";
     Path graphPath = Path.of("graph_huge.edge");
     Path nativeLibrary = Path.of("lib", "libnauty.so");
+    String kRaw = null;
     List<Path> decompositionInputs = new ArrayList<>();
 
     for (int i = 1; i < args.length; i++) {
@@ -64,6 +67,8 @@ final class EvaluateCommand {
             nativeLibrary =
                 Path.of(
                     inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option));
+        case "--k" ->
+            kRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--decomposition" -> {
           String value =
               inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -73,11 +78,16 @@ final class EvaluateCommand {
       }
     }
 
-    return new EvaluateCliOptions(exampleName, graphPath, nativeLibrary, decompositionInputs);
+    int k = CliParsers.parseInt(kRaw, 1, "--k");
+    return new EvaluateCliOptions(exampleName, graphPath, nativeLibrary, k, decompositionInputs);
   }
 
   private record EvaluateCliOptions(
-      String exampleName, Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
+      String exampleName,
+      Path graphPath,
+      Path nativeLibrary,
+      int k,
+      List<Path> decompositionInputs) {
     EvaluateCliOptions {
       if (exampleName == null || exampleName.isBlank()) {
         exampleName = "example1";
@@ -87,6 +97,9 @@ final class EvaluateCommand {
       }
       if (nativeLibrary == null) {
         throw new IllegalArgumentException("native library path must be provided");
+      }
+      if (k < 1) {
+        throw new IllegalArgumentException("k must be at least 1");
       }
       decompositionInputs =
           decompositionInputs == null

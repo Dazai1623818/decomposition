@@ -26,7 +26,7 @@ public final class QueryEvaluationRunner {
       index =
           new Index(
               graph,
-              1,
+              options.k(),
               false,
               true,
               Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
@@ -38,12 +38,12 @@ public final class QueryEvaluationRunner {
     }
     index.sort();
 
-    LeapfrogEdgeJoiner joiner = LeapfrogEdgeJoiner.fromIndex(index);
-    System.out.println("Loaded labels: " + joiner.labels());
+    LeapfrogCpqJoiner joiner = LeapfrogCpqJoiner.fromIndex(index);
+    System.out.println("Loaded single-edge labels: " + joiner.singleEdgeLabels());
 
     ExampleQuery example = selectExample(options.exampleName());
     CQ cq = example.cq();
-    List<Map<String, Integer>> results = joiner.execute(cq);
+    List<Map<String, Integer>> results = joiner.executeBaseline(cq);
 
     System.out.println(
         "Executing example '" + options.exampleName() + "' expressed in gMark notation.");
@@ -103,11 +103,18 @@ public final class QueryEvaluationRunner {
 
   /** Options forwarded from the CLI for evaluate command runs. */
   public record EvaluateOptions(
-      String exampleName, Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
+      String exampleName,
+      Path graphPath,
+      Path nativeLibrary,
+      int k,
+      List<Path> decompositionInputs) {
     public EvaluateOptions {
       Objects.requireNonNull(exampleName, "exampleName");
       Objects.requireNonNull(graphPath, "graphPath");
       Objects.requireNonNull(nativeLibrary, "nativeLibrary");
+      if (k < 1) {
+        throw new IllegalArgumentException("k must be at least 1");
+      }
       decompositionInputs =
           decompositionInputs == null ? List.of() : List.copyOf(decompositionInputs);
     }

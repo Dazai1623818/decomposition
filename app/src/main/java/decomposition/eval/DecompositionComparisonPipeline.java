@@ -4,8 +4,6 @@ import decomposition.DecompositionResult;
 import decomposition.model.Component;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
-import dev.roanh.cpqindex.Index;
-import dev.roanh.cpqindex.ProgressListener;
 import dev.roanh.gmark.core.graph.Predicate;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -39,12 +37,12 @@ public final class DecompositionComparisonPipeline {
     Objects.requireNonNull(result, "result");
 
     System.load(nativeLibrary.toAbsolutePath().toString());
-    Index index = buildIndex(graphPath);
-    LeapfrogEdgeJoiner joiner = LeapfrogEdgeJoiner.fromIndex(index);
+    dev.roanh.cpqindex.Index index = buildIndex(graphPath);
+    LeapfrogCpqJoiner joiner = LeapfrogCpqJoiner.fromIndex(index);
 
-    System.out.println("Loaded labels: " + joiner.labels());
+    System.out.println("Loaded single-edge labels: " + joiner.singleEdgeLabels());
     System.out.println("Executing query: " + query.toFormalSyntax());
-    List<Map<String, Integer>> baseline = joiner.execute(query);
+    List<Map<String, Integer>> baseline = joiner.executeBaseline(query);
     System.out.println("Single-edge result count: " + baseline.size());
 
     List<PartitionDecompositionLoader.NamedDecomposition> decompositions =
@@ -63,18 +61,18 @@ public final class DecompositionComparisonPipeline {
     }
   }
 
-  private Index buildIndex(Path graphPath) throws IOException {
+  private dev.roanh.cpqindex.Index buildIndex(Path graphPath) throws IOException {
     try {
       UniqueGraph<Integer, Predicate> graph = GraphLoader.load(graphPath);
-      Index index =
-          new Index(
+      dev.roanh.cpqindex.Index index =
+          new dev.roanh.cpqindex.Index(
               graph,
               1,
               false,
               true,
               Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
               -1,
-              ProgressListener.NONE);
+              dev.roanh.cpqindex.ProgressListener.NONE);
       index.sort();
       return index;
     } catch (InterruptedException ex) {
