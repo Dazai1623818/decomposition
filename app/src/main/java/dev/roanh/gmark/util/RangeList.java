@@ -1,6 +1,5 @@
 package dev.roanh.gmark.util;
 
-import dev.roanh.gmark.util.IDable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -32,6 +31,14 @@ public final class RangeList<T> implements Iterable<T> {
     return get(idable.getID());
   }
 
+  /**
+   * Compatibility overload for callers that use the {@code dev.roanh.gmark.type.IDable} interface
+   * directly (e.g. classes from the original gMark distribution).
+   */
+  public T get(dev.roanh.gmark.type.IDable idable) {
+    return get(idable.getID());
+  }
+
   public T get(int index) {
     ensureCapacity(index + 1);
     return entries.get(index);
@@ -43,6 +50,14 @@ public final class RangeList<T> implements Iterable<T> {
   }
 
   public void set(IDable idable, T value) {
+    set(idable.getID(), value);
+  }
+
+  /**
+   * Compatibility overload for callers that use the {@code dev.roanh.gmark.type.IDable} interface
+   * directly (e.g. classes from the original gMark distribution).
+   */
+  public void set(dev.roanh.gmark.type.IDable idable, T value) {
     set(idable.getID(), value);
   }
 

@@ -11,9 +11,7 @@ final class DecompositionComparisonReporter {
   private DecompositionComparisonReporter() {}
 
   static void report(
-      String label,
-      List<Map<String, Integer>> baseline,
-      List<Map<String, Integer>> decomposition) {
+      String label, List<Map<String, Integer>> baseline, List<Map<String, Integer>> decomposition) {
     Set<Map<String, Integer>> baselineSet = new LinkedHashSet<>(baseline);
     Set<Map<String, Integer>> decompositionSet = new LinkedHashSet<>(decomposition);
     if (baselineSet.equals(decompositionSet)) {

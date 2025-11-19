@@ -42,7 +42,7 @@ public final class DefaultCpqSynthesizer implements CpqSynthesizer {
   }
 
   @Override
-  public void processPartition(
+  public PartitionSynthesisResult processPartition(
       FilteredPartition partition,
       PipelineContext context,
       DecompositionOptions options,
@@ -63,22 +63,22 @@ public final class DefaultCpqSynthesizer implements CpqSynthesizer {
 
     if (componentExpressions == null) {
       addComponentDiagnostics(diagnostics, state.partitionDiagnostics, partitionIndex);
-      return;
+      return new PartitionSynthesisResult(List.of(), List.of(), null);
     }
 
     Partition matchedPartition = partition.partition();
-    state.cpqPartitions.add(matchedPartition);
-    for (List<CPQExpression> compExpressions : componentExpressions) {
-      state.recognizedCatalogue.addAll(compExpressions);
-    }
+    List<Partition> validPartitions = List.of(matchedPartition);
+    List<CPQExpression> catalogue = componentExpressions.stream().flatMap(List::stream).toList();
 
     List<List<CPQExpression>> tuples = tupleEnumerator.enumerate(componentExpressions, state);
-    state.partitionEvaluations.add(
+    PartitionEvaluation evaluation =
         new PartitionEvaluation(
             matchedPartition,
             partitionIndex,
             componentExpressions.stream().map(List::size).toList(),
-            tuples));
+            tuples);
+
+    return new PartitionSynthesisResult(validPartitions, catalogue, evaluation);
   }
 
   @Override

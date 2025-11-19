@@ -1,6 +1,5 @@
 package decomposition.pipeline;
 
-import decomposition.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
@@ -12,7 +11,6 @@ import decomposition.extract.CQExtractor.ExtractionResult;
 import decomposition.model.Edge;
 import decomposition.model.Partition;
 import decomposition.partitions.FilteredPartition;
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
@@ -41,9 +39,6 @@ public final class DecompositionPipelineState {
     public final CacheStats cacheStats;
     public final PartitionDiagnostics partitionDiagnostics;
     public final Map<ComponentCacheKey, CachedComponentExpressions> componentCache;
-    public final List<Partition> cpqPartitions = new ArrayList<>();
-    public final List<PartitionEvaluation> partitionEvaluations = new ArrayList<>();
-    public final List<CPQExpression> recognizedCatalogue = new ArrayList<>();
     public final boolean wantTuples;
     public final int tupleLimit;
 

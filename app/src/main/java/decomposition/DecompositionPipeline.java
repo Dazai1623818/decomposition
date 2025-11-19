@@ -1,10 +1,6 @@
 package decomposition;
 
-import java.util.BitSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-
+import decomposition.cpq.CPQExpression;
 import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
@@ -23,12 +19,18 @@ import decomposition.pipeline.DefaultPartitionPruner;
 import decomposition.pipeline.DefaultPartitioner;
 import decomposition.pipeline.DefaultTupleEnumerator;
 import decomposition.pipeline.PartitionPruner;
+import decomposition.pipeline.PartitionSynthesisResult;
 import decomposition.pipeline.Partitioner;
 import decomposition.pipeline.TupleEnumerator;
 import decomposition.util.DecompositionPipelineUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline implements DecompositionPipelineCacheProvider {
@@ -63,6 +65,9 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
     pipelineCache.reset();
     final Timing timing = Timing.start();
     final DecompositionOptions opts = DecompositionPipelineUtils.resolveOptions(options);
+    List<Partition> cpqPartitions = new ArrayList<>();
+    List<CPQExpression> recognizedCatalogue = new ArrayList<>();
+    List<PartitionEvaluation> partitionEvaluations = new ArrayList<>();
 
     PipelineContext ctx = extractContext(cq, explicitFreeVariables);
     List<Partition> partitions = partitioner.enumerate(ctx, opts);
@@ -74,7 +79,16 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
 
     SynthesisState state = cpqSynthesizer.createState(ctx, opts);
 
-    DecompositionResult validationExit = processFilteredPartitions(ctx, parts, state, opts, timing);
+    DecompositionResult validationExit =
+        processFilteredPartitions(
+            ctx,
+            parts,
+            state,
+            opts,
+            timing,
+            cpqPartitions,
+            recognizedCatalogue,
+            partitionEvaluations);
     if (validationExit != null) {
       pipelineCache.update(state.cacheStats);
       return validationExit;
@@ -83,7 +97,15 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
     GlobalResult globalResult = cpqSynthesizer.computeGlobalResult(ctx, opts, state);
 
     pipelineCache.update(state.cacheStats);
-    return buildFinalResult(ctx, parts, state, opts, timing, globalResult);
+    return buildFinalResult(
+        ctx,
+        parts,
+        cpqPartitions,
+        recognizedCatalogue,
+        partitionEvaluations,
+        opts,
+        timing,
+        globalResult);
   }
 
   private PipelineContext extractContext(CQ cq, Set<String> explicitFreeVariables) {
@@ -102,7 +124,10 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
       PartitionSets parts,
       SynthesisState state,
       DecompositionOptions opts,
-      Timing timing) {
+      Timing timing,
+      List<Partition> cpqPartitions,
+      List<CPQExpression> recognizedCatalogue,
+      List<PartitionEvaluation> partitionEvaluations) {
 
     List<FilteredPartition> filteredWithJoins = parts.filteredWithJoins();
     List<PartitionDiagnostic> diagnostics = parts.diagnostics();
@@ -110,11 +135,21 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
 
     for (FilteredPartition fp : filteredWithJoins) {
       if (cpqSynthesizer.overBudget(opts, timing)) {
-        return buildBudgetExceededDuringValidation(ctx, parts, state, timing);
+        return buildBudgetExceededDuringValidation(
+            ctx, parts, cpqPartitions, recognizedCatalogue, partitionEvaluations, timing);
       }
 
       idx++;
-      cpqSynthesizer.processPartition(fp, ctx, opts, state, tupleEnumerator, diagnostics, idx);
+      PartitionSynthesisResult result =
+          cpqSynthesizer.processPartition(fp, ctx, opts, state, tupleEnumerator, diagnostics, idx);
+
+      if (result != null) {
+        cpqPartitions.addAll(result.validPartitions());
+        recognizedCatalogue.addAll(result.catalogue());
+        if (result.evaluation() != null) {
+          partitionEvaluations.add(result.evaluation());
+        }
+      }
     }
 
     return null;
@@ -123,7 +158,9 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
   private DecompositionResult buildFinalResult(
       PipelineContext ctx,
       PartitionSets parts,
-      SynthesisState state,
+      List<Partition> cpqPartitions,
+      List<CPQExpression> recognizedCatalogue,
+      List<PartitionEvaluation> partitionEvaluations,
       DecompositionOptions opts,
       Timing timing,
       GlobalResult globalResult) {
@@ -135,11 +172,11 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
         ctx.vertices(),
         parts.partitions(),
         parts.filtered(),
-        state.cpqPartitions,
-        cpqSynthesizer.dedupeCatalogue(state.recognizedCatalogue),
+        cpqPartitions,
+        cpqSynthesizer.dedupeCatalogue(recognizedCatalogue),
         globalResult.finalExpression(),
         globalResult.globalCatalogue(),
-        state.partitionEvaluations,
+        partitionEvaluations,
         parts.diagnostics(),
         elapsed,
         termination);
@@ -163,17 +200,22 @@ public final class DecompositionPipeline implements DecompositionPipelineCachePr
   }
 
   private DecompositionResult buildBudgetExceededDuringValidation(
-      PipelineContext ctx, PartitionSets parts, SynthesisState state, Timing timing) {
+      PipelineContext ctx,
+      PartitionSets parts,
+      List<Partition> cpqPartitions,
+      List<CPQExpression> recognizedCatalogue,
+      List<PartitionEvaluation> partitionEvaluations,
+      Timing timing) {
     return DecompositionPipelineUtils.buildResult(
         ctx.extraction(),
         ctx.vertices(),
         parts.partitions(),
         parts.filtered(),
-        state.cpqPartitions,
-        cpqSynthesizer.dedupeCatalogue(state.recognizedCatalogue),
+        cpqPartitions,
+        cpqSynthesizer.dedupeCatalogue(recognizedCatalogue),
         null,
         List.of(),
-        state.partitionEvaluations,
+        partitionEvaluations,
         parts.diagnostics(),
         timing.elapsedMillis(),
         "time_budget_exceeded_during_validation");

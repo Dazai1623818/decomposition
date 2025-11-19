@@ -168,6 +168,14 @@ final class CPQEnumeratorBacktrackTest {
         return i;
       }
     }
+    if (label.startsWith("r")) {
+      String numeric = label.substring(1);
+      for (int i = 0; i < edges.size(); i++) {
+        if (numeric.equals(edges.get(i).label())) {
+          return i;
+        }
+      }
+    }
     throw new IllegalArgumentException("Edge with label '" + label + "' not found");
   }
 

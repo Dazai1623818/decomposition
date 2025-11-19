@@ -1,13 +1,12 @@
 package decomposition;
 
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
+import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
-
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.type.schema.Predicate;
 
 public class Example {
 

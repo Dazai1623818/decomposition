@@ -14,7 +14,7 @@ import java.util.List;
 public interface CpqSynthesizer {
   SynthesisState createState(PipelineContext context, DecompositionOptions options);
 
-  void processPartition(
+  PartitionSynthesisResult processPartition(
       FilteredPartition partition,
       PipelineContext context,
       DecompositionOptions options,

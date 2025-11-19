@@ -57,7 +57,8 @@ public final class DecompositionComparisonPipeline {
     JoinedDecompositionExecutor executor = new JoinedDecompositionExecutor(joiner);
     for (PartitionDecompositionLoader.NamedDecomposition task : decompositions) {
       List<Map<String, Integer>> joinedResults = executor.execute(task.decomposition());
-      System.out.println("Decomposition '" + task.name() + "' result count: " + joinedResults.size());
+      System.out.println(
+          "Decomposition '" + task.name() + "' result count: " + joinedResults.size());
       DecompositionComparisonReporter.report(task.name(), baseline, joinedResults);
     }
   }
@@ -124,7 +125,8 @@ public final class DecompositionComparisonPipeline {
       boolean directory = Files.isDirectory(input);
       for (PartitionDecompositionLoader.NamedDecomposition named : loaded) {
         String label = directory ? input + "/" + named.name() : input.toString();
-        tasks.add(new PartitionDecompositionLoader.NamedDecomposition(label, named.decomposition()));
+        tasks.add(
+            new PartitionDecompositionLoader.NamedDecomposition(label, named.decomposition()));
       }
     }
     return tasks;
@@ -153,7 +155,9 @@ public final class DecompositionComparisonPipeline {
       for (Component component : partition.components()) {
         List<AtomCQ> componentAtoms = new ArrayList<>();
         BitSet bits = component.edgeBits();
-        for (int edgeIndex = bits.nextSetBit(0); edgeIndex >= 0; edgeIndex = bits.nextSetBit(edgeIndex + 1)) {
+        for (int edgeIndex = bits.nextSetBit(0);
+            edgeIndex >= 0;
+            edgeIndex = bits.nextSetBit(edgeIndex + 1)) {
           componentAtoms.add(resolve(edgeIndex, usage));
         }
         atomsPerComponent.add(componentAtoms);
