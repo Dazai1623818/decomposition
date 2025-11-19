@@ -1,5 +1,10 @@
 package decomposition;
 
+import java.util.BitSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
 import decomposition.diagnostics.PartitionDiagnostic;
 import decomposition.extract.CQExtractor;
 import decomposition.extract.CQExtractor.ExtractionResult;
@@ -24,10 +29,6 @@ import decomposition.util.DecompositionPipelineUtils;
 import decomposition.util.GraphUtils;
 import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
-import java.util.BitSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
 /** Orchestrates the CQ to CPQ decomposition pipeline (flat + early-return style). */
 public final class DecompositionPipeline implements DecompositionPipelineCacheProvider {

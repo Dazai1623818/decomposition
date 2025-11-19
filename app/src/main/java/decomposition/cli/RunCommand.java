@@ -7,6 +7,7 @@ import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
 import decomposition.cpq.CPQExpression;
+import decomposition.eval.DecompositionComparisonPipeline;
 import decomposition.model.Component;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
@@ -58,6 +59,14 @@ final class RunCommand {
 
     if (cliOptions.showVisualization()) {
       showComponents(result);
+    }
+
+    if (cliOptions.compareWithIndex()) {
+      new DecompositionComparisonPipeline(
+              cliOptions.compareGraphPath(),
+              cliOptions.compareNativeLib(),
+              cliOptions.compareDecompositions())
+          .evaluate(query, result);
     }
 
     if (result.terminationReason() != null) {
@@ -124,6 +133,10 @@ final class RunCommand {
     String randomEdgesRaw = null;
     String randomLabelsRaw = null;
     String randomSeedRaw = null;
+    String compareGraphRaw = null;
+    String compareNativeRaw = null;
+    List<String> compareDecompositionRaw = new ArrayList<>();
+    boolean compareIndex = false;
 
     for (int i = 1; i < args.length; i++) {
       String rawArg = args[i];
@@ -168,6 +181,18 @@ final class RunCommand {
             outputPath =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--show" -> show = true;
+        case "--compare-index" -> compareIndex = true;
+        case "--compare-graph" ->
+            compareGraphRaw =
+                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+        case "--compare-native-lib" ->
+            compareNativeRaw =
+                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+        case "--compare-decomposition" -> {
+          String value =
+              inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+          compareDecompositionRaw.add(value);
+        }
         case "--random-free-vars" ->
             randomFreeRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -248,6 +273,12 @@ final class RunCommand {
       randomExampleConfig = new RandomExampleConfig(freeVariables, edges, labels, seed);
     }
 
+    List<Path> compareDecompositions = new ArrayList<>();
+    for (String raw : compareDecompositionRaw) {
+      compareDecompositions.add(Path.of(raw));
+    }
+    Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
+    Path compareNativeLibPath = compareNativeRaw != null ? Path.of(compareNativeRaw) : null;
     return new CliOptions(
         queryText,
         cpqText,
@@ -261,7 +292,11 @@ final class RunCommand {
         singleTuplePerPartition,
         show,
         outputPath,
-        randomExampleConfig);
+        randomExampleConfig,
+        compareIndex,
+        compareGraphPath,
+        compareNativeLibPath,
+        compareDecompositions);
   }
 
   private CQ loadQuery(CliOptions options) throws IOException {

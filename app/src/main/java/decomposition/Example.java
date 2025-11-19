@@ -1,12 +1,13 @@
 package decomposition;
 
-import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+
+import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
+import dev.roanh.gmark.type.schema.Predicate;
 
 public class Example {
 
@@ -17,11 +18,11 @@ public class Example {
     VarCQ c = cq.addBoundVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(b, new Predicate(2, "r2"), c);
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), a);
-    cq.addAtom(a, new Predicate(5, "r5"), c);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(b, label(2), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), a);
+    cq.addAtom(a, label(5), c);
 
     return cq;
   }
@@ -33,11 +34,11 @@ public class Example {
     VarCQ c = cq.addBoundVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(b, new Predicate(2, "r2"), c);
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), a);
-    cq.addAtom(a, new Predicate(5, "r5"), c);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(b, label(2), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), a);
+    cq.addAtom(a, label(5), c);
 
     return cq;
   }
@@ -49,12 +50,12 @@ public class Example {
     VarCQ c = cq.addBoundVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(b, new Predicate(2, "r2"), c);
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), a);
-    cq.addAtom(a, new Predicate(5, "r5"), c);
-    cq.addAtom(a, new Predicate(6, "r1"), a);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(b, label(2), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), a);
+    cq.addAtom(a, label(5), c);
+    cq.addAtom(a, label(6), a);
 
     return cq;
   }
@@ -66,13 +67,13 @@ public class Example {
     VarCQ c = cq.addBoundVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(b, new Predicate(2, "r2"), c);
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), a);
-    cq.addAtom(a, new Predicate(5, "r5"), c);
-    cq.addAtom(a, new Predicate(6, "r1"), a);
-    cq.addAtom(b, new Predicate(7, "r1"), d);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(b, label(2), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), a);
+    cq.addAtom(a, label(5), c);
+    cq.addAtom(a, label(6), a);
+    cq.addAtom(b, label(7), d);
 
     return cq;
   }
@@ -85,10 +86,10 @@ public class Example {
     VarCQ e = cq.addBoundVariable("E");
     VarCQ f = cq.addBoundVariable("F");
 
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), e);
-    cq.addAtom(d, new Predicate(5, "r5"), f);
-    cq.addAtom(e, new Predicate(6, "r6"), f);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), e);
+    cq.addAtom(d, label(5), f);
+    cq.addAtom(e, label(6), f);
 
     return cq;
   }
@@ -103,12 +104,12 @@ public class Example {
     VarCQ e = cq.addBoundVariable("E");
     VarCQ f = cq.addBoundVariable("F");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(b, new Predicate(1, "r1"), a);
-    cq.addAtom(b, new Predicate(2, "r2"), c);
-    cq.addAtom(c, new Predicate(3, "r3"), d);
-    cq.addAtom(d, new Predicate(4, "r4"), e);
-    cq.addAtom(d, new Predicate(5, "r5"), f);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(b, label(1), a);
+    cq.addAtom(b, label(2), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), e);
+    cq.addAtom(d, label(5), f);
 
     return cq;
   }
@@ -120,13 +121,13 @@ public class Example {
     VarCQ b = cq.addBoundVariable("B");
     VarCQ c = cq.addBoundVariable("C");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(a, new Predicate(2, "r2"), b); // Multiple edge A->B
-    cq.addAtom(b, new Predicate(3, "r3"), c);
-    cq.addAtom(b, new Predicate(4, "r4"), c); // Multiple edge B->C
-    cq.addAtom(c, new Predicate(5, "r5"), a);
-    cq.addAtom(c, new Predicate(6, "r6"), a); // Multiple edge C->A
-    cq.addAtom(c, new Predicate(7, "r6"), c); // Multiple edge C->A
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(a, label(2), b); // Multiple edge A->B
+    cq.addAtom(b, label(3), c);
+    cq.addAtom(b, label(4), c); // Multiple edge B->C
+    cq.addAtom(c, label(5), a);
+    cq.addAtom(c, label(6), a); // Multiple edge C->A
+    cq.addAtom(c, label(7), c); // Multiple edge C->A
 
     return cq;
   }
@@ -140,16 +141,20 @@ public class Example {
     VarCQ d = cq.addBoundVariable("D");
     VarCQ e = cq.addBoundVariable("E");
 
-    cq.addAtom(a, new Predicate(1, "r1"), b);
-    cq.addAtom(a, new Predicate(2, "r2"), b); // Multiple edge A->B
-    cq.addAtom(b, new Predicate(3, "r3"), c);
-    cq.addAtom(c, new Predicate(4, "r4"), d);
-    cq.addAtom(d, new Predicate(5, "r5"), e);
-    cq.addAtom(e, new Predicate(6, "r6"), a);
-    cq.addAtom(e, new Predicate(7, "r7"), a); // Multiple edge E->A
-    cq.addAtom(c, new Predicate(8, "r8"), a);
+    cq.addAtom(a, label(1), b);
+    cq.addAtom(a, label(2), b); // Multiple edge A->B
+    cq.addAtom(b, label(3), c);
+    cq.addAtom(c, label(4), d);
+    cq.addAtom(d, label(5), e);
+    cq.addAtom(e, label(6), a);
+    cq.addAtom(e, label(7), a); // Multiple edge E->A
+    cq.addAtom(c, label(8), a);
 
     return cq;
+  }
+
+  private static Predicate label(int id) {
+    return new Predicate(id, String.valueOf(id));
   }
 
   public static CQ random(RandomExampleConfig config) {
@@ -235,7 +240,7 @@ public class Example {
       target = a;
     }
     int predicateId = rng.nextInt(config.predicateLabelCount()) + 1;
-    cq.addAtom(source, new Predicate(predicateId, "r" + predicateId), target);
+    cq.addAtom(source, label(predicateId), target);
   }
 
   private static VarCQ removeRandom(List<VarCQ> variables, Random rng) {

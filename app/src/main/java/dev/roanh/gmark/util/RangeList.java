@@ -1,6 +1,6 @@
 package dev.roanh.gmark.util;
 
-import dev.roanh.gmark.type.IDable;
+import dev.roanh.gmark.util.IDable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;

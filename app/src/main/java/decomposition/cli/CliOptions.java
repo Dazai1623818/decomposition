@@ -2,6 +2,8 @@ package decomposition.cli;
 
 import decomposition.DecompositionOptions.Mode;
 import decomposition.RandomExampleConfig;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -18,7 +20,11 @@ record CliOptions(
     boolean singleTuplePerPartition,
     boolean showVisualization,
     String outputPath,
-    RandomExampleConfig randomExampleConfig) {
+    RandomExampleConfig randomExampleConfig,
+    boolean compareWithIndex,
+    Path compareGraphPath,
+    Path compareNativeLib,
+    List<Path> compareDecompositions) {
 
   CliOptions {
     freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);
@@ -26,6 +32,10 @@ record CliOptions(
     if (enumerationLimit < 0) {
       throw new IllegalArgumentException("enumerationLimit must be non-negative");
     }
+    compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
+    compareNativeLib = compareNativeLib == null ? Path.of("lib/libnauty.so") : compareNativeLib;
+    compareDecompositions =
+        compareDecompositions == null ? List.of() : List.copyOf(compareDecompositions);
   }
 
   boolean hasQueryText() {
