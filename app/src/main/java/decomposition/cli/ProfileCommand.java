@@ -167,7 +167,7 @@ final class ProfileCommand {
     }
 
     DecompositionOptions options =
-        new DecompositionOptions(mode, maxPartitions, timeBudget, limit, singleTuple);
+        new DecompositionOptions(mode, maxPartitions, timeBudget, limit, singleTuple, false);
     return new ProfileOptions(queries, options);
   }
 

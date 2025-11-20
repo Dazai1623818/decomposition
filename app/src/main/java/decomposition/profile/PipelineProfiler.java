@@ -1,10 +1,11 @@
 package decomposition.profile;
 
 import decomposition.DecompositionOptions;
-import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.RandomExampleConfig;
+import decomposition.builder.CpqBuilder;
+import decomposition.builder.CpqBuilderResult;
 import decomposition.cpq.model.CacheStats;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
@@ -73,9 +74,9 @@ public final class PipelineProfiler {
 
     List<ProfileRun> runs = new ArrayList<>(queries.size());
     for (NamedQuery query : queries) {
-      DecompositionPipeline pipeline = new DecompositionPipeline();
-      DecompositionResult result =
-          pipeline.execute(query.query(), query.freeVariables(), effective);
+      CpqBuilderResult builderResult =
+          CpqBuilder.defaultBuilder().build(query.query(), query.freeVariables(), effective);
+      DecompositionResult result = builderResult.result();
       runs.add(
           new ProfileRun(
               query.name(),
@@ -84,7 +85,7 @@ public final class PipelineProfiler {
               result.filteredPartitions(),
               result.cpqPartitions().size(),
               result.recognizedCatalogue().size(),
-              pipeline.lastCacheSnapshot(),
+              builderResult.cacheStats(),
               result.terminationReason()));
     }
     return new PipelineProfile(runs);

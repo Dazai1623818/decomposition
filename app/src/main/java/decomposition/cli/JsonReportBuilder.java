@@ -180,6 +180,10 @@ final class JsonReportBuilder {
       case COMPONENT_DIAGNOSTICS_UNAVAILABLE ->
           partitionLabel(diagnostic.partitionIndex())
               + " rejected but component diagnostics were unavailable.";
+      case VERIFICATION_FAILED ->
+          partitionLabel(diagnostic.partitionIndex())
+              + " verification failed: "
+              + diagnostic.attributes().getOrDefault("message", "verification failure");
     };
   }
 

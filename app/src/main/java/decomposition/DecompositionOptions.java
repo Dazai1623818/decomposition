@@ -6,10 +6,11 @@ public record DecompositionOptions(
     int maxPartitions,
     long timeBudgetMs,
     int enumerationLimit,
-    boolean singleTuplePerPartition) {
+    boolean singleTuplePerPartition,
+    boolean deepVerification) {
 
   public static DecompositionOptions defaults() {
-    return new DecompositionOptions(Mode.VALIDATE, 10_000, 0, 100, false);
+    return new DecompositionOptions(Mode.VALIDATE, 10_000, 0, 100, false, false);
   }
 
   public enum Mode {

@@ -64,4 +64,12 @@ public record PartitionDiagnostic(
         PartitionDiagnosticReason.COMPONENT_DIAGNOSTICS_UNAVAILABLE,
         Map.of());
   }
+
+  public static PartitionDiagnostic verificationFailed(Integer partitionIndex, String message) {
+    return new PartitionDiagnostic(
+        partitionIndex,
+        null,
+        PartitionDiagnosticReason.VERIFICATION_FAILED,
+        (message == null || message.isEmpty()) ? Map.of() : Map.of("message", message));
+  }
 }

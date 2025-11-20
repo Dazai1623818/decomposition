@@ -2,10 +2,11 @@ package decomposition.cli;
 
 import decomposition.DecompositionOptions;
 import decomposition.DecompositionOptions.Mode;
-import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.PartitionEvaluation;
 import decomposition.RandomExampleConfig;
+import decomposition.builder.CpqBuilder;
+import decomposition.builder.CpqBuilderResult;
 import decomposition.cpq.CPQExpression;
 import decomposition.eval.DecompositionComparisonPipeline;
 import decomposition.model.Component;
@@ -37,13 +38,14 @@ final class RunCommand {
             cliOptions.maxPartitions(),
             cliOptions.timeBudgetMs(),
             cliOptions.enumerationLimit(),
-            cliOptions.singleTuplePerPartition());
+            cliOptions.singleTuplePerPartition(),
+            false);
 
     CQ query = loadQuery(cliOptions);
 
-    DecompositionPipeline pipeline = new DecompositionPipeline();
-    DecompositionResult result =
-        pipeline.execute(query, cliOptions.freeVariables(), pipelineOptions);
+    CpqBuilderResult builderResult =
+        CpqBuilder.defaultBuilder().build(query, cliOptions.freeVariables(), pipelineOptions);
+    DecompositionResult result = builderResult.result();
 
     logSummary(result, cliOptions);
     exportForVisualization(result);

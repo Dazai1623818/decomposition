@@ -3,10 +3,11 @@ package decomposition.cpq;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import decomposition.DecompositionOptions;
-import decomposition.DecompositionPipeline;
 import decomposition.DecompositionResult;
 import decomposition.Example;
 import decomposition.PartitionEvaluation;
+import decomposition.builder.CpqBuilder;
+import decomposition.builder.CpqBuilderResult;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
@@ -27,10 +28,11 @@ final class CPQTupleEnumerationExampleTest {
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
             defaults.enumerationLimit(),
-            singleTupleOnly);
+            singleTupleOnly,
+            false);
 
-    DecompositionPipeline pipeline = new DecompositionPipeline();
-    DecompositionResult result = pipeline.execute(cq, Set.of("A"), options);
+    CpqBuilderResult builderResult = CpqBuilder.defaultBuilder().build(cq, Set.of("A"), options);
+    DecompositionResult result = builderResult.result();
 
     PartitionEvaluation evaluation =
         result.partitionEvaluations().stream()
