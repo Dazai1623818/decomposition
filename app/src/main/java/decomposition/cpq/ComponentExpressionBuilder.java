@@ -1,10 +1,10 @@
 package decomposition.cpq;
 
 import decomposition.core.model.Edge;
+import decomposition.cpq.model.CacheStats.ComponentKey;
 import decomposition.cpq.model.CacheStats.RuleCacheKey;
 import decomposition.util.BitsetUtils;
 import decomposition.util.JoinNodeUtils;
-import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
@@ -120,17 +120,15 @@ public final class ComponentExpressionBuilder {
     if (expressions == null || expressions.isEmpty()) {
       return List.of();
     }
-    Map<ExpressionKey, CPQExpression> unique = new LinkedHashMap<>();
+    Map<ComponentKey, CPQExpression> unique = new LinkedHashMap<>();
     for (CPQExpression expression : expressions) {
       unique.putIfAbsent(keyOf(expression), expression);
     }
     return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
   }
 
-  private static ExpressionKey keyOf(CPQExpression expression) {
+  private static ComponentKey keyOf(CPQExpression expression) {
     Objects.requireNonNull(expression, "expression");
-    return new ExpressionKey(expression.cpq(), expression.source(), expression.target());
+    return new ComponentKey(expression.edges(), expression.source(), expression.target());
   }
-
-  private record ExpressionKey(CPQ cpq, String source, String target) {}
 }

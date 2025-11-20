@@ -20,6 +20,8 @@ import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -177,7 +179,9 @@ public final class CpqBuilderContext {
   public void applyExtraction(ExtractionResult extraction) {
     this.extraction = Objects.requireNonNull(extraction, "extraction");
     this.edges = List.copyOf(extraction.edges());
-    this.varToNodeMap = Map.copyOf(extraction.variableNodeMap());
+    this.varToNodeMap =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(Objects.requireNonNull(extraction.variableNodeMap())));
     this.edgeCount = edges.size();
     this.fullBits = new BitSet(edgeCount);
     this.fullBits.set(0, edgeCount);
