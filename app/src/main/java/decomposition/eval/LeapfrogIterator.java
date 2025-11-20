@@ -60,22 +60,27 @@ final class LeapfrogIterator {
   }
 
   private void leapfrogSearch() {
-    while (true) {
+    int count = 0;
+    while (count < cursors.size()) {
       IntCursor current = cursors.get(focus);
       IntCursor previous = cursors.get((focus + cursors.size() - 1) % cursors.size());
       int currentValue = current.key();
       int previousValue = previous.key();
+
       if (currentValue == previousValue) {
-        currentKey = currentValue;
-        return;
+        count++;
+        focus = (focus + 1) % cursors.size();
+      } else {
+        current.seek(previousValue);
+        if (current.atEnd()) {
+          atEnd = true;
+          return;
+        }
+        count = 1;
+        focus = (focus + 1) % cursors.size();
       }
-      current.seek(previousValue);
-      if (current.atEnd()) {
-        atEnd = true;
-        return;
-      }
-      focus = (focus + 1) % cursors.size();
     }
+    currentKey = cursors.get(0).key();
   }
 
   static final class IntCursor {

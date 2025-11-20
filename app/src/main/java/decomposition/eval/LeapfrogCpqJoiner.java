@@ -1,6 +1,7 @@
 package decomposition.eval;
 
 import decomposition.eval.CpqIndex.RelationProjection;
+import decomposition.nativeindex.CpqNativeIndex;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -23,7 +24,7 @@ public final class LeapfrogCpqJoiner {
     this.index = Objects.requireNonNull(index, "index");
   }
 
-  public static LeapfrogCpqJoiner fromIndex(dev.roanh.cpqindex.Index cpqIndex) {
+  public static LeapfrogCpqJoiner fromIndex(CpqNativeIndex cpqIndex) {
     return new LeapfrogCpqJoiner(CpqIndex.from(cpqIndex));
   }
 

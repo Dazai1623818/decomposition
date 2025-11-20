@@ -1,9 +1,10 @@
 package decomposition.eval;
 
-import dev.roanh.cpqindex.Index;
-import dev.roanh.cpqindex.ProgressListener;
+import decomposition.nativeindex.CpqNativeIndex;
+import decomposition.nativeindex.ProgressListener;
 import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.util.UniqueGraph;
+import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,19 +20,18 @@ public final class QueryEvaluationRunner {
   public void run(EvaluateOptions options) throws IOException {
     System.load(options.nativeLibrary().toAbsolutePath().toString());
 
-    Index index;
+    CpqNativeIndex index;
     try {
-      UniqueGraph<Integer, dev.roanh.gmark.core.graph.Predicate> graph =
-          GraphLoader.load(options.graphPath());
+      UniqueGraph<Integer, Predicate> graph = GraphLoader.load(options.graphPath());
       index =
-          new Index(
+          new CpqNativeIndex(
               graph,
               options.k(),
               false,
               true,
               Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
               -1,
-              ProgressListener.NONE);
+              ProgressListener.none());
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IOException("Index construction interrupted", ex);

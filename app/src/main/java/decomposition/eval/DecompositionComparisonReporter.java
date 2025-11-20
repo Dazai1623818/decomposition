@@ -20,6 +20,14 @@ final class DecompositionComparisonReporter {
     }
     System.out.println(
         "Joined decomposition '" + label + "' does NOT match single-edge evaluation.");
+    if (!decompositionSet.isEmpty()) {
+      System.out.println("Sample joined assignments:");
+      decompositionSet.stream()
+          .limit(5)
+          .forEach(assignment -> System.out.println("  " + formatAssignment(assignment)));
+    } else {
+      System.out.println("Joined assignments empty.");
+    }
     printDifference("Missing assignments (baseline only):", baselineSet, decompositionSet);
     printDifference("Extra assignments (decomposition only):", decompositionSet, baselineSet);
   }

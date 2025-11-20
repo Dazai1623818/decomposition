@@ -1,7 +1,7 @@
 package decomposition.eval;
 
-import dev.roanh.gmark.core.graph.Predicate;
-import dev.roanh.gmark.util.UniqueGraph;
+import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,11 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Lightweight replacement for the legacy {@code dev.roanh.cpqindex.IndexUtil} loader. The original
- * implementation relies on historical gMark classes that are no longer published; this class
- * recreates the behaviour using the compatibility types implemented within this project.
- */
+/** Lightweight replacement for the legacy {@code dev.roanh.cpqindex.IndexUtil} loader. */
 final class GraphLoader {
   private GraphLoader() {}
 
@@ -36,7 +32,7 @@ final class GraphLoader {
       }
       List<Predicate> labels = generateLabels(labelCount);
 
-      UniqueGraph<Integer, Predicate>.GraphNode current = null;
+      UniqueGraph.GraphNode<Integer, Predicate> current = null;
       String line;
       while ((line = reader.readLine()) != null) {
         String trimmed = line.trim();

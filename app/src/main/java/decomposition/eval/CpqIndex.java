@@ -1,9 +1,10 @@
 package decomposition.eval;
 
-import dev.roanh.cpqindex.Index;
-import dev.roanh.cpqindex.LabelSequence;
-import dev.roanh.cpqindex.Pair;
-import dev.roanh.gmark.core.graph.Predicate;
+import decomposition.nativeindex.CpqNativeIndex;
+import decomposition.nativeindex.CpqNativeIndex.Block;
+import decomposition.nativeindex.CpqNativeIndex.LabelSequence;
+import decomposition.nativeindex.CpqNativeIndex.Pair;
+import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,18 +25,18 @@ import java.util.Set;
 final class CpqIndex {
   private static final int[] EMPTY_INT_ARRAY = new int[0];
 
-  private final Index index;
+  private final CpqNativeIndex index;
   private final Map<List<String>, RelationProjection> cache = new HashMap<>();
-  private final Map<List<String>, List<Index.Block>> blocksPerSignature = new HashMap<>();
+  private final Map<List<String>, List<Block>> blocksPerSignature = new HashMap<>();
   private final Set<String> canonicalSingleEdgeLabels = new HashSet<>();
   private final int maxSignatureLength;
 
-  private CpqIndex(Index index) {
+  private CpqIndex(CpqNativeIndex index) {
     this.index = Objects.requireNonNull(index, "index");
     this.maxSignatureLength = initialiseSignatures();
   }
 
-  static CpqIndex from(Index index) {
+  static CpqIndex from(CpqNativeIndex index) {
     return new CpqIndex(index);
   }
 
@@ -73,7 +74,7 @@ final class CpqIndex {
       throw new IllegalArgumentException("Path signature must contain at least one label.");
     }
     List<String> canonical = List.copyOf(signature);
-    List<Index.Block> blocks = blocksPerSignature.get(canonical);
+    List<Block> blocks = blocksPerSignature.get(canonical);
     if (blocks == null || blocks.isEmpty()) {
       throw new IllegalArgumentException(
           "Unknown path signature "
@@ -86,7 +87,7 @@ final class CpqIndex {
 
   private int initialiseSignatures() {
     int maxLength = 0;
-    for (Index.Block block : index.getBlocks()) {
+    for (Block block : index.getBlocks()) {
       List<LabelSequence> sequences = block.getLabels();
       if (sequences == null || sequences.isEmpty()) {
         continue;
@@ -115,7 +116,7 @@ final class CpqIndex {
     return List.copyOf(labels);
   }
 
-  private static RelationProjection materialise(List<Index.Block> blocks) {
+  private static RelationProjection materialise(List<Block> blocks) {
     if (blocks.isEmpty()) {
       return new RelationProjection(
           EMPTY_INT_ARRAY, EMPTY_INT_ARRAY, Collections.emptyMap(), Collections.emptyMap());
@@ -124,7 +125,7 @@ final class CpqIndex {
     Map<Integer, IntAccumulator> forward = new HashMap<>();
     Map<Integer, IntAccumulator> reverse = new HashMap<>();
 
-    for (Index.Block block : blocks) {
+    for (Block block : blocks) {
       List<Pair> paths = block.getPaths();
       if (paths == null || paths.isEmpty()) {
         continue;

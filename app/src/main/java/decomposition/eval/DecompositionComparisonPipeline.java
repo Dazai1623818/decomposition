@@ -2,9 +2,11 @@ package decomposition.eval;
 
 import decomposition.DecompositionResult;
 import decomposition.model.Partition;
-import dev.roanh.gmark.core.graph.Predicate;
+import decomposition.nativeindex.CpqNativeIndex;
+import decomposition.nativeindex.ProgressListener;
 import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.util.UniqueGraph;
+import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,13 +33,17 @@ public final class DecompositionComparisonPipeline {
     Objects.requireNonNull(result, "result");
 
     System.load(nativeLibrary.toAbsolutePath().toString());
-    dev.roanh.cpqindex.Index index = buildIndex(graphPath);
+    CpqNativeIndex index = buildIndex(graphPath);
     LeapfrogCpqJoiner joiner = LeapfrogCpqJoiner.fromIndex(index);
 
     System.out.println("Loaded single-edge labels: " + joiner.singleEdgeLabels());
     System.out.println("Executing query: " + query.toFormalSyntax());
     List<Map<String, Integer>> baseline = joiner.executeBaseline(query);
     System.out.println("Single-edge result count: " + baseline.size());
+    for (int i = 0; i < Math.min(10, baseline.size()); i++) {
+      System.out.println(
+          "  [baseline] " + DecompositionComparisonReporter.formatAssignment(baseline.get(i)));
+    }
 
     JoinedDecompositionExecutor executor = new JoinedDecompositionExecutor(joiner);
     boolean executed = false;
@@ -46,10 +52,9 @@ public final class DecompositionComparisonPipeline {
     for (int i = 0; i < partitions.size(); i++) {
       Partition partition = partitions.get(i);
       String label = "pipeline-partition-" + (i + 1);
-      List<Map<String, Integer>> joinedResults =
-          executor.execute(partition, query, result.edges());
-      System.out.println(
-          "Decomposition '" + label + "' result count: " + joinedResults.size());
+      executor.setDebugLabel(label);
+      List<Map<String, Integer>> joinedResults = executor.execute(partition, query, result.edges());
+      System.out.println("Decomposition '" + label + "' result count: " + joinedResults.size());
       DecompositionComparisonReporter.report(label, baseline, joinedResults);
       executed = true;
     }
@@ -69,18 +74,18 @@ public final class DecompositionComparisonPipeline {
     }
   }
 
-  private dev.roanh.cpqindex.Index buildIndex(Path graphPath) throws IOException {
+  private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
     try {
       UniqueGraph<Integer, Predicate> graph = GraphLoader.load(graphPath);
-      dev.roanh.cpqindex.Index index =
-          new dev.roanh.cpqindex.Index(
+      CpqNativeIndex index =
+          new CpqNativeIndex(
               graph,
               1,
               false,
               true,
               Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
               -1,
-              dev.roanh.cpqindex.ProgressListener.NONE);
+              ProgressListener.none());
       index.sort();
       return index;
     } catch (InterruptedException ex) {
@@ -111,5 +116,4 @@ public final class DecompositionComparisonPipeline {
     }
     return tasks;
   }
-
 }
