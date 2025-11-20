@@ -1,6 +1,6 @@
 package decomposition.cpq;
 
-import decomposition.model.Edge;
+import decomposition.core.model.Edge;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;

@@ -1,7 +1,7 @@
 package decomposition.util;
 
-import decomposition.model.Component;
-import decomposition.model.Edge;
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
 import java.util.ArrayDeque;
 import java.util.BitSet;
 import java.util.Deque;

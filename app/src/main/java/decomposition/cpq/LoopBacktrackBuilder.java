@@ -1,6 +1,6 @@
 package decomposition.cpq;
 
-import decomposition.model.Edge;
+import decomposition.core.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;

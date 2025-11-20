@@ -2,6 +2,7 @@ package decomposition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import decomposition.examples.Example;
 import dev.roanh.gmark.lang.cq.CQ;
 import org.junit.jupiter.api.Test;
 

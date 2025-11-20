@@ -1,12 +1,12 @@
 package decomposition.util;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionResult;
-import decomposition.PartitionEvaluation;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
+import decomposition.core.diagnostics.PartitionDiagnostic;
+import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
-import decomposition.diagnostics.PartitionDiagnostic;
-import decomposition.extract.CQExtractor.ExtractionResult;
-import decomposition.model.Partition;
+import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

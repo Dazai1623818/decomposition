@@ -1,7 +1,7 @@
 package decomposition.util;
 
-import decomposition.model.Component;
-import decomposition.model.Partition;
+import decomposition.core.model.Component;
+import decomposition.core.model.Partition;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;

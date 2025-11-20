@@ -1,7 +1,7 @@
 package decomposition.cli;
 
-import decomposition.DecompositionOptions.Mode;
-import decomposition.RandomExampleConfig;
+import decomposition.core.DecompositionOptions.Mode;
+import decomposition.examples.RandomExampleConfig;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;

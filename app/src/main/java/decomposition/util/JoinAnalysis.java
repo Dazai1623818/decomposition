@@ -1,6 +1,6 @@
 package decomposition.util;
 
-import decomposition.model.Component;
+import decomposition.core.model.Component;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;

@@ -1,7 +1,7 @@
 package decomposition.cli;
 
-import decomposition.Example;
-import decomposition.RandomExampleConfig;
+import decomposition.examples.Example;
+import decomposition.examples.RandomExampleConfig;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.nio.file.Files;

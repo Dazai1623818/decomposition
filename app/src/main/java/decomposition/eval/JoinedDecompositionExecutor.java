@@ -1,6 +1,6 @@
 package decomposition.eval;
 
-import decomposition.model.*;
+import decomposition.core.model.*;
 import dev.roanh.gmark.lang.cq.*;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.util.ArrayList;

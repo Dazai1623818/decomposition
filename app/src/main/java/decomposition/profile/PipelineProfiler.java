@@ -1,12 +1,12 @@
 package decomposition.profile;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionResult;
-import decomposition.Example;
-import decomposition.RandomExampleConfig;
-import decomposition.builder.CpqBuilder;
-import decomposition.builder.CpqBuilderResult;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionResult;
 import decomposition.cpq.model.CacheStats;
+import decomposition.examples.Example;
+import decomposition.examples.RandomExampleConfig;
+import decomposition.pipeline.builder.CpqBuilder;
+import decomposition.pipeline.builder.CpqBuilderResult;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.List;

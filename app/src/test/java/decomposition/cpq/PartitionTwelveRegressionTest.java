@@ -3,12 +3,12 @@ package decomposition.cpq;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.Example;
-import decomposition.extract.CQExtractor;
-import decomposition.extract.CQExtractor.ExtractionResult;
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
+import decomposition.core.model.Partition;
+import decomposition.examples.Example;
+import decomposition.pipeline.extract.CQExtractor;
+import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
 import decomposition.util.JoinAnalysisBuilder;
 import java.util.BitSet;
 import java.util.HashSet;

@@ -1,10 +1,10 @@
 package decomposition.cpq;
 
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
+import decomposition.core.model.Partition;
 import decomposition.cpq.model.CacheStats;
-import decomposition.model.Component;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
-import decomposition.partitions.FilteredPartition;
+import decomposition.pipeline.partitioning.FilteredPartition;
 import decomposition.util.BitsetUtils;
 import decomposition.util.DecompositionPipelineUtils;
 import decomposition.util.JoinAnalysis;

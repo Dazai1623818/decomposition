@@ -1,8 +1,8 @@
 package decomposition.cli;
 
-import decomposition.DecompositionOptions;
-import decomposition.RandomExampleConfig;
+import decomposition.core.DecompositionOptions;
 import decomposition.cpq.model.CacheStats;
+import decomposition.examples.RandomExampleConfig;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;

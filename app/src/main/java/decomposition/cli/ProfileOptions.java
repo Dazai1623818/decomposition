@@ -1,6 +1,6 @@
 package decomposition.cli;
 
-import decomposition.DecompositionOptions;
+import decomposition.core.DecompositionOptions;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import java.util.List;
 import java.util.Objects;

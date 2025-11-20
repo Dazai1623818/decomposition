@@ -2,12 +2,12 @@ package decomposition.cli;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import decomposition.DecompositionResult;
-import decomposition.PartitionEvaluation;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
+import decomposition.core.diagnostics.PartitionDiagnostic;
+import decomposition.core.model.Component;
+import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
-import decomposition.diagnostics.PartitionDiagnostic;
-import decomposition.model.Component;
-import decomposition.model.Partition;
 import decomposition.util.BitsetUtils;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

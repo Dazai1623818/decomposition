@@ -1,8 +1,8 @@
 package decomposition.cpq;
 
-import decomposition.diagnostics.PartitionDiagnostic;
-import decomposition.model.Component;
-import decomposition.partitions.FilteredPartition;
+import decomposition.core.diagnostics.PartitionDiagnostic;
+import decomposition.core.model.Component;
+import decomposition.pipeline.partitioning.FilteredPartition;
 import decomposition.util.JoinNodeUtils;
 import java.util.ArrayList;
 import java.util.List;

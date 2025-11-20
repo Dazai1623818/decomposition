@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
 import decomposition.cpq.CPQExpression;
-import decomposition.model.Component;
-import decomposition.model.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;

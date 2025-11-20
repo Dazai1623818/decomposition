@@ -2,12 +2,12 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionResult;
-import decomposition.Example;
-import decomposition.PartitionEvaluation;
-import decomposition.builder.CpqBuilder;
-import decomposition.builder.CpqBuilderResult;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
+import decomposition.examples.Example;
+import decomposition.pipeline.builder.CpqBuilder;
+import decomposition.pipeline.builder.CpqBuilderResult;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;

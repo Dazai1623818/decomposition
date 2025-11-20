@@ -1,15 +1,15 @@
 package decomposition.cli;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionOptions.Mode;
-import decomposition.DecompositionResult;
-import decomposition.PartitionEvaluation;
-import decomposition.RandomExampleConfig;
-import decomposition.builder.CpqBuilder;
-import decomposition.builder.CpqBuilderResult;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionOptions.Mode;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
+import decomposition.core.model.Component;
 import decomposition.cpq.CPQExpression;
 import decomposition.eval.DecompositionComparisonPipeline;
-import decomposition.model.Component;
+import decomposition.examples.RandomExampleConfig;
+import decomposition.pipeline.builder.CpqBuilder;
+import decomposition.pipeline.builder.CpqBuilderResult;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;

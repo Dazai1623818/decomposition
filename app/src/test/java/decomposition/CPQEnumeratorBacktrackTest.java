@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
+import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
 import decomposition.cpq.PartitionDiagnostics;
@@ -12,11 +15,11 @@ import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
 import decomposition.cpq.model.CacheStats;
-import decomposition.extract.CQExtractor;
-import decomposition.extract.CQExtractor.ExtractionResult;
-import decomposition.model.Edge;
-import decomposition.partitions.FilteredPartition;
-import decomposition.partitions.PartitionGenerator;
+import decomposition.examples.Example;
+import decomposition.pipeline.extract.CQExtractor;
+import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
+import decomposition.pipeline.partitioning.FilteredPartition;
+import decomposition.pipeline.partitioning.PartitionGenerator;
 import decomposition.util.JoinAnalysis;
 import decomposition.util.JoinAnalysisBuilder;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -106,11 +109,10 @@ final class CPQEnumeratorBacktrackTest {
         () -> "Expected forward, inverse, and backtrack orientations but saw: " + endpointPairs);
 
     PartitionGenerator generator = new PartitionGenerator(0);
-    List<decomposition.model.Component> components = generator.enumerateConnectedComponents(edges);
-    List<decomposition.model.Partition> partitions =
-        generator.enumeratePartitions(edges, components);
+    List<Component> components = generator.enumerateConnectedComponents(edges);
+    List<Partition> partitions = generator.enumeratePartitions(edges, components);
 
-    decomposition.model.Partition singleEdgePartition =
+    Partition singleEdgePartition =
         partitions.stream()
             .filter(p -> p.components().stream().allMatch(component -> component.edgeCount() == 1))
             .findFirst()

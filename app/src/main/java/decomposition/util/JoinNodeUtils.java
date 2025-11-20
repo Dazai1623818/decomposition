@@ -1,8 +1,8 @@
 package decomposition.util;
 
+import decomposition.core.model.Component;
+import decomposition.core.model.Edge;
 import decomposition.cpq.CPQExpression;
-import decomposition.model.Component;
-import decomposition.model.Edge;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashSet;
@@ -87,7 +87,7 @@ public final class JoinNodeUtils {
    * @return {@code true} if endpoints comply with join node expectations
    */
   public static boolean endpointsRespectJoinNodeRoles(
-      CPQExpression rule, decomposition.model.Component component, Set<String> localJoinNodes) {
+      CPQExpression rule, Component component, Set<String> localJoinNodes) {
     Objects.requireNonNull(rule, "rule");
     Objects.requireNonNull(component, "component");
     Objects.requireNonNull(localJoinNodes, "localJoinNodes");

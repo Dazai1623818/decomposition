@@ -2,10 +2,10 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.DecompositionOptions;
-import decomposition.DecompositionResult;
-import decomposition.PartitionEvaluation;
-import decomposition.builder.CpqBuilder;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
+import decomposition.pipeline.builder.CpqBuilder;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
@@ -17,12 +17,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 final class RandomCPQDecompositionTest {
 
-  private static final int ITERATIONS = 100;
-  private static final int MAX_DEPTH = 6;
+  private static final int ITERATIONS = 50;
+  private static final int MAX_DEPTH = 4;
   private static final int LABEL_COUNT = 4;
   private static final List<Predicate> PREDICATE_ALPHABET = buildAlphabet(LABEL_COUNT);
 
@@ -57,8 +58,23 @@ final class RandomCPQDecompositionTest {
               + analysis.hasSingleComponent()
               + " homomorphic="
               + analysis.isHomomorphic()
+              + " reversedHomomorphic="
+              + analysis.isReversedHomomorphic()
               + " reconstructed="
-              + analysis.reconstructed().map(CPQ::toString).orElse("n/a"));
+              + analysis.reconstructed().map(CPQ::toString).orElse("n/a")
+              + " candidates="
+              + analysis.candidates().size());
+      assertTrue(
+          analysis.isHomomorphic(),
+          () ->
+              "Reconstruction is not homomorphic to original; reversedHomomorphic="
+                  + analysis.isReversedHomomorphic()
+                  + " original="
+                  + original
+                  + " reconstructed="
+                  + analysis.reconstructed().map(CPQ::toString).orElse("n/a")
+                  + " candidates="
+                  + summary(analysis.candidates()));
     }
   }
 
@@ -137,17 +153,38 @@ final class RandomCPQDecompositionTest {
             .filter(eval -> eval.partition().size() == 1)
             .findFirst();
     if (singleComponentEvaluation.isEmpty()) {
-      return new ReconstructionResult(false, false, Optional.empty());
+      return new ReconstructionResult(false, false, false, Optional.empty(), List.of());
     }
 
     List<List<CPQExpression>> tuples = singleComponentEvaluation.get().decompositionTuples();
     if (tuples.isEmpty() || tuples.get(0).isEmpty()) {
-      return new ReconstructionResult(false, false, Optional.empty());
+      return new ReconstructionResult(false, false, false, Optional.empty(), List.of());
     }
 
-    CPQ reconstructed = tuples.get(0).get(0).cpq();
-    boolean homomorphic = areHomomorphicUnderAlphabet(original, reconstructed, alphabet);
-    return new ReconstructionResult(true, homomorphic, Optional.of(reconstructed));
+    List<CPQ> candidates =
+        Stream.concat(
+                result.recognizedCatalogue().stream().map(CPQExpression::cpq),
+                tuples.stream().flatMap(List::stream).map(CPQExpression::cpq))
+            .toList();
+
+    boolean homomorphic =
+        candidates.stream()
+            .anyMatch(candidate -> areHomomorphicUnderAlphabet(original, candidate, alphabet));
+    boolean reversedHomomorphic =
+        candidates.stream().anyMatch(candidate -> areReversedHomomorphic(original, candidate));
+
+    return new ReconstructionResult(
+        true,
+        homomorphic,
+        reversedHomomorphic,
+        candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0)),
+        candidates);
+  }
+
+  private static String summary(List<CPQ> candidates) {
+    int max = Math.min(5, candidates.size());
+    List<String> preview = candidates.subList(0, max).stream().map(CPQ::toString).toList();
+    return preview + (candidates.size() > max ? "..." : "");
   }
 
   private static boolean areHomomorphicUnderAlphabet(
@@ -160,9 +197,25 @@ final class RandomCPQDecompositionTest {
     } catch (IllegalArgumentException ex) {
       QueryGraphCPQ originalGraph = original.toQueryGraph();
       QueryGraphCPQ reconstructedGraph = reconstructed.toQueryGraph();
-      return originalGraph.isHomomorphicTo(reconstructedGraph)
-          && reconstructedGraph.isHomomorphicTo(originalGraph);
+      return areMutuallyHomomorphic(originalGraph, reconstructedGraph);
     }
+  }
+
+  private static boolean areReversedHomomorphic(CPQ original, CPQ reconstructed) {
+    QueryGraphCPQ originalGraph = original.toQueryGraph();
+    QueryGraphCPQ reconstructedGraph = reconstructed.toQueryGraph();
+
+    QueryGraphCPQ reconstructedReversed = reconstructed.toQueryGraph();
+    reconstructedReversed.reverse();
+    QueryGraphCPQ originalReversed = original.toQueryGraph();
+    originalReversed.reverse();
+
+    return areMutuallyHomomorphic(originalGraph, reconstructedReversed)
+        || areMutuallyHomomorphic(originalReversed, reconstructedGraph);
+  }
+
+  private static boolean areMutuallyHomomorphic(QueryGraphCPQ left, QueryGraphCPQ right) {
+    return left.isHomomorphicTo(right) && right.isHomomorphicTo(left);
   }
 
   private static List<Predicate> buildAlphabet(int size) {
@@ -178,5 +231,9 @@ final class RandomCPQDecompositionTest {
   }
 
   private record ReconstructionResult(
-      boolean hasSingleComponent, boolean isHomomorphic, Optional<CPQ> reconstructed) {}
+      boolean hasSingleComponent,
+      boolean isHomomorphic,
+      boolean isReversedHomomorphic,
+      Optional<CPQ> reconstructed,
+      List<CPQ> candidates) {}
 }

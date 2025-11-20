@@ -2,7 +2,7 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import decomposition.model.Edge;
+import decomposition.core.model.Edge;
 import dev.roanh.gmark.ast.OperationType;
 import dev.roanh.gmark.ast.QueryTree;
 import dev.roanh.gmark.lang.cpq.CPQ;

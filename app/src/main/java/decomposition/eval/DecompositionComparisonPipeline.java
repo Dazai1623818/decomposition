@@ -1,7 +1,7 @@
 package decomposition.eval;
 
-import decomposition.DecompositionResult;
-import decomposition.model.Partition;
+import decomposition.core.DecompositionResult;
+import decomposition.core.model.Partition;
 import decomposition.nativeindex.CpqNativeIndex;
 import decomposition.nativeindex.ProgressListener;
 import dev.roanh.gmark.lang.cq.CQ;

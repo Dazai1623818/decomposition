@@ -3,7 +3,7 @@ package decomposition.util;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.model.Edge;
+import decomposition.core.model.Edge;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
 import java.util.List;

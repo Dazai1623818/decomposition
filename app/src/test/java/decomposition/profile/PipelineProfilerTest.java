@@ -3,7 +3,7 @@ package decomposition.profile;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.DecompositionOptions;
+import decomposition.core.DecompositionOptions;
 import decomposition.cpq.model.CacheStats;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;

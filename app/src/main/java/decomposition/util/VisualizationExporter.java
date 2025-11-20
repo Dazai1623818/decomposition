@@ -2,8 +2,8 @@ package decomposition.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import decomposition.model.Edge;
-import decomposition.model.Partition;
+import decomposition.core.model.Edge;
+import decomposition.core.model.Partition;
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileVisitResult;

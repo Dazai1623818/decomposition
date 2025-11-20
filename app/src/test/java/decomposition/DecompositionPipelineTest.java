@@ -4,9 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.builder.CpqBuilder;
-import decomposition.builder.CpqBuilderResult;
+import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionResult;
+import decomposition.core.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
+import decomposition.examples.Example;
+import decomposition.pipeline.builder.CpqBuilder;
+import decomposition.pipeline.builder.CpqBuilderResult;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
