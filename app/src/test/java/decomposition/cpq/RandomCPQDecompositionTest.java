@@ -114,7 +114,8 @@ final class RandomCPQDecompositionTest {
 
     // Should complete without throwing exception
     DecompositionResult result = builder.build(cq, freeVars, ENUMERATION_OPTIONS).result();
-    // Just verify the result is not null - intersection may have zero or more partitions
+    // Just verify the result is not null - intersection may have zero or more
+    // partitions
     assertTrue(
         result != null && result.edges().size() >= 1,
         "Intersection CPQ should execute successfully");
@@ -167,9 +168,12 @@ final class RandomCPQDecompositionTest {
                 tuples.stream().flatMap(List::stream).map(CPQExpression::cpq))
             .toList();
 
-    boolean homomorphic =
+    Optional<CPQ> matchingCandidate =
         candidates.stream()
-            .anyMatch(candidate -> areHomomorphicUnderAlphabet(original, candidate, alphabet));
+            .filter(candidate -> areHomomorphicUnderAlphabet(original, candidate, alphabet))
+            .findFirst();
+
+    boolean homomorphic = matchingCandidate.isPresent();
     boolean reversedHomomorphic =
         candidates.stream().anyMatch(candidate -> areReversedHomomorphic(original, candidate));
 
@@ -177,7 +181,7 @@ final class RandomCPQDecompositionTest {
         true,
         homomorphic,
         reversedHomomorphic,
-        candidates.isEmpty() ? Optional.empty() : Optional.of(candidates.get(0)),
+        matchingCandidate.or(() -> candidates.stream().findFirst()),
         candidates);
   }
 
