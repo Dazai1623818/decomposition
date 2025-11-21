@@ -24,8 +24,7 @@ public final class DecompositionComparisonPipeline {
       Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
     this.graphPath = Objects.requireNonNull(graphPath, "graphPath");
     this.nativeLibrary = Objects.requireNonNull(nativeLibrary, "nativeLibrary");
-    this.decompositionInputs =
-        decompositionInputs == null ? List.of() : List.copyOf(decompositionInputs);
+    this.decompositionInputs = decompositionInputs == null ? List.of() : List.copyOf(decompositionInputs);
   }
 
   public void evaluate(CQ query, DecompositionResult result) throws IOException {
@@ -59,8 +58,7 @@ public final class DecompositionComparisonPipeline {
       executed = true;
     }
 
-    List<PartitionDecompositionLoader.NamedDecomposition> external =
-        loadExternalDecompositions(query);
+    List<PartitionDecompositionLoader.NamedDecomposition> external = loadExternalDecompositions(query);
     for (PartitionDecompositionLoader.NamedDecomposition task : external) {
       List<Map<String, Integer>> joinedResults = executor.execute(task.decomposition());
       System.out.println(
@@ -77,15 +75,14 @@ public final class DecompositionComparisonPipeline {
   private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
     try {
       UniqueGraph<Integer, Predicate> graph = GraphLoader.load(graphPath);
-      CpqNativeIndex index =
-          new CpqNativeIndex(
-              graph,
-              1,
-              false,
-              true,
-              Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
-              -1,
-              ProgressListener.none());
+      CpqNativeIndex index = new CpqNativeIndex(
+          graph,
+          3,
+          false,
+          true,
+          Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
+          -1,
+          ProgressListener.none());
       index.sort();
       return index;
     } catch (InterruptedException ex) {

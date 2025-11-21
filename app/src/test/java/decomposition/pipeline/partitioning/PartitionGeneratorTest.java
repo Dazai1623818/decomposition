@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
+import decomposition.pipeline.generation.PartitionGenerator;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.BitSet;
 import java.util.List;

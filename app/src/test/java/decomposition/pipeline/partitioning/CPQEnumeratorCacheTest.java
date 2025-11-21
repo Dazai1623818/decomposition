@@ -14,6 +14,7 @@ import decomposition.cpq.model.CacheStats;
 import decomposition.examples.Example;
 import decomposition.pipeline.extract.CQExtractor;
 import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
+import decomposition.pipeline.generation.PartitionGenerator;
 import decomposition.util.JoinAnalysis;
 import decomposition.util.JoinAnalysisBuilder;
 import dev.roanh.gmark.lang.cq.CQ;
