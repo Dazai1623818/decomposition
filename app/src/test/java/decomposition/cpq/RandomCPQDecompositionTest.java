@@ -7,12 +7,14 @@ import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.pipeline.builder.CpqBuilder;
 import decomposition.testing.TestDefaults;
+import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -162,11 +164,14 @@ final class RandomCPQDecompositionTest {
       return new ReconstructionResult(false, false, false, Optional.empty(), List.of());
     }
 
-    List<CPQ> candidates =
-        Stream.concat(
-                result.recognizedCatalogue().stream().map(CPQExpression::cpq),
-                tuples.stream().flatMap(List::stream).map(CPQExpression::cpq))
+    BitSet fullEdgeMask = BitsetUtils.allOnes(result.edges().size());
+    List<CPQExpression> fullCoverageCandidates =
+        Stream.concat(result.recognizedCatalogue().stream(), tuples.stream().flatMap(List::stream))
+            // Only consider expressions that actually cover every edge of the query graph
+            .filter(candidate -> candidate.edges().equals(fullEdgeMask))
             .toList();
+
+    List<CPQ> candidates = fullCoverageCandidates.stream().map(CPQExpression::cpq).toList();
 
     Optional<CPQ> matchingCandidate =
         candidates.stream()
