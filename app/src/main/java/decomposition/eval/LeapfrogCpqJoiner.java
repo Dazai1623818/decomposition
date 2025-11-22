@@ -232,6 +232,37 @@ public final class LeapfrogCpqJoiner {
     return fragments;
   }
 
+  public boolean isIndexable(List<AtomCQ> atoms) {
+    return groupPathFragments(atoms).size() == 1;
+  }
+
+  public Set<String> getInternalVariables(List<AtomCQ> atoms) {
+    List<PathFragment> fragments = groupPathFragments(atoms);
+    if (fragments.size() != 1) {
+      return Set.of();
+    }
+    PathFragment fragment = fragments.get(0);
+    Set<String> internal = new HashSet<>();
+    for (AtomCQ atom : fragment.atoms()) {
+      internal.add(varName(atom.getSource()));
+      internal.add(varName(atom.getTarget()));
+    }
+    String start = varName(fragment.atoms().get(0).getSource());
+    String end = varName(fragment.atoms().get(fragment.atoms().size() - 1).getTarget());
+    internal.remove(start);
+    internal.remove(end);
+    return internal;
+  }
+
+  public Set<String> getAllVariables(List<AtomCQ> atoms) {
+    Set<String> vars = new HashSet<>();
+    for (AtomCQ atom : atoms) {
+      vars.add(varName(atom.getSource()));
+      vars.add(varName(atom.getTarget()));
+    }
+    return vars;
+  }
+
   private static String varName(VarCQ variable) {
     return "?" + variable.getName();
   }

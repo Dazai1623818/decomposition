@@ -112,51 +112,7 @@ final class JoinedDecompositionExecutor {
 
   private List<Map<String, Integer>> evaluate(QueryDecomposition.Bag bag) {
     List<Map<String, Integer>> bagResults = joiner.executeOptimized(bag.atoms());
-    if ("pipeline-partition-29".equals(debugLabel)) {
-      System.out.println(
-          "[DEBUG "
-              + debugLabel
-              + "] bag atoms="
-              + describeAtoms(bag.atoms())
-              + " results="
-              + bagResults.size());
-      if (bag.atoms().size() > 1) {
-        bagResults.forEach(
-            assignment ->
-                System.out.println(
-                    "[DEBUG "
-                        + debugLabel
-                        + "]   "
-                        + DecompositionComparisonReporter.formatAssignment(assignment)));
-      } else {
-        var seen = new java.util.LinkedHashSet<Integer>();
-        for (Map<String, Integer> assignment : bagResults) {
-          Integer d = assignment.get("?D");
-          if (d != null) {
-            seen.add(d);
-          }
-          if (seen.size() >= 20) {
-            break;
-          }
-        }
-        boolean hasD3 =
-            bagResults.stream()
-                .map(m -> m.get("?D"))
-                .filter(java.util.Objects::nonNull)
-                .anyMatch(d -> d == 3);
-        System.out.println(
-            "[DEBUG " + debugLabel + "]   D values sample=" + seen + " hasD3=" + hasD3);
-        bagResults.stream()
-            .limit(5)
-            .forEach(
-                assignment ->
-                    System.out.println(
-                        "[DEBUG "
-                            + debugLabel
-                            + "]   sample="
-                            + DecompositionComparisonReporter.formatAssignment(assignment)));
-      }
-    }
+    // ... existing debug code ...
     for (QueryDecomposition.Bag child : bag.children()) {
       List<Map<String, Integer>> childResults = evaluate(child);
       bagResults = naturalJoin(bagResults, childResults);
