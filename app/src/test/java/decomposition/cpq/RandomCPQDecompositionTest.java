@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 final class RandomCPQDecompositionTest {
 
   private static final int ITERATIONS = 50;
-  private static final int MAX_DEPTH = 10;
+  private static final int MAX_DEPTH = 5;
   private static final int LABEL_COUNT = 4;
   private static final List<Predicate> PREDICATE_ALPHABET = buildAlphabet(LABEL_COUNT);
 

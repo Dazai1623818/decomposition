@@ -2,18 +2,26 @@ package decomposition.eval;
 
 import decomposition.nativeindex.CpqNativeIndex;
 import decomposition.nativeindex.ProgressListener;
+import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
-/** Executes the Leapfrog evaluation workflow over a graph index and optional decompositions. */
+/** Executes decompositions over the native index by evaluating CPQ cores. */
 public final class QueryEvaluationRunner {
   private static final int MAX_RESULTS_TO_PRINT = 99_999;
 
@@ -27,7 +35,7 @@ public final class QueryEvaluationRunner {
           new CpqNativeIndex(
               graph,
               options.k(),
-              false,
+              true,
               true,
               Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
               -1,
@@ -38,12 +46,24 @@ public final class QueryEvaluationRunner {
     }
     index.sort();
 
-    LeapfrogCpqJoiner joiner = LeapfrogCpqJoiner.fromIndex(index);
-    System.out.println("Loaded single-edge labels: " + joiner.singleEdgeLabels());
+    CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     ExampleQuery example = selectExample(options.exampleName());
     CQ cq = example.cq();
-    List<Map<String, Integer>> results = joiner.executeBaseline(cq);
+    List<CpqIndexExecutor.Component> baselineComponents = componentsFromAtoms(atomsOf(cq));
+    CpqIndexExecutor.Component oversizedBaseline =
+        CpqIndexExecutor.oversizedComponent(baselineComponents, options.k());
+    if (oversizedBaseline != null) {
+      System.out.println(
+          "Cannot evaluate baseline: component '"
+              + oversizedBaseline.description()
+              + "' (diameter="
+              + oversizedBaseline.cpq().getDiameter()
+              + ") exceeds index k="
+              + options.k());
+      return;
+    }
+    List<Map<String, Integer>> results = executor.execute(baselineComponents);
 
     System.out.println(
         "Executing example '" + options.exampleName() + "' expressed in gMark notation.");
@@ -82,14 +102,27 @@ public final class QueryEvaluationRunner {
       }
     }
 
-    if (!tasks.isEmpty()) {
-      JoinedDecompositionExecutor executor = new JoinedDecompositionExecutor(joiner);
-      for (DecompositionTask task : tasks) {
-        List<Map<String, Integer>> joinedResults = executor.execute(task.decomposition());
+    for (DecompositionTask task : tasks) {
+      List<CpqIndexExecutor.Component> components =
+          componentsFromDecomposition(task.decomposition());
+      CpqIndexExecutor.Component oversized =
+          CpqIndexExecutor.oversizedComponent(components, options.k());
+      if (oversized != null) {
         System.out.println(
-            "Decomposition '" + task.label() + "' result count: " + joinedResults.size());
-        DecompositionComparisonReporter.report(task.label(), results, joinedResults);
+            "Skipping '"
+                + task.label()
+                + "' because component '"
+                + oversized.description()
+                + "' (diameter="
+                + oversized.cpq().getDiameter()
+                + ") exceeds index k="
+                + options.k());
+        continue;
       }
+      List<Map<String, Integer>> joinedResults = executor.execute(components);
+      System.out.println(
+          "Decomposition '" + task.label() + "' result count: " + joinedResults.size());
+      DecompositionComparisonReporter.report(task.label(), results, joinedResults);
     }
   }
 
@@ -121,4 +154,107 @@ public final class QueryEvaluationRunner {
   }
 
   private record DecompositionTask(String label, QueryDecomposition decomposition) {}
+
+  private static List<AtomCQ> atomsOf(CQ cq) {
+    UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+    List<AtomCQ> atoms = new ArrayList<>(graph.getEdgeCount());
+    for (UniqueGraph.GraphEdge<VarCQ, AtomCQ> edge : graph.getEdges()) {
+      atoms.add(edge.getData());
+    }
+    return atoms;
+  }
+
+  private static List<CpqIndexExecutor.Component> componentsFromAtoms(List<AtomCQ> atoms) {
+    List<CpqIndexExecutor.Component> components = new ArrayList<>(atoms.size());
+    for (AtomCQ atom : atoms) {
+      components.add(componentFromAtom(atom));
+    }
+    return components;
+  }
+
+  private static CpqIndexExecutor.Component componentFromAtom(AtomCQ atom) {
+    CPQ cpq = CPQ.label(atom.getLabel());
+    String source = normalize(atom.getSource().getName());
+    String target = normalize(atom.getTarget().getName());
+    String description = atom.getLabel().getAlias() + " (" + source + "→" + target + ")";
+    return new CpqIndexExecutor.Component(source, target, cpq, description);
+  }
+
+  private static List<CpqIndexExecutor.Component> componentsFromDecomposition(
+      QueryDecomposition decomposition) {
+    List<CpqIndexExecutor.Component> components = new ArrayList<>();
+    Deque<QueryDecomposition.Bag> stack = new ArrayDeque<>();
+    stack.push(decomposition.root());
+    while (!stack.isEmpty()) {
+      QueryDecomposition.Bag bag = stack.pop();
+      components.add(componentFromBag(bag));
+      for (QueryDecomposition.Bag child : bag.children()) {
+        stack.push(child);
+      }
+    }
+    return components;
+  }
+
+  private static CpqIndexExecutor.Component componentFromBag(QueryDecomposition.Bag bag) {
+    List<AtomCQ> atoms = linearize(bag.atoms());
+    List<CPQ> segments = new ArrayList<>(atoms.size());
+    for (AtomCQ atom : atoms) {
+      segments.add(CPQ.label(atom.getLabel()));
+    }
+    CPQ cpq = segments.size() == 1 ? segments.get(0) : CPQ.concat(segments);
+    String source = normalize(atoms.get(0).getSource().getName());
+    String target = normalize(atoms.get(atoms.size() - 1).getTarget().getName());
+    return new CpqIndexExecutor.Component(source, target, cpq, cpq.toString());
+  }
+
+  private static List<AtomCQ> linearize(List<AtomCQ> atoms) {
+    if (atoms.isEmpty()) {
+      throw new IllegalArgumentException("Decomposition bag must contain at least one atom.");
+    }
+    if (atoms.size() == 1) {
+      return List.of(atoms.get(0));
+    }
+    Map<String, AtomCQ> bySource = new HashMap<>();
+    Map<String, Integer> indegree = new HashMap<>();
+    for (AtomCQ atom : atoms) {
+      String src = atom.getSource().getName();
+      if (bySource.put(src, atom) != null) {
+        throw new IllegalArgumentException("Component contains branching at " + src);
+      }
+      indegree.merge(atom.getTarget().getName(), 1, Integer::sum);
+    }
+    String start = null;
+    for (AtomCQ atom : atoms) {
+      String candidate = atom.getSource().getName();
+      if (!indegree.containsKey(candidate)) {
+        start = candidate;
+        break;
+      }
+    }
+    if (start == null) {
+      start = atoms.get(0).getSource().getName();
+    }
+    List<AtomCQ> ordered = new ArrayList<>(atoms.size());
+    Set<AtomCQ> seen = new HashSet<>();
+    while (ordered.size() < atoms.size()) {
+      AtomCQ next = bySource.remove(start);
+      if (next == null || seen.contains(next)) {
+        throw new IllegalArgumentException("Component edges do not form a simple path.");
+      }
+      ordered.add(next);
+      seen.add(next);
+      start = next.getTarget().getName();
+    }
+    if (!bySource.isEmpty()) {
+      throw new IllegalArgumentException("Component edges do not form a simple path.");
+    }
+    return ordered;
+  }
+
+  private static String normalize(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return raw;
+    }
+    return raw.startsWith("?") ? raw : ("?" + raw);
+  }
 }

@@ -1,6 +1,7 @@
 package decomposition.nativeindex;
 
 import dev.roanh.cpqindex.Index;
+import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
@@ -8,6 +9,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Lightweight wrapper around the CPQ-native index fork that hides the original {@code dev.roanh}
@@ -79,6 +81,19 @@ public final class CpqNativeIndex {
     List<Block> wrapped = new ArrayList<>(blocks.size());
     for (Index.Block block : blocks) {
       wrapped.add(new Block(block));
+    }
+    return Collections.unmodifiableList(wrapped);
+  }
+
+  public List<Pair> query(CPQ cpq) {
+    Objects.requireNonNull(cpq, "cpq");
+    List<dev.roanh.cpqindex.Pair> results = delegate.query(cpq);
+    if (results == null || results.isEmpty()) {
+      return List.of();
+    }
+    List<Pair> wrapped = new ArrayList<>(results.size());
+    for (dev.roanh.cpqindex.Pair pair : results) {
+      wrapped.add(new Pair(pair));
     }
     return Collections.unmodifiableList(wrapped);
   }
