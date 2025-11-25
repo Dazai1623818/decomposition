@@ -33,6 +33,14 @@ final class RunCommand {
 
   int execute(String[] args) throws IOException {
     CliOptions cliOptions = parseRunArgs(args);
+
+    if (cliOptions.buildIndexOnly()) {
+      EvaluationPipeline evaluationPipeline = new EvaluationPipeline(cliOptions.compareGraphPath());
+      CpqNativeIndex index = evaluationPipeline.buildIndexOnly();
+      index.print();
+      LOG.info("Constructed CPQ index for graph {}", cliOptions.compareGraphPath().toAbsolutePath());
+      return 0;
+    }
     DecompositionOptions pipelineOptions =
         new DecompositionOptions(
             cliOptions.mode(),
@@ -142,6 +150,7 @@ final class RunCommand {
     String compareGraphRaw = null;
     List<String> compareDecompositionRaw = new ArrayList<>();
     boolean compareIndex = false;
+    boolean buildIndexOnly = false;
 
     for (int i = 1; i < args.length; i++) {
       String rawArg = args[i];
@@ -187,6 +196,10 @@ final class RunCommand {
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--show" -> show = true;
         case "--compare-index" -> compareIndex = true;
+        case "--build-index-only" -> {
+          buildIndexOnly = true;
+          compareIndex = true;
+        }
         case "--compare-graph" ->
             compareGraphRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -216,9 +229,13 @@ final class RunCommand {
     if (cpqText != null) sources++;
     if (queryFile != null) sources++;
     if (exampleName != null) sources++;
-    if (sources != 1) {
+    if (sources == 0 && !buildIndexOnly) {
       throw new IllegalArgumentException(
           "Provide exactly one of --cq, --cpq, --file, or --example");
+    }
+    if (sources > 1) {
+      throw new IllegalArgumentException(
+          "Provide at most one of --cq, --cpq, --file, or --example");
     }
 
     Set<String> freeVars = CliParsers.parseFreeVariables(freeVarsRaw);
@@ -296,7 +313,8 @@ final class RunCommand {
         randomExampleConfig,
         compareIndex,
         compareGraphPath,
-        compareDecompositions);
+        compareDecompositions,
+        buildIndexOnly);
   }
 
   private CQ loadQuery(CliOptions options) throws IOException {
@@ -318,6 +336,7 @@ final class RunCommand {
   private void logSummary(DecompositionResult result, CliOptions options) {
     int totalPartitions = result.filteredPartitionList().size();
     int validPartitions = result.cpqPartitions().size();
+    LOG.info("Decomposition took {} ms", result.elapsedMillis());
     LOG.info("Partitions considered: {}", totalPartitions);
     LOG.info("Valid partitions: {}", validPartitions);
     if (validPartitions == 0) {

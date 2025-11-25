@@ -23,13 +23,17 @@ record CliOptions(
     RandomExampleConfig randomExampleConfig,
     boolean compareWithIndex,
     Path compareGraphPath,
-    List<Path> compareDecompositions) {
+    List<Path> compareDecompositions,
+    boolean buildIndexOnly) {
 
   CliOptions {
     freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);
     Objects.requireNonNull(mode, "mode");
     if (enumerationLimit < 0) {
       throw new IllegalArgumentException("enumerationLimit must be non-negative");
+    }
+    if (buildIndexOnly) {
+      compareWithIndex = true;
     }
     compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
     compareDecompositions =

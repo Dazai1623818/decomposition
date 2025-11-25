@@ -10,17 +10,20 @@ import dev.roanh.cpqindex.IndexUtil;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.type.schema.Predicate;
+import decomposition.util.Timing;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public final class EvaluationPipeline {
-  private static final int INDEX_DIAMETER = 3;
+  private static final int INDEX_DIAMETER = 2;
   private static final Path NAUTY_LIBRARY = Path.of("lib", "libnauty.so");
   private final Path graphPath;
 
@@ -37,12 +40,14 @@ public final class EvaluationPipeline {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(result, "result");
 
+    Set<String> freeVariables = normalizeVariables(result.freeVariables());
     CpqNativeIndex index = prebuiltIndex != null ? prebuiltIndex : buildIndexOnly();
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     System.out.println("Executing query: " + query.toFormalSyntax());
 
     // 1. Baseline: Single Edge Decomposition
+    Timing baselineTiming = Timing.start();
     List<CpqIndexExecutor.Component> baselineComponents = baselineComponents(result.edges());
 
     // Check if baseline components fit in index
@@ -58,8 +63,16 @@ public final class EvaluationPipeline {
       return;
     }
 
-    List<Map<String, Integer>> baseline = executor.execute(baselineComponents);
+    List<Map<String, Integer>> baseline =
+        executeWithTiming("Baseline (single-edge)", executor, baselineComponents, baselineTiming);
     System.out.println("Baseline (single-edge) result count: " + baseline.size());
+    Set<Map<String, Integer>> projectedBaseline =
+        DecompositionComparisonReporter.project(baseline, freeVariables);
+    System.out.println(
+        "Baseline projected (free vars) result count: "
+            + projectedBaseline.size()
+            + " over "
+            + freeVariables);
     for (int i = 0; i < Math.min(10, baseline.size()); i++) {
       System.out.println(
           "  [baseline] " + DecompositionComparisonReporter.formatAssignment(baseline.get(i)));
@@ -87,8 +100,7 @@ public final class EvaluationPipeline {
         List<CpqIndexExecutor.Component> components = componentsFromTuple(tuple);
         System.out.println("Tuple '" + label + "': " + formatTuple(tuple));
 
-        CpqIndexExecutor.Component oversized =
-            CpqIndexExecutor.oversizedComponent(components, INDEX_DIAMETER);
+        CpqIndexExecutor.Component oversized = CpqIndexExecutor.oversizedComponent(components, INDEX_DIAMETER);
         if (oversized != null) {
           System.out.println(
               "Skipping '"
@@ -102,10 +114,11 @@ public final class EvaluationPipeline {
           continue;
         }
 
-        List<Map<String, Integer>> joinedResults = executor.execute(components);
+        List<Map<String, Integer>> joinedResults = executeWithTiming(label, executor, components);
         System.out.println("Decomposition '" + label + "' result count: " + joinedResults.size());
         printSampleAssignments("  [" + label + "]", joinedResults, 10);
-        DecompositionComparisonReporter.report(label, baseline, joinedResults);
+        DecompositionComparisonReporter.report(
+            label, baseline, joinedResults, freeVariables);
         executed = true;
       }
     }
@@ -117,16 +130,17 @@ public final class EvaluationPipeline {
 
   public CpqNativeIndex buildIndexOnly() throws IOException {
     System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
-    return buildIndex(graphPath);
+    long startNanos = System.nanoTime();
+    CpqNativeIndex index = buildIndex(graphPath);
+    long durationMs = Math.round((System.nanoTime() - startNanos) / 1_000_000.0);
+    System.out.println("Index construction took " + durationMs + " ms");
+    return index;
   }
 
   private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
     try {
-      UniqueGraph<Integer, Predicate> graph = IndexUtil.readGraph(graphPath);
-      CpqNativeIndex index = new CpqNativeIndex(
-          graph, INDEX_DIAMETER, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
-      index.sort();
-      return index;
+      return new CpqNativeIndex(
+          IndexUtil.readGraph(graphPath), INDEX_DIAMETER, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IOException("Index construction interrupted", ex);
@@ -146,6 +160,10 @@ public final class EvaluationPipeline {
     List<CpqIndexExecutor.Component> components = new ArrayList<>(edges.size());
     for (Edge edge : edges) {
       CPQ cpq = CPQ.label(edge.predicate());
+      if (Objects.equals(edge.source(), edge.target())) {
+        // Self-loop: intersect with identity so both endpoints stay anchored at the same vertex
+        cpq = CPQ.intersect(List.of(cpq, CPQ.id()));
+      }
       String left = normalizeVariable(edge.source());
       String right = normalizeVariable(edge.target());
       String description = edge.label() + " (" + left + "→" + right + ")";
@@ -188,5 +206,29 @@ public final class EvaluationPipeline {
       parts.add(component.cpq().toString() + " (" + left + "→" + right + ")");
     }
     return String.join(" | ", parts);
+  }
+
+  private static List<Map<String, Integer>> executeWithTiming(
+      String label, CpqIndexExecutor executor, List<CpqIndexExecutor.Component> components) {
+    return executeWithTiming(label, executor, components, null);
+  }
+
+  private static List<Map<String, Integer>> executeWithTiming(
+      String label, CpqIndexExecutor executor, List<CpqIndexExecutor.Component> components, Timing timing) {
+    Timing effectiveTiming = timing != null ? timing : Timing.start();
+    List<Map<String, Integer>> results = executor.execute(components);
+    System.out.println(label + " execution took " + effectiveTiming.elapsedMillis() + " ms");
+    return results;
+  }
+
+  private static Set<String> normalizeVariables(Set<String> variables) {
+    Set<String> normalized = new LinkedHashSet<>();
+    for (String variable : variables) {
+      String candidate = normalizeVariable(variable);
+      if (candidate != null && !candidate.isBlank()) {
+        normalized.add(candidate);
+      }
+    }
+    return normalized;
   }
 }

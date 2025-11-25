@@ -19,9 +19,9 @@ public class Example {
 
     cq.addAtom(a, label(1), b);
     cq.addAtom(b, label(2), c);
-    cq.addAtom(c, label(3), d);
-    cq.addAtom(d, label(4), a);
-    cq.addAtom(a, label(5), c);
+    cq.addAtom(a, label(3), d);
+    cq.addAtom(d, label(4), c);
+    // cq.addAtom(a, label(5), c);
 
     return cq;
   }
@@ -191,8 +191,7 @@ public class Example {
       VarCQ anchor = connected.get(rng.nextInt(connected.size()));
 
       int edgesRemaining = config.edgeCount() - edgesAdded;
-      boolean mustAttachFree =
-          !unconnectedFree.isEmpty() && edgesRemaining <= unconnectedFree.size();
+      boolean mustAttachFree = !unconnectedFree.isEmpty() && edgesRemaining <= unconnectedFree.size();
 
       VarCQ other;
       if (mustAttachFree) {
@@ -203,8 +202,10 @@ public class Example {
         boolean canAttachFree = !unconnectedFree.isEmpty();
 
         int optionCount = 1; // self-loop
-        if (canAttachExisting) optionCount++;
-        if (canAttachFree) optionCount++;
+        if (canAttachExisting)
+          optionCount++;
+        if (canAttachFree)
+          optionCount++;
         optionCount++; // always allow new bound variable
 
         int choice = rng.nextInt(optionCount);

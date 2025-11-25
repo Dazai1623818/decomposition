@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +47,7 @@ public final class QueryEvaluationRunner {
 
     ExampleQuery example = selectExample(options.exampleName());
     CQ cq = example.cq();
+    Set<String> freeVariables = freeVariablesOf(cq);
     List<CpqIndexExecutor.Component> baselineComponents = componentsFromAtoms(atomsOf(cq));
     CpqIndexExecutor.Component oversizedBaseline =
         CpqIndexExecutor.oversizedComponent(baselineComponents, options.k());
@@ -65,6 +67,10 @@ public final class QueryEvaluationRunner {
         "Executing example '" + options.exampleName() + "' expressed in gMark notation.");
     System.out.println("gMark CQ: " + cq.toFormalSyntax());
     System.out.println("Result count: " + results.size());
+    Set<Map<String, Integer>> projectedBaseline =
+        DecompositionComparisonReporter.project(results, freeVariables);
+    System.out.println(
+        "Projected (free vars) result count: " + projectedBaseline.size() + " over " + freeVariables);
     results.stream()
         .limit(MAX_RESULTS_TO_PRINT)
         .forEach(
@@ -99,8 +105,10 @@ public final class QueryEvaluationRunner {
     }
 
     for (DecompositionTask task : tasks) {
+      Set<String> requiredVariables = new LinkedHashSet<>(freeVariables);
+      requiredVariables.addAll(boundaryVariables(task.decomposition()));
       List<CpqIndexExecutor.Component> components =
-          componentsFromDecomposition(task.decomposition());
+          componentsFromDecomposition(task.decomposition(), requiredVariables);
       CpqIndexExecutor.Component oversized =
           CpqIndexExecutor.oversizedComponent(components, options.k());
       if (oversized != null) {
@@ -118,7 +126,8 @@ public final class QueryEvaluationRunner {
       List<Map<String, Integer>> joinedResults = executor.execute(components);
       System.out.println(
           "Decomposition '" + task.label() + "' result count: " + joinedResults.size());
-      DecompositionComparisonReporter.report(task.label(), results, joinedResults);
+      DecompositionComparisonReporter.report(
+          task.label(), results, joinedResults, freeVariables);
     }
   }
 
@@ -172,13 +181,13 @@ public final class QueryEvaluationRunner {
   }
 
   private static List<CpqIndexExecutor.Component> componentsFromDecomposition(
-      QueryDecomposition decomposition) {
+      QueryDecomposition decomposition, Set<String> requiredVariables) {
     List<CpqIndexExecutor.Component> components = new ArrayList<>();
     Deque<QueryDecomposition.Bag> stack = new ArrayDeque<>();
     stack.push(decomposition.root());
     while (!stack.isEmpty()) {
       QueryDecomposition.Bag bag = stack.pop();
-      components.add(componentFromBag(bag));
+      components.addAll(componentsFromBag(bag, requiredVariables));
       for (QueryDecomposition.Bag child : bag.children()) {
         stack.push(child);
       }
@@ -186,16 +195,59 @@ public final class QueryEvaluationRunner {
     return components;
   }
 
-  private static CpqIndexExecutor.Component componentFromBag(QueryDecomposition.Bag bag) {
+  private static List<CpqIndexExecutor.Component> componentsFromBag(
+      QueryDecomposition.Bag bag, Set<String> requiredVariables) {
     List<AtomCQ> atoms = linearize(bag.atoms());
-    List<CPQ> segments = new ArrayList<>(atoms.size());
-    for (AtomCQ atom : atoms) {
-      segments.add(CPQ.label(atom.getLabel()));
+    List<CpqIndexExecutor.Component> bagComponents = new ArrayList<>();
+    List<CPQ> segment = new ArrayList<>();
+    String currentSource = normalize(atoms.get(0).getSource().getName());
+    for (int i = 0; i < atoms.size(); i++) {
+      AtomCQ atom = atoms.get(i);
+      segment.add(CPQ.label(atom.getLabel()));
+      String targetVar = normalize(atom.getTarget().getName());
+      boolean isLast = i == atoms.size() - 1;
+      if (requiredVariables.contains(targetVar) || isLast) {
+        CPQ cpq = segment.size() == 1 ? segment.get(0) : CPQ.concat(segment);
+        bagComponents.add(
+            new CpqIndexExecutor.Component(currentSource, targetVar, cpq, cpq.toString()));
+        segment.clear();
+        currentSource = targetVar;
+      }
     }
-    CPQ cpq = segments.size() == 1 ? segments.get(0) : CPQ.concat(segments);
-    String source = normalize(atoms.get(0).getSource().getName());
-    String target = normalize(atoms.get(atoms.size() - 1).getTarget().getName());
-    return new CpqIndexExecutor.Component(source, target, cpq, cpq.toString());
+    return bagComponents;
+  }
+
+  private static Set<String> boundaryVariables(QueryDecomposition decomposition) {
+    Map<String, Integer> counts = new HashMap<>();
+    Deque<QueryDecomposition.Bag> stack = new ArrayDeque<>();
+    stack.push(decomposition.root());
+    while (!stack.isEmpty()) {
+      QueryDecomposition.Bag bag = stack.pop();
+      Set<String> bagVars = new HashSet<>();
+      for (AtomCQ atom : bag.atoms()) {
+        String source = normalize(atom.getSource().getName());
+        String target = normalize(atom.getTarget().getName());
+        if (source != null && !source.isBlank()) {
+          bagVars.add(source);
+        }
+        if (target != null && !target.isBlank()) {
+          bagVars.add(target);
+        }
+      }
+      for (String variable : bagVars) {
+        counts.merge(variable, 1, Integer::sum);
+      }
+      for (QueryDecomposition.Bag child : bag.children()) {
+        stack.push(child);
+      }
+    }
+    Set<String> boundary = new LinkedHashSet<>();
+    for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+      if (entry.getValue() > 1) {
+        boundary.add(entry.getKey());
+      }
+    }
+    return boundary;
   }
 
   private static List<AtomCQ> linearize(List<AtomCQ> atoms) {
@@ -240,6 +292,17 @@ public final class QueryEvaluationRunner {
       throw new IllegalArgumentException("Component edges do not form a simple path.");
     }
     return ordered;
+  }
+
+  private static Set<String> freeVariablesOf(CQ cq) {
+    Set<String> variables = new LinkedHashSet<>();
+    for (VarCQ variable : cq.getFreeVariables()) {
+      String normalized = normalize(variable.getName());
+      if (normalized != null && !normalized.isBlank()) {
+        variables.add(normalized);
+      }
+    }
+    return variables;
   }
 
   private static String normalize(String raw) {
