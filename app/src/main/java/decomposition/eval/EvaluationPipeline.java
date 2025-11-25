@@ -6,7 +6,7 @@ import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
 import decomposition.nativeindex.CpqNativeIndex;
-import decomposition.nativeindex.ProgressListener;
+import dev.roanh.cpqindex.IndexUtil;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.type.schema.Predicate;
@@ -19,32 +19,35 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public final class DecompositionComparisonPipeline {
+public final class EvaluationPipeline {
   private static final int INDEX_DIAMETER = 3;
+  private static final Path NAUTY_LIBRARY = Path.of("lib", "libnauty.so");
   private final Path graphPath;
-  private final Path nativeLibrary;
-  private final List<Path> decompositionInputs;
 
-  public DecompositionComparisonPipeline(
-      Path graphPath, Path nativeLibrary, List<Path> decompositionInputs) {
+  public EvaluationPipeline(Path graphPath) {
     this.graphPath = Objects.requireNonNull(graphPath, "graphPath");
-    this.nativeLibrary = Objects.requireNonNull(nativeLibrary, "nativeLibrary");
-    this.decompositionInputs =
-        decompositionInputs == null ? List.of() : List.copyOf(decompositionInputs);
   }
 
   public void evaluate(CQ query, DecompositionResult result) throws IOException {
+    evaluate(query, result, null);
+  }
+
+  public void evaluate(CQ query, DecompositionResult result, CpqNativeIndex prebuiltIndex)
+      throws IOException {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(result, "result");
 
-    System.load(nativeLibrary.toAbsolutePath().toString());
-    CpqNativeIndex index = buildIndex(graphPath);
+    CpqNativeIndex index = prebuiltIndex != null ? prebuiltIndex : buildIndexOnly();
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     System.out.println("Executing query: " + query.toFormalSyntax());
+
+    // 1. Baseline: Single Edge Decomposition
     List<CpqIndexExecutor.Component> baselineComponents = baselineComponents(result.edges());
-    CpqIndexExecutor.Component oversizedBaseline =
-        CpqIndexExecutor.oversizedComponent(baselineComponents, INDEX_DIAMETER);
+
+    // Check if baseline components fit in index
+    CpqIndexExecutor.Component oversizedBaseline = CpqIndexExecutor.oversizedComponent(baselineComponents,
+        INDEX_DIAMETER);
     if (oversizedBaseline != null) {
       System.out.println(
           "Baseline exceeds index diameter k="
@@ -54,6 +57,7 @@ public final class DecompositionComparisonPipeline {
               + "'. Comparison aborted.");
       return;
     }
+
     List<Map<String, Integer>> baseline = executor.execute(baselineComponents);
     System.out.println("Baseline (single-edge) result count: " + baseline.size());
     for (int i = 0; i < Math.min(10, baseline.size()); i++) {
@@ -61,6 +65,7 @@ public final class DecompositionComparisonPipeline {
           "  [baseline] " + DecompositionComparisonReporter.formatAssignment(baseline.get(i)));
     }
 
+    // 2. Decompositions
     Map<Partition, PartitionEvaluation> evaluations = mapEvaluations(result.partitionEvaluations());
     boolean executed = false;
 
@@ -80,6 +85,8 @@ public final class DecompositionComparisonPipeline {
       for (List<CPQExpression> tuple : evaluation.decompositionTuples()) {
         String label = "pipeline-partition-" + (i + 1) + "/tuple-" + tupleIndex++;
         List<CpqIndexExecutor.Component> components = componentsFromTuple(tuple);
+        System.out.println("Tuple '" + label + "': " + formatTuple(tuple));
+
         CpqIndexExecutor.Component oversized =
             CpqIndexExecutor.oversizedComponent(components, INDEX_DIAMETER);
         if (oversized != null) {
@@ -94,16 +101,13 @@ public final class DecompositionComparisonPipeline {
                   + INDEX_DIAMETER);
           continue;
         }
+
         List<Map<String, Integer>> joinedResults = executor.execute(components);
         System.out.println("Decomposition '" + label + "' result count: " + joinedResults.size());
+        printSampleAssignments("  [" + label + "]", joinedResults, 10);
         DecompositionComparisonReporter.report(label, baseline, joinedResults);
         executed = true;
       }
-    }
-
-    if (!decompositionInputs.isEmpty()) {
-      System.out.println(
-          "External decomposition inputs are no longer evaluated because CPQ cores are required.");
     }
 
     if (!executed) {
@@ -111,18 +115,16 @@ public final class DecompositionComparisonPipeline {
     }
   }
 
+  public CpqNativeIndex buildIndexOnly() throws IOException {
+    System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
+    return buildIndex(graphPath);
+  }
+
   private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
     try {
-      UniqueGraph<Integer, Predicate> graph = GraphLoader.load(graphPath);
-      CpqNativeIndex index =
-          new CpqNativeIndex(
-              graph,
-              INDEX_DIAMETER,
-              true,
-              true,
-              Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
-              -1,
-              ProgressListener.none());
+      UniqueGraph<Integer, Predicate> graph = IndexUtil.readGraph(graphPath);
+      CpqNativeIndex index = new CpqNativeIndex(
+          graph, INDEX_DIAMETER, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
       index.sort();
       return index;
     } catch (InterruptedException ex) {
@@ -165,5 +167,26 @@ public final class DecompositionComparisonPipeline {
       return null;
     }
     return raw.startsWith("?") ? raw : ("?" + raw);
+  }
+
+  private static void printSampleAssignments(
+      String prefix, List<Map<String, Integer>> results, int limit) {
+    for (int i = 0; i < Math.min(limit, results.size()); i++) {
+      System.out.println(
+          prefix + " " + DecompositionComparisonReporter.formatAssignment(results.get(i)));
+    }
+    if (results.size() > limit) {
+      System.out.println(prefix + " ... truncated ...");
+    }
+  }
+
+  private static String formatTuple(List<CPQExpression> tuple) {
+    List<String> parts = new ArrayList<>(tuple.size());
+    for (CPQExpression component : tuple) {
+      String left = normalizeVariable(component.getVarForNode(component.source()));
+      String right = normalizeVariable(component.getVarForNode(component.target()));
+      parts.add(component.cpq().toString() + " (" + left + "→" + right + ")");
+    }
+    return String.join(" | ", parts);
   }
 }

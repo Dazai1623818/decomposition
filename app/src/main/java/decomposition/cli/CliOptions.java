@@ -23,7 +23,6 @@ record CliOptions(
     RandomExampleConfig randomExampleConfig,
     boolean compareWithIndex,
     Path compareGraphPath,
-    Path compareNativeLib,
     List<Path> compareDecompositions) {
 
   CliOptions {
@@ -33,7 +32,6 @@ record CliOptions(
       throw new IllegalArgumentException("enumerationLimit must be non-negative");
     }
     compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
-    compareNativeLib = compareNativeLib == null ? Path.of("lib/libnauty.so") : compareNativeLib;
     compareDecompositions =
         compareDecompositions == null ? List.of() : List.copyOf(compareDecompositions);
   }

@@ -24,7 +24,6 @@ final class EvaluateCommand {
         new QueryEvaluationRunner.EvaluateOptions(
             options.exampleName(),
             options.graphPath(),
-            options.nativeLibrary(),
             options.k(),
             options.decompositionInputs()));
     return 0;
@@ -36,7 +35,6 @@ final class EvaluateCommand {
     }
     String exampleName = "example1";
     Path graphPath = Path.of("graph_huge.edge");
-    Path nativeLibrary = Path.of("lib", "libnauty.so");
     String kRaw = null;
     List<Path> decompositionInputs = new ArrayList<>();
 
@@ -63,10 +61,6 @@ final class EvaluateCommand {
             graphPath =
                 Path.of(
                     inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option));
-        case "--native-lib" ->
-            nativeLibrary =
-                Path.of(
-                    inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option));
         case "--k" ->
             kRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--decomposition" -> {
@@ -79,24 +73,17 @@ final class EvaluateCommand {
     }
 
     int k = CliParsers.parseInt(kRaw, 1, "--k");
-    return new EvaluateCliOptions(exampleName, graphPath, nativeLibrary, k, decompositionInputs);
+    return new EvaluateCliOptions(exampleName, graphPath, k, decompositionInputs);
   }
 
   private record EvaluateCliOptions(
-      String exampleName,
-      Path graphPath,
-      Path nativeLibrary,
-      int k,
-      List<Path> decompositionInputs) {
+      String exampleName, Path graphPath, int k, List<Path> decompositionInputs) {
     EvaluateCliOptions {
       if (exampleName == null || exampleName.isBlank()) {
         exampleName = "example1";
       }
       if (graphPath == null) {
         throw new IllegalArgumentException("graph path must be provided");
-      }
-      if (nativeLibrary == null) {
-        throw new IllegalArgumentException("native library path must be provided");
       }
       if (k < 1) {
         throw new IllegalArgumentException("k must be at least 1");

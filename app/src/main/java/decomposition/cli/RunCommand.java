@@ -6,8 +6,9 @@ import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.core.model.Component;
 import decomposition.cpq.CPQExpression;
-import decomposition.eval.DecompositionComparisonPipeline;
+import decomposition.eval.EvaluationPipeline;
 import decomposition.examples.RandomExampleConfig;
+import decomposition.nativeindex.CpqNativeIndex;
 import decomposition.pipeline.builder.CpqBuilder;
 import decomposition.pipeline.builder.CpqBuilderResult;
 import decomposition.util.BitsetUtils;
@@ -43,6 +44,13 @@ final class RunCommand {
 
     CQ query = loadQuery(cliOptions);
 
+    EvaluationPipeline evaluationPipeline = null;
+    CpqNativeIndex index = null;
+    if (cliOptions.compareWithIndex()) {
+      evaluationPipeline = new EvaluationPipeline(cliOptions.compareGraphPath());
+      index = evaluationPipeline.buildIndexOnly();
+    }
+
     CpqBuilderResult builderResult =
         CpqBuilder.defaultBuilder().build(query, cliOptions.freeVariables(), pipelineOptions);
     DecompositionResult result = builderResult.result();
@@ -64,11 +72,7 @@ final class RunCommand {
     }
 
     if (cliOptions.compareWithIndex()) {
-      new DecompositionComparisonPipeline(
-              cliOptions.compareGraphPath(),
-              cliOptions.compareNativeLib(),
-              cliOptions.compareDecompositions())
-          .evaluate(query, result);
+      evaluationPipeline.evaluate(query, result, index);
     }
 
     if (result.terminationReason() != null) {
@@ -136,7 +140,6 @@ final class RunCommand {
     String randomLabelsRaw = null;
     String randomSeedRaw = null;
     String compareGraphRaw = null;
-    String compareNativeRaw = null;
     List<String> compareDecompositionRaw = new ArrayList<>();
     boolean compareIndex = false;
 
@@ -186,9 +189,6 @@ final class RunCommand {
         case "--compare-index" -> compareIndex = true;
         case "--compare-graph" ->
             compareGraphRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--compare-native-lib" ->
-            compareNativeRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--compare-decomposition" -> {
           String value =
@@ -280,7 +280,6 @@ final class RunCommand {
       compareDecompositions.add(Path.of(raw));
     }
     Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
-    Path compareNativeLibPath = compareNativeRaw != null ? Path.of(compareNativeRaw) : null;
     return new CliOptions(
         queryText,
         cpqText,
@@ -297,7 +296,6 @@ final class RunCommand {
         randomExampleConfig,
         compareIndex,
         compareGraphPath,
-        compareNativeLibPath,
         compareDecompositions);
   }
 

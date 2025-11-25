@@ -1,7 +1,8 @@
 package decomposition.eval;
 
+import decomposition.examples.Example;
 import decomposition.nativeindex.CpqNativeIndex;
-import decomposition.nativeindex.ProgressListener;
+import dev.roanh.cpqindex.IndexUtil;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -24,22 +25,17 @@ import java.util.Set;
 /** Executes decompositions over the native index by evaluating CPQ cores. */
 public final class QueryEvaluationRunner {
   private static final int MAX_RESULTS_TO_PRINT = 99_999;
+  private static final Path NAUTY_LIBRARY = Path.of("lib", "libnauty.so");
 
   public void run(EvaluateOptions options) throws IOException {
-    System.load(options.nativeLibrary().toAbsolutePath().toString());
+    System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
 
     CpqNativeIndex index;
     try {
-      UniqueGraph<Integer, Predicate> graph = GraphLoader.load(options.graphPath());
+      UniqueGraph<Integer, Predicate> graph = IndexUtil.readGraph(options.graphPath());
       index =
           new CpqNativeIndex(
-              graph,
-              options.k(),
-              true,
-              true,
-              Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
-              -1,
-              ProgressListener.none());
+              graph, options.k(), Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IOException("Index construction interrupted", ex);
@@ -128,7 +124,7 @@ public final class QueryEvaluationRunner {
 
   private ExampleQuery selectExample(String exampleName) {
     if ("example1".equalsIgnoreCase(exampleName)) {
-      return ExampleQueries.example1();
+      return ExampleQuery.of(Example.example1());
     }
     throw new IllegalArgumentException(
         "Unknown example '" + exampleName + "'. Available examples: example1");
@@ -136,15 +132,10 @@ public final class QueryEvaluationRunner {
 
   /** Options forwarded from the CLI for evaluate command runs. */
   public record EvaluateOptions(
-      String exampleName,
-      Path graphPath,
-      Path nativeLibrary,
-      int k,
-      List<Path> decompositionInputs) {
+      String exampleName, Path graphPath, int k, List<Path> decompositionInputs) {
     public EvaluateOptions {
       Objects.requireNonNull(exampleName, "exampleName");
       Objects.requireNonNull(graphPath, "graphPath");
-      Objects.requireNonNull(nativeLibrary, "nativeLibrary");
       if (k < 1) {
         throw new IllegalArgumentException("k must be at least 1");
       }
