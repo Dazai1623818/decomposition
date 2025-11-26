@@ -18,6 +18,7 @@ import java.util.List;
  * <pre>
  *   ./gradlew runPlot --args='r1'
  *   ./gradlew runPlot --args='(r1 ◦ (r2 ∩ r3⁻))'
+ *   ./app/gradlew runPlot --args='r1; (r2 ◦ r3⁻)'    (from the repository root)
  * </pre>
  */
 public final class PlotCPQ {
@@ -39,7 +40,8 @@ public final class PlotCPQ {
     if (rawInput.isEmpty()) {
       System.err.println("Provide one or more CPQ expressions to plot.");
       System.err.println("Separate multiple expressions with ';' or newlines.");
-      System.err.println("Example: ./gradlew runPlot --args='r1; (r2 ◦ r3⁻)'");
+      System.err.println(
+          "Example: ./gradlew runPlot --args='r1; (r2 ◦ r3⁻)' (run inside the app directory)");
       System.exit(1);
     }
 

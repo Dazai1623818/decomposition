@@ -2,7 +2,6 @@ package decomposition.eval;
 
 import decomposition.examples.Example;
 import decomposition.nativeindex.CpqNativeIndex;
-import dev.roanh.cpqindex.IndexUtil;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -31,17 +30,7 @@ public final class QueryEvaluationRunner {
   public void run(EvaluateOptions options) throws IOException {
     System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
 
-    CpqNativeIndex index;
-    try {
-      UniqueGraph<Integer, Predicate> graph = IndexUtil.readGraph(options.graphPath());
-      index =
-          new CpqNativeIndex(
-              graph, options.k(), Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
-    } catch (InterruptedException ex) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Index construction interrupted", ex);
-    }
-    index.sort();
+    CpqNativeIndex index = loadOrBuildIndex(options.graphPath(), options.k());
 
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
@@ -70,7 +59,10 @@ public final class QueryEvaluationRunner {
     Set<Map<String, Integer>> projectedBaseline =
         DecompositionComparisonReporter.project(results, freeVariables);
     System.out.println(
-        "Projected (free vars) result count: " + projectedBaseline.size() + " over " + freeVariables);
+        "Projected (free vars) result count: "
+            + projectedBaseline.size()
+            + " over "
+            + freeVariables);
     results.stream()
         .limit(MAX_RESULTS_TO_PRINT)
         .forEach(
@@ -126,8 +118,7 @@ public final class QueryEvaluationRunner {
       List<Map<String, Integer>> joinedResults = executor.execute(components);
       System.out.println(
           "Decomposition '" + task.label() + "' result count: " + joinedResults.size());
-      DecompositionComparisonReporter.report(
-          task.label(), results, joinedResults, freeVariables);
+      DecompositionComparisonReporter.report(task.label(), results, joinedResults, freeVariables);
     }
   }
 
@@ -303,6 +294,43 @@ public final class QueryEvaluationRunner {
       }
     }
     return variables;
+  }
+
+  private CpqNativeIndex loadOrBuildIndex(Path graphPath, int k) throws IOException {
+    System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
+    Path indexPath = indexPathFor(graphPath, k);
+    if (Files.exists(indexPath)) {
+      System.out.println("Loading saved index from " + indexPath.toAbsolutePath());
+      CpqNativeIndex cached = CpqNativeIndex.load(indexPath);
+      cached.sort();
+      return cached;
+    }
+    try {
+      UniqueGraph<Integer, Predicate> graph = CpqNativeIndex.readGraph(graphPath);
+      CpqNativeIndex index =
+          new CpqNativeIndex(
+              graph, k, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
+      index.sort();
+      try {
+        index.save(indexPath);
+        System.out.println("Saved index to " + indexPath.toAbsolutePath());
+      } catch (IOException | RuntimeException ex) {
+        System.out.println("Warning: failed to save index to " + indexPath + ": " + ex.getMessage());
+      }
+      return index;
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw new IOException("Index construction interrupted", ex);
+    }
+  }
+
+  private Path indexPathFor(Path graphPath, int k) {
+    Path directory = graphPath.getParent() != null ? graphPath.getParent() : Path.of("");
+    String fileName = graphPath.getFileName().toString();
+    int dot = fileName.lastIndexOf('.');
+    String stem = dot >= 0 ? fileName.substring(0, dot) : fileName;
+    String indexName = stem + ".k" + k + ".idx";
+    return directory.resolve(indexName);
   }
 
   private static String normalize(String raw) {

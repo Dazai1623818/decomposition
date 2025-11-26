@@ -14,7 +14,7 @@ public class Example {
     CQ cq = CQ.empty();
     VarCQ a = cq.addFreeVariable("A");
     VarCQ b = cq.addBoundVariable("B");
-    VarCQ c = cq.addBoundVariable("C");
+    VarCQ c = cq.addFreeVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
     cq.addAtom(a, label(1), b);

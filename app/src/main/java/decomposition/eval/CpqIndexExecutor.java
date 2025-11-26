@@ -15,7 +15,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Executes CPQ components against the native index and joins their assignments. */
+/**
+ * Executes CPQ components against the native index and joins their assignments.
+ */
 final class CpqIndexExecutor {
   private static final int[] EMPTY_INT_ARRAY = new int[0];
   private final CpqNativeIndex index;
@@ -81,12 +83,11 @@ final class CpqIndexExecutor {
       return null;
     }
 
-    RelationProjection projection =
-        new RelationProjection(
-            sortedKeys(forward.keySet()),
-            sortedKeys(reverse.keySet()),
-            toIntArrayMap(forward),
-            toIntArrayMap(reverse));
+    RelationProjection projection = new RelationProjection(
+        sortedKeys(forward.keySet()),
+        sortedKeys(reverse.keySet()),
+        toIntArrayMap(forward),
+        toIntArrayMap(reverse));
     if (projection.isEmpty()) {
       return null;
     }
@@ -102,12 +103,11 @@ final class CpqIndexExecutor {
       return List.of();
     }
 
-    List<String> variableOrder =
-        relationsPerVariable.keySet().stream()
-            .sorted(
-                Comparator.comparingInt((String var) -> relationsPerVariable.get(var).size())
-                    .thenComparing(Comparator.naturalOrder()))
-            .toList();
+    List<String> variableOrder = relationsPerVariable.keySet().stream()
+        .sorted(
+            Comparator.comparingInt((String var) -> relationsPerVariable.get(var).size())
+                .thenComparing(Comparator.naturalOrder()))
+        .toList();
     List<Map<String, Integer>> results = new ArrayList<>();
     search(variableOrder, 0, relationsPerVariable, new LinkedHashMap<>(), results);
     return results;
@@ -352,11 +352,11 @@ final class CpqIndexExecutor {
 
   private static final class LeapfrogIterator {
     private final List<IntCursor> cursors;
-    private int index;
+    private int p;
 
     LeapfrogIterator(List<IntCursor> cursors) {
       this.cursors = cursors;
-      this.index = 0;
+      this.p = 0;
     }
 
     void init() {
@@ -365,24 +365,27 @@ final class CpqIndexExecutor {
       }
       for (IntCursor cursor : cursors) {
         cursor.seekToStart();
+        if (cursor.atEnd()) {
+          return;
+        }
       }
-      index = 0;
+      p = 0;
       leapfrogSearch();
     }
 
     boolean atEnd() {
-      return cursors.isEmpty() || cursors.get(index).atEnd();
+      return cursors.isEmpty() || cursors.get(p).atEnd();
     }
 
     int key() {
-      return cursors.get(index).key();
+      return cursors.get(p).key();
     }
 
     void next() {
       if (atEnd()) {
         return;
       }
-      cursors.get(index).next();
+      cursors.get(p).next();
       leapfrogSearch();
     }
 
@@ -390,17 +393,36 @@ final class CpqIndexExecutor {
       if (cursors.isEmpty()) {
         return;
       }
+      int k = cursors.size();
       while (true) {
-        IntCursor current = cursors.get(index);
-        IntCursor prev = cursors.get((index + cursors.size() - 1) % cursors.size());
-        if (current.atEnd() || prev.atEnd()) {
+        if (cursors.get(p).atEnd()) {
           return;
         }
-        if (current.key() == prev.key()) {
+        int maxKey = cursors.get(p).key();
+        int matches = 0;
+
+        for (int i = 1; i < k; i++) {
+          int idx = (p + i) % k;
+          IntCursor cursor = cursors.get(idx);
+          cursor.seek(maxKey);
+          if (cursor.atEnd()) {
+            p = idx; // Mark as atEnd
+            return;
+          }
+          int key = cursor.key();
+          if (key == maxKey) {
+            matches++;
+          } else {
+            // key > maxKey
+            p = idx;
+            matches = -1;
+            break;
+          }
+        }
+
+        if (matches == k - 1) {
           return;
         }
-        current.seek(prev.key());
-        index = (index + 1) % cursors.size();
       }
     }
 

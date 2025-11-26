@@ -38,7 +38,8 @@ final class RunCommand {
       EvaluationPipeline evaluationPipeline = new EvaluationPipeline(cliOptions.compareGraphPath());
       CpqNativeIndex index = evaluationPipeline.buildIndexOnly();
       index.print();
-      LOG.info("Constructed CPQ index for graph {}", cliOptions.compareGraphPath().toAbsolutePath());
+      LOG.info(
+          "Constructed CPQ index for graph {}", cliOptions.compareGraphPath().toAbsolutePath());
       return 0;
     }
     DecompositionOptions pipelineOptions =
@@ -386,11 +387,8 @@ final class RunCommand {
   private void exportForVisualization(DecompositionResult result) {
     try {
       var cwd = Paths.get("").toAbsolutePath().normalize();
-      Path projectRoot = Files.exists(cwd.resolve("settings.gradle")) ? cwd : cwd.getParent();
-      if (projectRoot == null) {
-        projectRoot = cwd;
-      }
-      Path baseDir = projectRoot.resolve("app").resolve("temp");
+      Path projectRoot = findProjectRoot(cwd);
+      Path baseDir = projectRoot.resolve("temp");
       VisualizationExporter.export(
           baseDir,
           result.edges(),
@@ -417,5 +415,21 @@ final class RunCommand {
     remapped[0] = "decompose";
     System.arraycopy(remaining, 0, remapped, 1, remaining.length);
     return remapped;
+  }
+
+  private Path findProjectRoot(Path cwd) {
+    Path current = cwd;
+    while (current != null) {
+      Path settingsHere = current.resolve("settings.gradle");
+      if (Files.exists(settingsHere)) {
+        return current;
+      }
+      Path nestedAppSettings = current.resolve("app").resolve("settings.gradle");
+      if (Files.exists(nestedAppSettings)) {
+        return current.resolve("app");
+      }
+      current = current.getParent();
+    }
+    return cwd;
   }
 }

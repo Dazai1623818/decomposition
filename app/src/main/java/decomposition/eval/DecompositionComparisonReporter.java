@@ -17,7 +17,8 @@ final class DecompositionComparisonReporter {
       List<Map<String, Integer>> decomposition,
       Set<String> freeVariables) {
     Set<Map<String, Integer>> baselineSet = project(baseline, freeVariables, decomposition);
-    Set<Map<String, Integer>> decompositionSet = project(decomposition, freeVariables, decomposition);
+    Set<Map<String, Integer>> decompositionSet =
+        project(decomposition, freeVariables, decomposition);
     System.out.println(
         "Projected (free vars) result count - baseline: "
             + baselineSet.size()

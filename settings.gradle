@@ -1,8 +1,0 @@
-rootProject.name = "decomposition"
-include("app")
-includeBuild("../CPQ-native-index/CPQ-native Index") {
-    dependencySubstitution {
-        substitute(module("dev.roanh.cpqnativeindex:cpq-native-index"))
-            .using(project(":"))
-    }
-}

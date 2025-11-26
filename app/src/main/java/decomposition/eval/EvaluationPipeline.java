@@ -6,13 +6,11 @@ import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
 import decomposition.nativeindex.CpqNativeIndex;
-import dev.roanh.cpqindex.IndexUtil;
+import decomposition.util.Timing;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.type.schema.Predicate;
-import decomposition.util.Timing;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,7 +21,7 @@ import java.util.Objects;
 import java.util.Set;
 
 public final class EvaluationPipeline {
-  private static final int INDEX_DIAMETER = 2;
+  private static final int INDEX_DIAMETER = 3;
   private static final Path NAUTY_LIBRARY = Path.of("lib", "libnauty.so");
   private final Path graphPath;
 
@@ -51,8 +49,8 @@ public final class EvaluationPipeline {
     List<CpqIndexExecutor.Component> baselineComponents = baselineComponents(result.edges());
 
     // Check if baseline components fit in index
-    CpqIndexExecutor.Component oversizedBaseline = CpqIndexExecutor.oversizedComponent(baselineComponents,
-        INDEX_DIAMETER);
+    CpqIndexExecutor.Component oversizedBaseline =
+        CpqIndexExecutor.oversizedComponent(baselineComponents, INDEX_DIAMETER);
     if (oversizedBaseline != null) {
       System.out.println(
           "Baseline exceeds index diameter k="
@@ -100,7 +98,8 @@ public final class EvaluationPipeline {
         List<CpqIndexExecutor.Component> components = componentsFromTuple(tuple);
         System.out.println("Tuple '" + label + "': " + formatTuple(tuple));
 
-        CpqIndexExecutor.Component oversized = CpqIndexExecutor.oversizedComponent(components, INDEX_DIAMETER);
+        CpqIndexExecutor.Component oversized =
+            CpqIndexExecutor.oversizedComponent(components, INDEX_DIAMETER);
         if (oversized != null) {
           System.out.println(
               "Skipping '"
@@ -117,8 +116,7 @@ public final class EvaluationPipeline {
         List<Map<String, Integer>> joinedResults = executeWithTiming(label, executor, components);
         System.out.println("Decomposition '" + label + "' result count: " + joinedResults.size());
         printSampleAssignments("  [" + label + "]", joinedResults, 10);
-        DecompositionComparisonReporter.report(
-            label, baseline, joinedResults, freeVariables);
+        DecompositionComparisonReporter.report(label, baseline, joinedResults, freeVariables);
         executed = true;
       }
     }
@@ -138,13 +136,40 @@ public final class EvaluationPipeline {
   }
 
   private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
+    Path indexPath = indexPathFor(graphPath);
+    if (Files.exists(indexPath)) {
+      System.out.println("Loading saved index from " + indexPath.toAbsolutePath());
+      CpqNativeIndex cached = CpqNativeIndex.load(indexPath);
+      cached.sort();
+      return cached;
+    }
     try {
-      return new CpqNativeIndex(
-          IndexUtil.readGraph(graphPath), INDEX_DIAMETER, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
+      CpqNativeIndex index =
+          new CpqNativeIndex(
+              CpqNativeIndex.readGraph(graphPath),
+              INDEX_DIAMETER,
+              Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
+      index.sort();
+      try {
+        index.save(indexPath);
+        System.out.println("Saved index to " + indexPath.toAbsolutePath());
+      } catch (IOException ex) {
+        System.out.println("Warning: failed to save index to " + indexPath + ": " + ex.getMessage());
+      }
+      return index;
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IOException("Index construction interrupted", ex);
     }
+  }
+
+  private Path indexPathFor(Path graphPath) {
+    Path directory = graphPath.getParent() != null ? graphPath.getParent() : Path.of("");
+    String fileName = graphPath.getFileName().toString();
+    int dot = fileName.lastIndexOf('.');
+    String stem = dot >= 0 ? fileName.substring(0, dot) : fileName;
+    String indexName = stem + ".k" + INDEX_DIAMETER + ".idx";
+    return directory.resolve(indexName);
   }
 
   private Map<Partition, PartitionEvaluation> mapEvaluations(
@@ -161,7 +186,8 @@ public final class EvaluationPipeline {
     for (Edge edge : edges) {
       CPQ cpq = CPQ.label(edge.predicate());
       if (Objects.equals(edge.source(), edge.target())) {
-        // Self-loop: intersect with identity so both endpoints stay anchored at the same vertex
+        // Self-loop: intersect with identity so both endpoints stay anchored at the
+        // same vertex
         cpq = CPQ.intersect(List.of(cpq, CPQ.id()));
       }
       String left = normalizeVariable(edge.source());
@@ -214,7 +240,10 @@ public final class EvaluationPipeline {
   }
 
   private static List<Map<String, Integer>> executeWithTiming(
-      String label, CpqIndexExecutor executor, List<CpqIndexExecutor.Component> components, Timing timing) {
+      String label,
+      CpqIndexExecutor executor,
+      List<CpqIndexExecutor.Component> components,
+      Timing timing) {
     Timing effectiveTiming = timing != null ? timing : Timing.start();
     List<Map<String, Integer>> results = executor.execute(components);
     System.out.println(label + " execution took " + effectiveTiming.elapsedMillis() + " ms");

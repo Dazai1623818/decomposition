@@ -34,7 +34,7 @@ final class EvaluateCommand {
       throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
     }
     String exampleName = "example1";
-    Path graphPath = Path.of("graph_huge.edge");
+    Path graphPath = Path.of("graphs", "example1.edge");
     String kRaw = null;
     List<Path> decompositionInputs = new ArrayList<>();
 
