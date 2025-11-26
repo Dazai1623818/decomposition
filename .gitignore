@@ -10,3 +10,4 @@ vis.ipynb.gradle-home
 temp/
 
 *.edge
+*.idx
