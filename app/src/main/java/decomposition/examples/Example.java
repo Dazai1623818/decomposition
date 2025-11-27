@@ -35,8 +35,8 @@ public class Example {
 
     cq.addAtom(a, label(1), b);
     cq.addAtom(b, label(2), c);
-    cq.addAtom(c, label(3), d);
-    cq.addAtom(d, label(4), a);
+    // cq.addAtom(c, label(3), d);
+    // cq.addAtom(d, label(4), a);
     cq.addAtom(a, label(5), c);
 
     return cq;

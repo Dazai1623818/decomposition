@@ -9,5 +9,6 @@ temp
 vis.ipynb.gradle-home
 temp/
 
+logs/
 *.edge
 *.idx
