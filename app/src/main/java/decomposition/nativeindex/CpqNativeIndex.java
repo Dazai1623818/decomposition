@@ -33,7 +33,12 @@ public final class CpqNativeIndex {
   }
 
   public void print() {
-    delegate.print();
+    try {
+      delegate.print();
+    } catch (NullPointerException ex) {
+      // Some persisted indexes were saved without label metadata; skip printing in that case.
+      System.out.println("Index loaded without labels; skipping printable summary.");
+    }
   }
 
   public List<Pair> query(CPQ cpq) {

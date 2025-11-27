@@ -13,12 +13,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Stream;
 
 public final class EvaluationPipeline {
   private static final int INDEX_DIAMETER = 3;
@@ -129,20 +131,22 @@ public final class EvaluationPipeline {
   public CpqNativeIndex buildIndexOnly() throws IOException {
     System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
     long startNanos = System.nanoTime();
-    CpqNativeIndex index = buildIndex(graphPath);
+    IndexLoadResult result = loadIndex(graphPath);
     long durationMs = Math.round((System.nanoTime() - startNanos) / 1_000_000.0);
-    System.out.println("Index construction took " + durationMs + " ms");
-    return index;
+    String action = result.loadedFromCache() ? "Index load" : "Index construction";
+    System.out.println(action + " took " + durationMs + " ms");
+    return result.index();
   }
 
-  private CpqNativeIndex buildIndex(Path graphPath) throws IOException {
-    Path indexPath = indexPathFor(graphPath);
-    if (Files.exists(indexPath)) {
+  private IndexLoadResult loadIndex(Path graphPath) throws IOException {
+    Path indexPath = findExistingIndex(graphPath);
+    if (indexPath != null) {
       System.out.println("Loading saved index from " + indexPath.toAbsolutePath());
       CpqNativeIndex cached = CpqNativeIndex.load(indexPath);
       cached.sort();
-      return cached;
+      return new IndexLoadResult(cached, true);
     }
+    indexPath = indexPathFor(graphPath);
     try {
       CpqNativeIndex index =
           new CpqNativeIndex(
@@ -156,7 +160,7 @@ public final class EvaluationPipeline {
       } catch (IOException ex) {
         System.out.println("Warning: failed to save index to " + indexPath + ": " + ex.getMessage());
       }
-      return index;
+      return new IndexLoadResult(index, false);
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw new IOException("Index construction interrupted", ex);
@@ -165,12 +169,35 @@ public final class EvaluationPipeline {
 
   private Path indexPathFor(Path graphPath) {
     Path directory = graphPath.getParent() != null ? graphPath.getParent() : Path.of("");
+    return directory.resolve(stem(graphPath) + ".idx");
+  }
+
+  private Path findExistingIndex(Path graphPath) {
+    Path directory = graphPath.getParent() != null ? graphPath.getParent() : Path.of("");
+    String stem = stem(graphPath);
+    try (Stream<Path> files = Files.list(directory)) {
+      return files
+          .filter(Files::isRegularFile)
+          .filter(
+              p -> {
+                String name = p.getFileName().toString();
+                return name.startsWith(stem) && name.endsWith(".idx");
+              })
+          .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+          .findFirst()
+          .orElse(null);
+    } catch (IOException ex) {
+      return null;
+    }
+  }
+
+  private String stem(Path graphPath) {
     String fileName = graphPath.getFileName().toString();
     int dot = fileName.lastIndexOf('.');
-    String stem = dot >= 0 ? fileName.substring(0, dot) : fileName;
-    String indexName = stem + ".k" + INDEX_DIAMETER + ".idx";
-    return directory.resolve(indexName);
+    return dot >= 0 ? fileName.substring(0, dot) : fileName;
   }
+
+  private record IndexLoadResult(CpqNativeIndex index, boolean loadedFromCache) {}
 
   private Map<Partition, PartitionEvaluation> mapEvaluations(
       List<PartitionEvaluation> evaluations) {

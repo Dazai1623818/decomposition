@@ -106,6 +106,7 @@ final class CpqIndexExecutor {
     List<String> variableOrder = relationsPerVariable.keySet().stream()
         .sorted(
             Comparator.comparingInt((String var) -> relationsPerVariable.get(var).size())
+                .reversed()
                 .thenComparing(Comparator.naturalOrder()))
         .toList();
     List<Map<String, Integer>> results = new ArrayList<>();

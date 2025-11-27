@@ -1,16 +1,13 @@
 package decomposition.cli;
 
-import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionOptions.Mode;
+import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.core.model.Component;
 import decomposition.cpq.CPQExpression;
-import decomposition.eval.EvaluationPipeline;
 import decomposition.examples.RandomExampleConfig;
-import decomposition.nativeindex.CpqNativeIndex;
-import decomposition.pipeline.builder.CpqBuilder;
-import decomposition.pipeline.builder.CpqBuilderResult;
+import decomposition.pipeline.Pipeline;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -33,15 +30,15 @@ final class RunCommand {
 
   int execute(String[] args) throws IOException {
     CliOptions cliOptions = parseRunArgs(args);
+    Pipeline pipeline = new Pipeline();
 
     if (cliOptions.buildIndexOnly()) {
-      EvaluationPipeline evaluationPipeline = new EvaluationPipeline(cliOptions.compareGraphPath());
-      CpqNativeIndex index = evaluationPipeline.buildIndexOnly();
-      index.print();
-      LOG.info(
-          "Constructed CPQ index for graph {}", cliOptions.compareGraphPath().toAbsolutePath());
+      pipeline.buildIndex(cliOptions.compareGraphPath());
       return 0;
     }
+
+    CQ query = loadQuery(cliOptions);
+
     DecompositionOptions pipelineOptions =
         new DecompositionOptions(
             cliOptions.mode(),
@@ -51,18 +48,17 @@ final class RunCommand {
             cliOptions.singleTuplePerPartition(),
             false);
 
-    CQ query = loadQuery(cliOptions);
-
-    EvaluationPipeline evaluationPipeline = null;
-    CpqNativeIndex index = null;
     if (cliOptions.compareWithIndex()) {
-      evaluationPipeline = new EvaluationPipeline(cliOptions.compareGraphPath());
-      index = evaluationPipeline.buildIndexOnly();
+      DecompositionResult result =
+          pipeline.benchmark(
+              query, cliOptions.freeVariables(), pipelineOptions, cliOptions.compareGraphPath());
+      logSummary(result, cliOptions);
+      exportForVisualization(result);
+      return 0;
     }
 
-    CpqBuilderResult builderResult =
-        CpqBuilder.defaultBuilder().build(query, cliOptions.freeVariables(), pipelineOptions);
-    DecompositionResult result = builderResult.result();
+    DecompositionResult result =
+        pipeline.decompose(query, cliOptions.freeVariables(), pipelineOptions);
 
     logSummary(result, cliOptions);
     exportForVisualization(result);
@@ -78,10 +74,6 @@ final class RunCommand {
 
     if (cliOptions.showVisualization()) {
       showComponents(result);
-    }
-
-    if (cliOptions.compareWithIndex()) {
-      evaluationPipeline.evaluate(query, result, index);
     }
 
     if (result.terminationReason() != null) {

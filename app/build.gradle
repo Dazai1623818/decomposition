@@ -15,14 +15,14 @@ application {
 sourceSets {
     main {
         java {
-            srcDirs 'src/main/java', 'temp/root/cpq-native-index-src', 'temp/root/gmark-src'
+            srcDirs 'src/main/java'
         }
     }
 }
 
 dependencies {
-    // implementation 'dev.roanh.cpqnativeindex:cpq-native-index:1.0'
-    // implementation 'dev.roanh.gmark:gmark:2.1'
+    implementation 'dev.roanh.cpqnativeindex:cpq-native-index:1.0'
+    implementation 'dev.roanh.gmark:gmark:2.1'
     implementation 'com.google.guava:guava:32.1.2-jre'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'org.slf4j:slf4j-api:2.0.12'
@@ -85,8 +85,9 @@ tasks.register('verifyComponents', JavaExec) {
     group = 'verification'
     description = 'Verifies CPQ components against manual joins'
     mainClass = 'decomposition.eval.SimpleComponentVerifier'
-    classpath = sourceSets.main.runtimeClasspath
-    args = ['graph_v500_e600_l5_s1.edge']
+    classpath = sourceSets.test.runtimeClasspath
+    dependsOn tasks.testClasses
+    args = ['graphs/example1_micro.edge']
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }
@@ -96,8 +97,9 @@ tasks.register('runSimpleVerifier', JavaExec) {
     group = 'verification'
     description = 'Runs SimpleComponentVerifier on a specified graph'
     mainClass = 'decomposition.eval.SimpleComponentVerifier'
-    classpath = sourceSets.main.runtimeClasspath
-    args = [project.findProperty('graph') ?: 'graphs/example1.edge']
+    classpath = sourceSets.test.runtimeClasspath
+    dependsOn tasks.testClasses
+    args = [project.findProperty('graph') ?: 'graphs/example1_micro.edge']
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }

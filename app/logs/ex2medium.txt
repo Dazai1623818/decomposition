@@ -1,0 +1,106 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Path for java installation '/usr/lib/jvm/openjdk-17' (Common Linux Locations) does not contain a java executable
+Path for java installation '/usr/lib/jvm/openjdk-11' (Common Linux Locations) does not contain a java executable
+Path for java installation '/usr/lib/jvm/openjdk-17' (Common Linux Locations) does not contain a java executable
+Path for java installation '/usr/lib/jvm/openjdk-11' (Common Linux Locations) does not contain a java executable
+> Task :CPQ-native Index:compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :CPQ-native Index:processResources UP-TO-DATE
+> Task :CPQ-native Index:classes UP-TO-DATE
+> Task :CPQ-native Index:generatePomFileForMavenJavaPublication
+> Task :CPQ-native Index:jar UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :run
+[main] INFO decomposition.pipeline.Pipeline - Executing full benchmark pipeline...
+Loading saved index from /home/dazai/projects/decomposition/app/graphs/example1_medium.k3.idx
+Index load took 110748 ms
+Index loaded without labels; skipping printable summary.
+[main] INFO decomposition.pipeline.Pipeline - Executing decomposition pipeline...
+[main] INFO decomposition.pipeline.Pipeline - Decomposition complete. Found 6 valid partitions.
+Executing query: (B) ← 1(A, B), 2(B, C), 3(C, D), 4(D, A), 5(A, C)
+Baseline (single-edge) execution took 31 ms
+Baseline (single-edge) result count: 0
+Baseline projected (free vars) result count: 0 over [?B]
+Tuple 'pipeline-partition-1/tuple-1': 1 (?A→?B) | 2 (?B→?C) | 3 (?C→?D) | 4 (?D→?A) | 5 (?A→?C)
+pipeline-partition-1/tuple-1 execution took 1 ms
+Decomposition 'pipeline-partition-1/tuple-1' result count: 0
+Projected (free vars) result count - baseline: 0, decomposition: 0
+Joined decomposition 'pipeline-partition-1/tuple-1' matches single-edge evaluation.
+Tuple 'pipeline-partition-2/tuple-1': 1 (?A→?B) | 2 (?B→?C) | (3◦4) (?C→?A) | 5 (?A→?C)
+pipeline-partition-2/tuple-1 execution took 4 ms
+Decomposition 'pipeline-partition-2/tuple-1' result count: 0
+Projected (free vars) result count - baseline: 0, decomposition: 0
+Joined decomposition 'pipeline-partition-2/tuple-1' matches single-edge evaluation.
+Tuple 'pipeline-partition-3/tuple-1': 1 (?A→?B) | 2 (?B→?C) | ((3◦4) ∩ 5⁻) (?C→?A)
+pipeline-partition-3/tuple-1 execution took 3 ms
+Decomposition 'pipeline-partition-3/tuple-1' result count: 0
+Projected (free vars) result count - baseline: 0, decomposition: 0
+Joined decomposition 'pipeline-partition-3/tuple-1' matches single-edge evaluation.
+Tuple 'pipeline-partition-4/tuple-1': 1⁻ (?B→?A) | (2◦((3◦4) ∩ 5⁻)) (?B→?A)
+pipeline-partition-4/tuple-1 execution took 1 ms
+Decomposition 'pipeline-partition-4/tuple-1' result count: 0
+Projected (free vars) result count - baseline: 0, decomposition: 0
+Joined decomposition 'pipeline-partition-4/tuple-1' matches single-edge evaluation.
+Tuple 'pipeline-partition-5/tuple-1': ((1⁻◦(((4⁻◦3⁻) ∩ 5)◦2⁻)) ∩ id) (?B→?B)
+Skipping 'pipeline-partition-5/tuple-1' because component '((1⁻◦(((4⁻◦3⁻) ∩ 5)◦2⁻)) ∩ id) (?B→?B)' (diameter=4) exceeds index k=3
+Tuple 'pipeline-partition-6/tuple-1': (1⁻◦((4⁻◦3⁻) ∩ 5)) (?B→?C) | 2 (?B→?C)
+pipeline-partition-6/tuple-1 execution took 1 ms
+Decomposition 'pipeline-partition-6/tuple-1' result count: 0
+Projected (free vars) result count - baseline: 0, decomposition: 0
+Joined decomposition 'pipeline-partition-6/tuple-1' matches single-edge evaluation.
+[main] INFO decomposition.cli.RunCommand - Decomposition took 439 ms
+[main] INFO decomposition.cli.RunCommand - Partitions considered: 6
+[main] INFO decomposition.cli.RunCommand - Valid partitions: 6
+[main] INFO decomposition.cli.RunCommand - Partition #1:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #2 [[1]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #3 [[2]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #4 [[3]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #5 [[4]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: 1 (A→B) | 2 (B→C) | 3 (C→D) | 4 (D→A) | 5 (A→C)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+[main] INFO decomposition.cli.RunCommand - Partition #2:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #2 [[1]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #3 [[2,3]] expressions=2
+[main] INFO decomposition.cli.RunCommand -   Component #4 [[4]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: 1 (A→B) | 2 (B→C) | (3◦4) (C→A) | 5 (A→C)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+[main] INFO decomposition.cli.RunCommand - Partition #3:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #2 [[1]] expressions=4
+[main] INFO decomposition.cli.RunCommand -   Component #3 [[2,3,4]] expressions=2
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: 1 (A→B) | 2 (B→C) | ((3◦4) ∩ 5⁻) (C→A)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+[main] INFO decomposition.cli.RunCommand - Partition #4:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0]] expressions=1
+[main] INFO decomposition.cli.RunCommand -   Component #2 [[1,2,3,4]] expressions=1
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: 1⁻ (B→A) | (2◦((3◦4) ∩ 5⁻)) (B→A)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+[main] INFO decomposition.cli.RunCommand - Partition #5:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0,1,2,3,4]] expressions=1
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: ((1⁻◦(((4⁻◦3⁻) ∩ 5)◦2⁻)) ∩ id) (B→B)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+[main] INFO decomposition.cli.RunCommand - Partition #6:
+[main] INFO decomposition.cli.RunCommand -   Component #1 [[0,2,3,4]] expressions=1
+[main] INFO decomposition.cli.RunCommand -   Component #2 [[1]] expressions=1
+[main] INFO decomposition.cli.RunCommand -   Tuples (showing 1):
+[main] INFO decomposition.cli.RunCommand -     #1: (1⁻◦((4⁻◦3⁻) ∩ 5)) (B→C) | 2 (B→C)
+[main] INFO decomposition.cli.RunCommand -     ... limit reached (1)
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.5/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 2m 1s
+7 actionable tasks: 2 executed, 5 up-to-date
