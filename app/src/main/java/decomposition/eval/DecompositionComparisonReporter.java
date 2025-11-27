@@ -42,6 +42,16 @@ final class DecompositionComparisonReporter {
     printDifference("Extra assignments (decomposition only):", decompositionSet, baselineSet);
   }
 
+  static boolean compare(
+      List<Map<String, Integer>> baseline,
+      List<Map<String, Integer>> decomposition,
+      Set<String> freeVariables) {
+    Set<Map<String, Integer>> baselineSet = project(baseline, freeVariables, decomposition);
+    Set<Map<String, Integer>> decompositionSet =
+        project(decomposition, freeVariables, decomposition);
+    return baselineSet.equals(decompositionSet);
+  }
+
   static String formatAssignment(Map<String, Integer> assignment) {
     Map<String, Integer> ordered = new LinkedHashMap<>(assignment);
     return ordered.toString();

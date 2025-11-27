@@ -3,9 +3,10 @@ package decomposition.pipeline;
 import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
 import decomposition.eval.EvaluationPipeline;
-import decomposition.nativeindex.CpqNativeIndex;
+import decomposition.eval.IndexManager;
 import decomposition.pipeline.builder.CpqBuilder;
 import decomposition.pipeline.builder.CpqBuilderResult;
+import dev.roanh.cpqindex.Index;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class Pipeline {
   private static final Logger LOG = LoggerFactory.getLogger(Pipeline.class);
+  private static final int INDEX_DIAMETER = 3;
 
   /**
    * Workflow 1: Decomposition only.
@@ -45,9 +47,13 @@ public final class Pipeline {
   /** Workflow 2: Index construction only. */
   public void buildIndex(Path graphPath) throws IOException {
     LOG.info("Executing index construction pipeline for: {}", graphPath);
-    EvaluationPipeline evaluator = new EvaluationPipeline(graphPath);
-    CpqNativeIndex index = evaluator.buildIndexOnly();
-    index.print();
+    Index index = new IndexManager().loadOrBuild(graphPath, INDEX_DIAMETER);
+    try {
+      index.print();
+    } catch (NullPointerException ex) {
+      // Some persisted indexes were saved without label metadata; skip printing in that case.
+      LOG.warn("Index loaded without labels; skipping printable summary.");
+    }
   }
 
   /**
@@ -64,12 +70,7 @@ public final class Pipeline {
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
 
-    // 1. Prepare index
-    EvaluationPipeline evaluator = new EvaluationPipeline(graphPath);
-    CpqNativeIndex index = evaluator.buildIndexOnly();
-    index.print();
-
-    // 2. Run decomposition (force ENUMERATE to ensure we have tuples to evaluate)
+    // 1. Run decomposition (force ENUMERATE to ensure we have tuples to evaluate)
     DecompositionOptions benchmarkOptions =
         options.mode().enumerateTuples()
             ? options
@@ -87,8 +88,9 @@ public final class Pipeline {
       return result;
     }
 
-    // 3. Run comparative evaluation
-    evaluator.evaluate(query, result, index);
+    // 2. Run comparative evaluation
+    EvaluationPipeline evaluator = new EvaluationPipeline();
+    evaluator.runBenchmark(query, result, graphPath);
     return result;
   }
 }

@@ -8,8 +8,6 @@ import java.util.Objects;
 import java.util.Set;
 
 record CliOptions(
-    String queryText,
-    String cpqExpression,
     String queryFile,
     String exampleName,
     Set<String> freeVariables,
@@ -38,14 +36,6 @@ record CliOptions(
     compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
     compareDecompositions =
         compareDecompositions == null ? List.of() : List.copyOf(compareDecompositions);
-  }
-
-  boolean hasQueryText() {
-    return queryText != null && !queryText.isBlank();
-  }
-
-  boolean hasCpqExpression() {
-    return cpqExpression != null && !cpqExpression.isBlank();
   }
 
   boolean hasQueryFile() {

@@ -2,7 +2,6 @@ package decomposition.cli;
 
 import decomposition.examples.Example;
 import decomposition.examples.RandomExampleConfig;
-import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,14 +52,6 @@ final class CliParsers {
     return vars;
   }
 
-  static boolean isExampleAlias(String command) {
-    if (command == null) {
-      return false;
-    }
-    String normalized = command.trim().toLowerCase(Locale.ROOT);
-    return normalized.startsWith("example") && normalized.length() > "example".length();
-  }
-
   static boolean isRandomExampleName(String exampleName) {
     if (exampleName == null) {
       return false;
@@ -76,15 +67,6 @@ final class CliParsers {
     Long seed = base.seed() != null ? base.seed() + offset : null;
     return new RandomExampleConfig(
         base.freeVariableCount(), base.edgeCount(), base.predicateLabelCount(), seed);
-  }
-
-  static String[] remapExampleArgs(String exampleName, String[] remaining) {
-    String[] remapped = new String[remaining.length + 3];
-    remapped[0] = "decompose";
-    remapped[1] = "--example";
-    remapped[2] = exampleName;
-    System.arraycopy(remaining, 0, remapped, 3, remaining.length);
-    return remapped;
   }
 
   static CQ loadExampleByName(String exampleName, RandomExampleConfig randomConfig) {
@@ -117,10 +99,5 @@ final class CliParsers {
     }
     String content = Files.readString(path);
     return CQ.parse(content);
-  }
-
-  static CQ loadQueryFromCpq(String cpqExpression) {
-    String sanitized = cpqExpression.replaceAll("\\s+", "");
-    return CPQ.parse(sanitized).toCQ();
   }
 }

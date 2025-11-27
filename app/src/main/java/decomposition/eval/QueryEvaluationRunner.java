@@ -1,12 +1,11 @@
 package decomposition.eval;
 
 import decomposition.examples.Example;
-import decomposition.nativeindex.CpqNativeIndex;
+import dev.roanh.cpqindex.Index;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.type.schema.Predicate;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,18 +25,19 @@ import java.util.Set;
 public final class QueryEvaluationRunner {
   private static final int MAX_RESULTS_TO_PRINT = 99_999;
   private static final Path NAUTY_LIBRARY = Path.of("lib", "libnauty.so");
+  private final IndexManager indexManager = new IndexManager();
 
   public void run(EvaluateOptions options) throws IOException {
     System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
 
-    CpqNativeIndex index = loadOrBuildIndex(options.graphPath(), options.k());
+    Index index = indexManager.loadOrBuild(options.graphPath(), options.k());
 
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     ExampleQuery example = selectExample(options.exampleName());
     CQ cq = example.cq();
     Set<String> freeVariables = freeVariablesOf(cq);
-    List<CpqIndexExecutor.Component> baselineComponents = componentsFromAtoms(atomsOf(cq));
+    List<CpqIndexExecutor.Component> baselineComponents = componentsFromAtomsPublic(cq);
     CpqIndexExecutor.Component oversizedBaseline =
         CpqIndexExecutor.oversizedComponent(baselineComponents, options.k());
     if (oversizedBaseline != null) {
@@ -145,6 +145,10 @@ public final class QueryEvaluationRunner {
   }
 
   private record DecompositionTask(String label, QueryDecomposition decomposition) {}
+
+  public List<CpqIndexExecutor.Component> componentsFromAtomsPublic(CQ cq) {
+    return componentsFromAtoms(atomsOf(cq));
+  }
 
   private static List<AtomCQ> atomsOf(CQ cq) {
     UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
@@ -294,43 +298,6 @@ public final class QueryEvaluationRunner {
       }
     }
     return variables;
-  }
-
-  private CpqNativeIndex loadOrBuildIndex(Path graphPath, int k) throws IOException {
-    System.load(NAUTY_LIBRARY.toAbsolutePath().toString());
-    Path indexPath = indexPathFor(graphPath, k);
-    if (Files.exists(indexPath)) {
-      System.out.println("Loading saved index from " + indexPath.toAbsolutePath());
-      CpqNativeIndex cached = CpqNativeIndex.load(indexPath);
-      cached.sort();
-      return cached;
-    }
-    try {
-      UniqueGraph<Integer, Predicate> graph = CpqNativeIndex.readGraph(graphPath);
-      CpqNativeIndex index =
-          new CpqNativeIndex(
-              graph, k, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
-      index.sort();
-      try {
-        index.save(indexPath);
-        System.out.println("Saved index to " + indexPath.toAbsolutePath());
-      } catch (IOException | RuntimeException ex) {
-        System.out.println("Warning: failed to save index to " + indexPath + ": " + ex.getMessage());
-      }
-      return index;
-    } catch (InterruptedException ex) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Index construction interrupted", ex);
-    }
-  }
-
-  private Path indexPathFor(Path graphPath, int k) {
-    Path directory = graphPath.getParent() != null ? graphPath.getParent() : Path.of("");
-    String fileName = graphPath.getFileName().toString();
-    int dot = fileName.lastIndexOf('.');
-    String stem = dot >= 0 ? fileName.substring(0, dot) : fileName;
-    String indexName = stem + ".k" + k + ".idx";
-    return directory.resolve(indexName);
   }
 
   private static String normalize(String raw) {

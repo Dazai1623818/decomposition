@@ -1,8 +1,9 @@
 package decomposition.eval;
 
-import decomposition.nativeindex.CpqNativeIndex;
-import decomposition.nativeindex.CpqNativeIndex.Pair;
+import dev.roanh.cpqindex.Index;
 import dev.roanh.cpqindex.IndexUtil;
+import dev.roanh.cpqindex.Pair;
+import dev.roanh.cpqindex.ProgressListener;
 import dev.roanh.gmark.eval.PathQuery;
 import dev.roanh.gmark.eval.ReachabilityQueryEvaluator;
 import dev.roanh.gmark.eval.ResultGraph;
@@ -40,9 +41,15 @@ public class SimpleComponentVerifier {
 
     UniqueGraph<Integer, Predicate> graph = IndexUtil.readGraph(graphPath);
     List<Predicate> alphabet = buildAlphabet(graph, REQUIRED_LABEL_MAX);
-    CpqNativeIndex index =
-        new CpqNativeIndex(
-            graph, INDEX_DIAMETER, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
+    Index index =
+        new Index(
+            graph,
+            INDEX_DIAMETER,
+            true,
+            true,
+            Math.max(1, Runtime.getRuntime().availableProcessors() - 1),
+            2,
+            ProgressListener.LOG);
     index.sort();
     IntGraph intGraph = toIntGraph(graph);
     ReachabilityQueryEvaluator rqEval = new ReachabilityQueryEvaluator(intGraph);
@@ -176,7 +183,9 @@ public class SimpleComponentVerifier {
 
     System.out.println("\n=== Test 5: ((1◦2◦3◦4) ∩ id) ===");
     CPQ concat1234 =
-        CPQ.concat(List.of(label(1, alphabet), label(2, alphabet), label(3, alphabet), label(4, alphabet)));
+        CPQ.concat(
+            List.of(
+                label(1, alphabet), label(2, alphabet), label(3, alphabet), label(4, alphabet)));
     CPQ closedWalk = CPQ.intersect(List.of(concat1234, CPQ.id()));
     ResultGraph closedRg = rqEval.evaluate(PathQuery.of(closedWalk));
     List<ResultPair> closedReachability = new ArrayList<>();

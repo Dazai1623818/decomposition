@@ -1,7 +1,7 @@
 package decomposition.cli;
 
-import decomposition.core.DecompositionOptions.Mode;
 import decomposition.core.DecompositionOptions;
+import decomposition.core.DecompositionOptions.Mode;
 import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.core.model.Component;
@@ -102,20 +102,7 @@ final class RunCommand {
     if ("decompose".equalsIgnoreCase(command)) {
       return parseDecomposeArgs(args);
     }
-    if ("example".equalsIgnoreCase(command)) {
-      if (args.length < 2) {
-        throw new IllegalArgumentException(
-            "Missing example name. Usage: example <exampleName> [options]");
-      }
-      String[] remapped =
-          CliParsers.remapExampleArgs(args[1], Arrays.copyOfRange(args, 2, args.length));
-      return parseDecomposeArgs(remapped);
-    }
-    if (CliParsers.isExampleAlias(command)) {
-      String[] remapped =
-          CliParsers.remapExampleArgs(command, Arrays.copyOfRange(args, 1, args.length));
-      return parseDecomposeArgs(remapped);
-    }
+
     throw new IllegalArgumentException("Unknown command: " + command);
   }
 
@@ -124,11 +111,9 @@ final class RunCommand {
       throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
     }
 
-    String queryText = null;
-    String cpqText = null;
     String queryFile = null;
     String exampleName = null;
-    String freeVarsRaw = null;
+
     String modeRaw = null;
     String maxPartitionsRaw = null;
     String timeBudgetRaw = null;
@@ -161,18 +146,12 @@ final class RunCommand {
       }
 
       switch (option) {
-        case "--cq" ->
-            queryText = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--cpq" ->
-            cpqText = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--file" ->
             queryFile = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--example" ->
             exampleName =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--free-vars" ->
-            freeVarsRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+
         case "--mode" ->
             modeRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--max-partitions" ->
@@ -218,20 +197,14 @@ final class RunCommand {
     }
 
     int sources = 0;
-    if (queryText != null) sources++;
-    if (cpqText != null) sources++;
     if (queryFile != null) sources++;
     if (exampleName != null) sources++;
     if (sources == 0 && !buildIndexOnly) {
-      throw new IllegalArgumentException(
-          "Provide exactly one of --cq, --cpq, --file, or --example");
+      throw new IllegalArgumentException("Provide exactly one of --file or --example");
     }
     if (sources > 1) {
-      throw new IllegalArgumentException(
-          "Provide at most one of --cq, --cpq, --file, or --example");
+      throw new IllegalArgumentException("Provide at most one of --file or --example");
     }
-
-    Set<String> freeVars = CliParsers.parseFreeVariables(freeVarsRaw);
 
     Mode mode = Mode.VALIDATE;
     if (modeRaw != null) {
@@ -291,11 +264,9 @@ final class RunCommand {
     }
     Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
     return new CliOptions(
-        queryText,
-        cpqText,
         queryFile,
         exampleName,
-        freeVars,
+        Set.of(),
         mode,
         maxPartitions,
         timeBudget,
@@ -314,12 +285,7 @@ final class RunCommand {
     if (options.hasExample()) {
       return CliParsers.loadExampleByName(options.exampleName(), options.randomExampleConfig());
     }
-    if (options.hasQueryText()) {
-      return CQ.parse(options.queryText());
-    }
-    if (options.hasCpqExpression()) {
-      return CliParsers.loadQueryFromCpq(options.cpqExpression());
-    }
+
     if (options.hasQueryFile()) {
       return CliParsers.loadQueryFromFile(options.queryFile());
     }

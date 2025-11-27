@@ -7,7 +7,8 @@ import java.util.stream.IntStream;
 
 /** Utility helpers for working with {@link BitSet} based edge masks. */
 public final class BitsetUtils {
-  private BitsetUtils() {}
+  private BitsetUtils() {
+  }
 
   public static BitSet fromMask(long mask, int size) {
     BitSet bitSet = new BitSet(size);
@@ -41,28 +42,6 @@ public final class BitsetUtils {
     BitSet clone = (BitSet) subset.clone();
     clone.andNot(superset);
     return clone.isEmpty();
-  }
-
-  public static BitSet copy(BitSet bitSet) {
-    return bitSet == null ? new BitSet() : (BitSet) bitSet.clone();
-  }
-
-  public static BitSet copyAndSet(BitSet bitSet, int index) {
-    BitSet clone = copy(bitSet);
-    clone.set(index);
-    return clone;
-  }
-
-  public static BitSet copyAndClear(BitSet bitSet, int index) {
-    BitSet clone = copy(bitSet);
-    clone.clear(index);
-    return clone;
-  }
-
-  public static BitSet complement(BitSet bitSet, int size) {
-    BitSet clone = copy(bitSet);
-    clone.flip(0, size);
-    return clone;
   }
 
   public static BitSet allOnes(int size) {

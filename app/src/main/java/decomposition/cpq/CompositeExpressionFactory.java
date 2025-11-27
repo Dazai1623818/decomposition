@@ -10,11 +10,13 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
- * Generates composite CPQ expressions by joining subcomponents via concatenation or intersection.
+ * Generates composite CPQ expressions by joining subcomponents via
+ * concatenation or intersection.
  */
 final class CompositeExpressionFactory {
 
-  private CompositeExpressionFactory() {}
+  private CompositeExpressionFactory() {
+  }
 
   static List<CPQExpression> build(
       BitSet edgeBits,
@@ -41,7 +43,8 @@ final class CompositeExpressionFactory {
   }
 
   /**
-   * Enumerates all two-way partitions of the given bitset (excluding empty/full subsets) and hands
+   * Enumerates all two-way partitions of the given bitset (excluding empty/full
+   * subsets) and hands
    * each pair to the visitor.
    */
   private static void forEachSplit(
@@ -56,7 +59,7 @@ final class CompositeExpressionFactory {
         }
       }
 
-      BitSet subsetB = BitsetUtils.copy(edgeBits);
+      BitSet subsetB = (BitSet) edgeBits.clone();
       subsetB.andNot(subsetA);
       visitor.accept(subsetA, subsetB);
     }
@@ -71,13 +74,12 @@ final class CompositeExpressionFactory {
       return;
     }
     CPQ concatenated = CPQ.concat(List.of(left.cpq(), right.cpq()));
-    String derivation =
-        "Concatenation: ["
-            + left.cpqRule()
-            + "] then ["
-            + right.cpqRule()
-            + "] via "
-            + left.target();
+    String derivation = "Concatenation: ["
+        + left.cpqRule()
+        + "] then ["
+        + right.cpqRule()
+        + "] via "
+        + left.target();
     emitIfParsable(
         edgeBits,
         concatenated,
@@ -97,15 +99,14 @@ final class CompositeExpressionFactory {
       return;
     }
     CPQ intersection = CPQ.intersect(List.of(left.cpq(), right.cpq()));
-    String derivation =
-        "Intersection: ["
-            + left.cpqRule()
-            + "] ∩ ["
-            + right.cpqRule()
-            + "] at "
-            + left.source()
-            + "→"
-            + left.target();
+    String derivation = "Intersection: ["
+        + left.cpqRule()
+        + "] ∩ ["
+        + right.cpqRule()
+        + "] at "
+        + left.source()
+        + "→"
+        + left.target();
     emitIfParsable(
         edgeBits,
         intersection,

@@ -1,6 +1,5 @@
 package decomposition.cpq.model;
 
-import decomposition.util.BitsetUtils;
 import java.util.BitSet;
 import java.util.Objects;
 import java.util.Set;
@@ -9,7 +8,8 @@ public final class CacheStats {
   private long hits;
   private long misses;
 
-  public CacheStats() {}
+  public CacheStats() {
+  }
 
   private CacheStats(long hits, long misses) {
     this.hits = hits;
@@ -51,13 +51,13 @@ public final class CacheStats {
 
   public static record ComponentKey(BitSet edgeBits, String source, String target) {
     public ComponentKey {
-      edgeBits = BitsetUtils.copy(edgeBits);
+      edgeBits = (BitSet) edgeBits.clone();
       Objects.requireNonNull(source, "source");
       Objects.requireNonNull(target, "target");
     }
 
     public BitSet bits() {
-      return BitsetUtils.copy(edgeBits);
+      return (BitSet) edgeBits.clone();
     }
   }
 
