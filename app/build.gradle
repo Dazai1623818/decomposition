@@ -6,10 +6,23 @@ plugins {
 
 repositories {
     mavenCentral()
+    flatDir {
+        dirs 'libs'
+    }
 }
 
 application {
     mainClass = 'decomposition.cli.Main'
+}
+
+distributions {
+    main {
+        contents {
+            from('lib') {
+                into 'lib'
+            }
+        }
+    }
 }
 
 sourceSets {

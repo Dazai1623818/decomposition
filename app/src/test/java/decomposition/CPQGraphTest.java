@@ -1,33 +1,23 @@
 package decomposition;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import org.junit.jupiter.api.Test;
 
-public class CPQGraphTest {
+final class CPQGraphTest {
 
   @Test
   void testCPQGraphStructure() {
     CPQ cpq = CPQ.parse("(r5 ∩ (r1◦r2))");
 
-    // Test what methods are available
-    System.out.println("CPQ: " + cpq);
-    System.out.println("CPQ class: " + cpq.getClass().getName());
-
-    // Try the method from user's example
-    try {
-      Object graph = cpq.getClass().getMethod("toQueryGraphCPQ").invoke(cpq);
-      System.out.println("QueryGraph: " + graph);
-      System.out.println("QueryGraph class: " + graph.getClass().getName());
-
-      // Get vertices and edges
-      Object vertices = graph.getClass().getMethod("getVertices").invoke(graph);
-      Object edges = graph.getClass().getMethod("getEdges").invoke(graph);
-
-      System.out.println("Vertices: " + vertices);
-      System.out.println("Edges: " + edges);
-    } catch (Exception e) {
-      System.out.println("Error: " + e.getMessage());
-      e.printStackTrace();
-    }
+    QueryGraphCPQ graph = cpq.toQueryGraph();
+    assertNotNull(graph, "CPQ should produce a query graph");
+    assertFalse(graph.getVertices().isEmpty(), "Graph should contain vertices");
+    assertFalse(graph.getEdges().isEmpty(), "Graph should contain edges");
+    assertNotNull(graph.getSourceVertex(), "Graph should expose a source vertex");
+    assertNotNull(graph.getTargetVertex(), "Graph should expose a target vertex");
   }
 }

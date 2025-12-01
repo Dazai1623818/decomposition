@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    image: decomposition-app
+    volumes:
+      - ./graphs:/app/graphs
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t

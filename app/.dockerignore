@@ -1,0 +1,8 @@
+.gradle
+build
+.git
+.vscode
+temp
+logs
+graphs
+*.hprof

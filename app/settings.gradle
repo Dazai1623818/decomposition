@@ -1,7 +1,10 @@
 rootProject.name = "decomposition"
-includeBuild("/home/dazai/projects/CPQ-native-index/CPQ-native Index") {
-    dependencySubstitution {
-        substitute(module("dev.roanh.cpqnativeindex:cpq-native-index"))
-            .using(project(":"))
+File cpqProjectDir = new File("/home/dazai/projects/CPQ-native-index/CPQ-native Index")
+if (cpqProjectDir.exists()) {
+    includeBuild(cpqProjectDir) {
+        dependencySubstitution {
+            substitute(module("dev.roanh.cpqnativeindex:cpq-native-index"))
+                .using(project(":"))
+        }
     }
 }

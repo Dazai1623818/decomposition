@@ -14,14 +14,14 @@ public class Example {
     CQ cq = CQ.empty();
     VarCQ a = cq.addFreeVariable("A");
     VarCQ b = cq.addBoundVariable("B");
-    VarCQ c = cq.addFreeVariable("C");
+    VarCQ c = cq.addBoundVariable("C");
     VarCQ d = cq.addBoundVariable("D");
 
     cq.addAtom(a, label(1), b);
     cq.addAtom(b, label(2), c);
-    cq.addAtom(a, label(3), d);
-    cq.addAtom(d, label(4), c);
-    // cq.addAtom(a, label(5), c);
+    cq.addAtom(c, label(3), d);
+    cq.addAtom(d, label(4), a);
+    cq.addAtom(a, label(5), c);
 
     return cq;
   }
