@@ -11,13 +11,15 @@ public record PartitionEvaluation(
     Partition partition,
     int partitionIndex,
     List<Integer> componentExpressionCounts,
-    List<List<CPQExpression>> decompositionTuples) {
+    List<List<CPQExpression>> decompositionTuples,
+    int maxDiameter) {
 
   public PartitionEvaluation(
       Partition partition,
       int partitionIndex,
       List<Integer> componentExpressionCounts,
-      List<List<CPQExpression>> decompositionTuples) {
+      List<List<CPQExpression>> decompositionTuples,
+      int maxDiameter) {
     this.partition = Objects.requireNonNull(partition, "partition");
     if (partitionIndex < 1) {
       throw new IllegalArgumentException("partitionIndex must be >= 1");
@@ -27,6 +29,7 @@ public record PartitionEvaluation(
         List.copyOf(Objects.requireNonNull(componentExpressionCounts, "componentExpressionCounts"));
     this.decompositionTuples =
         deepCopy(Objects.requireNonNull(decompositionTuples, "decompositionTuples"));
+    this.maxDiameter = maxDiameter;
   }
 
   public int componentCount() {

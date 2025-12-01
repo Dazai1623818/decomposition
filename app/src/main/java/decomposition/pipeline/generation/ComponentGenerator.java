@@ -68,12 +68,20 @@ public final class ComponentGenerator {
     List<CPQExpression> catalogue = componentExpressions.stream().flatMap(List::stream).toList();
 
     List<List<CPQExpression>> tuples = enumerateTuples(componentExpressions);
+    int maxDiameter = 0;
+    for (List<CPQExpression> tuple : tuples) {
+      for (CPQExpression expr : tuple) {
+        maxDiameter = Math.max(maxDiameter, expr.cpq().getDiameter());
+      }
+    }
+
     PartitionEvaluation evaluation =
         new PartitionEvaluation(
             matchedPartition,
             partitionIndex,
             componentExpressions.stream().map(List::size).toList(),
-            tuples);
+            tuples,
+            maxDiameter);
 
     return new ComponentGenerationResult(List.of(matchedPartition), catalogue, evaluation);
   }

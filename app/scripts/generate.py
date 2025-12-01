@@ -19,6 +19,7 @@ def generate(
     num_labels: int,
     seed: int = 1,
     embed_example1: bool = True,
+    embed_count: int = 1,
 ) -> None:
     rng = random.Random(seed)
     embedded_edges: list[tuple[int, int, int]] = []
@@ -26,7 +27,14 @@ def generate(
         if num_vertices < 4 or num_labels < 5:
             raise ValueError("Embedding example1 requires at least 4 vertices and 5 labels.")
         # Map example1 variables to vertices: A=0, B=1, C=2, D=3
-        embedded_edges = [(0, 1, 1), (1, 2, 2), (0, 3, 3), (3, 2, 4)]
+        # Labels use 0-indexing: 0, 1, 2, 3, 4 (requires at least 5 labels)
+        example1_pattern = [(0, 1, 1), (1, 2, 2), (2, 3, 3), (3, 0, 4), (0, 2, 5)]
+        # Spread embeddings roughly evenly across the vertex space so they do not overlap at 0–3.
+        stride = max(1, num_vertices // max(embed_count, 1))
+        for idx in range(embed_count):
+            offset = (idx * stride) % num_vertices
+            for src, tgt, label in example1_pattern:
+                embedded_edges.append(((src + offset) % num_vertices, (tgt + offset) % num_vertices, label))
 
     remaining_edges = num_edges - len(embedded_edges)
     if remaining_edges < 0:
@@ -67,6 +75,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip embedding example1 edges into the generated graph",
     )
+    parser.add_argument(
+        "--embed-count",
+        type=int,
+        default=1,
+        help="Number of times to embed example1 (default: 1)",
+    )
     return parser.parse_args()
 
 
@@ -82,6 +96,7 @@ def main() -> None:
         args.labels,
         seed,
         embed_example1=not args.no_embed_example1,
+        embed_count=args.embed_count,
     )
 
 

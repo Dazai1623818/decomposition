@@ -52,6 +52,15 @@ public final class EvaluationPipeline {
         continue;
       }
 
+      if (evaluation.maxDiameter() > k) {
+        LOG.info(
+            "Skipping partition #{} (diameter {} > {})",
+            evaluation.partitionIndex(),
+            evaluation.maxDiameter(),
+            k);
+        continue;
+      }
+
       int tupleIdx = 1;
       for (List<CPQExpression> tuple : evaluation.decompositionTuples()) {
         List<CpqIndexExecutor.Component> components = executor.componentsFromTuple(tuple);
