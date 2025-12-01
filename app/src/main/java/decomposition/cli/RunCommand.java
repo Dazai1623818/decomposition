@@ -27,13 +27,14 @@ import org.slf4j.LoggerFactory;
 /** Handles the primary `run`/`decompose` command. */
 final class RunCommand {
   private static final Logger LOG = LoggerFactory.getLogger(RunCommand.class);
+  private static final int DEFAULT_INDEX_K = 3;
 
   int execute(String[] args) throws IOException {
     CliOptions cliOptions = parseRunArgs(args);
     Pipeline pipeline = new Pipeline();
 
     if (cliOptions.buildIndexOnly()) {
-      pipeline.buildIndex(cliOptions.compareGraphPath());
+      pipeline.buildIndex(cliOptions.compareGraphPath(), cliOptions.indexK());
       return 0;
     }
 
@@ -51,7 +52,11 @@ final class RunCommand {
     if (cliOptions.compareWithIndex()) {
       DecompositionResult result =
           pipeline.benchmark(
-              query, cliOptions.freeVariables(), pipelineOptions, cliOptions.compareGraphPath());
+              query,
+              cliOptions.freeVariables(),
+              pipelineOptions,
+              cliOptions.compareGraphPath(),
+              cliOptions.indexK());
       logSummary(result, cliOptions);
       exportForVisualization(result);
       return 0;
@@ -129,6 +134,7 @@ final class RunCommand {
     List<String> compareDecompositionRaw = new ArrayList<>();
     boolean compareIndex = false;
     boolean buildIndexOnly = false;
+    String indexKRaw = null;
 
     for (int i = 1; i < args.length; i++) {
       String rawArg = args[i];
@@ -192,6 +198,8 @@ final class RunCommand {
         case "--random-seed" ->
             randomSeedRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+        case "--index-k" ->
+            indexKRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
       }
     }
@@ -263,6 +271,7 @@ final class RunCommand {
       compareDecompositions.add(Path.of(raw));
     }
     Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
+    int indexK = CliParsers.parseInt(indexKRaw, DEFAULT_INDEX_K, "--index-k");
     return new CliOptions(
         queryFile,
         exampleName,
@@ -278,6 +287,7 @@ final class RunCommand {
         compareIndex,
         compareGraphPath,
         compareDecompositions,
+        indexK,
         buildIndexOnly);
   }
 

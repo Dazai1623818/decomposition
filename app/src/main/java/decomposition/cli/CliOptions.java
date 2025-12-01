@@ -22,6 +22,7 @@ record CliOptions(
     boolean compareWithIndex,
     Path compareGraphPath,
     List<Path> compareDecompositions,
+    int indexK,
     boolean buildIndexOnly) {
 
   CliOptions {
@@ -36,6 +37,9 @@ record CliOptions(
     compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
     compareDecompositions =
         compareDecompositions == null ? List.of() : List.copyOf(compareDecompositions);
+    if (indexK < 1) {
+      throw new IllegalArgumentException("index k must be at least 1");
+    }
   }
 
   boolean hasQueryFile() {

@@ -2,6 +2,11 @@
 FROM eclipse-temurin:21-jdk-jammy AS build
 WORKDIR /app
 
+# Install Python for helper scripts used during build/dev
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Gradle files
 COPY gradlew build.gradle settings.gradle gradle.properties ./
 COPY gradle gradle
@@ -23,21 +28,16 @@ RUN ./gradlew installDist --no-daemon
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-# Install micromamba and recreate the default conda environment
-ENV MAMBA_ROOT_PREFIX=/opt/conda \
-    PATH=/opt/conda/bin:$PATH
-COPY environment-default.yml /tmp/environment-default.yml
-RUN apt-get update && apt-get install -y curl bzip2 ca-certificates && rm -rf /var/lib/apt/lists/* && \
-    curl -L https://micro.mamba.pm/api/micromamba/linux-64/latest -o /usr/local/bin/micromamba && \
-    chmod +x /usr/local/bin/micromamba && \
-    micromamba create -y -n default -f /tmp/environment-default.yml && \
-    micromamba clean -ay
-ENV CONDA_DEFAULT_ENV=default \
-    CONDA_PREFIX=/opt/conda/envs/default \
-    PATH=/opt/conda/envs/default/bin:$PATH
+# Install Python for running helper scripts like scripts/generate.py
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the installed application from the build stage
 COPY --from=build /app/build/install/decomposition /app
+
+# Include helper scripts
+COPY scripts scripts
 
 # Ensure the native library is found.
 # The distribution config in build.gradle puts 'lib/libnauty.so' into '/app/lib/libnauty.so'.

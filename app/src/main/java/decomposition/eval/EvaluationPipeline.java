@@ -20,14 +20,15 @@ public final class EvaluationPipeline {
   private static final Logger LOG = LoggerFactory.getLogger(EvaluationPipeline.class);
   private final IndexManager indexManager = new IndexManager();
 
-  public void runBenchmark(CQ query, DecompositionResult result, Path graphPath)
+  public void runBenchmark(CQ query, DecompositionResult result, Path graphPath, int indexK)
       throws IOException {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(result, "result");
     Objects.requireNonNull(graphPath, "graphPath");
 
     // 1. Setup
-    Index index = indexManager.loadOrBuild(graphPath, 3);
+    int k = indexK > 0 ? indexK : 3;
+    Index index = indexManager.loadOrBuild(graphPath, k);
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     // 2. Baseline

@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class Pipeline {
   private static final Logger LOG = LoggerFactory.getLogger(Pipeline.class);
-  private static final int INDEX_DIAMETER = 3;
+  private static final int DEFAULT_INDEX_DIAMETER = 3;
 
   /**
    * Workflow 1: Decomposition only.
@@ -45,9 +45,10 @@ public final class Pipeline {
   }
 
   /** Workflow 2: Index construction only. */
-  public void buildIndex(Path graphPath) throws IOException {
+  public void buildIndex(Path graphPath, int k) throws IOException {
     LOG.info("Executing index construction pipeline for: {}", graphPath);
-    Index index = new IndexManager().loadOrBuild(graphPath, INDEX_DIAMETER);
+    int effectiveK = k > 0 ? k : DEFAULT_INDEX_DIAMETER;
+    Index index = new IndexManager().loadOrBuild(graphPath, effectiveK);
     try {
       index.print();
     } catch (NullPointerException ex) {
@@ -66,7 +67,11 @@ public final class Pipeline {
    * </ol>
    */
   public DecompositionResult benchmark(
-      CQ query, Set<String> freeVariables, DecompositionOptions options, Path graphPath)
+      CQ query,
+      Set<String> freeVariables,
+      DecompositionOptions options,
+      Path graphPath,
+      int indexK)
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
 
@@ -90,7 +95,7 @@ public final class Pipeline {
 
     // 2. Run comparative evaluation
     EvaluationPipeline evaluator = new EvaluationPipeline();
-    evaluator.runBenchmark(query, result, graphPath);
+    evaluator.runBenchmark(query, result, graphPath, indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER);
     return result;
   }
 }
