@@ -198,7 +198,7 @@ final class RunCommand {
         case "--random-seed" ->
             randomSeedRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--index-k" ->
+        case "--k" ->
             indexKRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
       }
