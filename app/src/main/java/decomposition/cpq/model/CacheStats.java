@@ -8,8 +8,7 @@ public final class CacheStats {
   private long hits;
   private long misses;
 
-  public CacheStats() {
-  }
+  public CacheStats() {}
 
   private CacheStats(long hits, long misses) {
     this.hits = hits;

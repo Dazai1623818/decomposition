@@ -1,7 +1,6 @@
 package decomposition.cpq;
 
 import decomposition.cpq.model.CacheStats.ComponentKey;
-
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;
 import java.util.Collections;
@@ -10,25 +9,19 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Represents a recognized component together with its CPQ AST. The CPQ object
- * is the authoritative
+ * Represents a recognized component together with its CPQ AST. The CPQ object is the authoritative
  * representation; toString() is only for display.
  *
- * <p>
- * Design invariants:
+ * <p>Design invariants:
  *
  * <ul>
- * <li>CPQs capture the traversal direction via source → target, which may
- * differ from the CQ
- * edge.
- * <li>Reverse edges are represented via inverse labels (r⁻) when required for
- * intersections or
- * joins.
- * <li>Each instance records a derivation description for
- * explainability/debugging.
- * <li>Structural comparisons use only edge coverage + oriented endpoints; CPQ
- * syntax is
- * informational.
+ *   <li>CPQs capture the traversal direction via source → target, which may differ from the CQ
+ *       edge.
+ *   <li>Reverse edges are represented via inverse labels (r⁻) when required for intersections or
+ *       joins.
+ *   <li>Each instance records a derivation description for explainability/debugging.
+ *   <li>Structural comparisons use only edge coverage + oriented endpoints; CPQ syntax is
+ *       informational.
  * </ul>
  */
 public final class CPQExpression {
@@ -52,8 +45,9 @@ public final class CPQExpression {
     this.source = Objects.requireNonNull(source, "source");
     this.target = Objects.requireNonNull(target, "target");
     this.derivation = Objects.requireNonNull(derivation, "derivation");
-    this.varToNodeMap = Collections.unmodifiableMap(
-        new LinkedHashMap<>(Objects.requireNonNull(varToNodeMap, "varToNodeMap")));
+    this.varToNodeMap =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(Objects.requireNonNull(varToNodeMap, "varToNodeMap")));
     this.nodeToVarMap = Collections.unmodifiableMap(invertMapping(this.varToNodeMap));
   }
 
@@ -86,8 +80,7 @@ public final class CPQExpression {
   }
 
   /**
-   * Returns an immutable mapping from original CQ variables to the graph nodes
-   * used in this
+   * Returns an immutable mapping from original CQ variables to the graph nodes used in this
    * component.
    */
   public Map<String, String> varToNodeMap() {
@@ -105,8 +98,7 @@ public final class CPQExpression {
   }
 
   /**
-   * Returns the CPQ rule as a string for display/logging purposes only. This
-   * should not be used for
+   * Returns the CPQ rule as a string for display/logging purposes only. This should not be used for
    * equality or identity comparisons.
    */
   public String cpqRule() {

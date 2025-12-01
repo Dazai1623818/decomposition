@@ -7,8 +7,7 @@ import java.util.stream.IntStream;
 
 /** Utility helpers for working with {@link BitSet} based edge masks. */
 public final class BitsetUtils {
-  private BitsetUtils() {
-  }
+  private BitsetUtils() {}
 
   public static BitSet fromMask(long mask, int size) {
     BitSet bitSet = new BitSet(size);
