@@ -1,11 +1,12 @@
-version: '3.8'
+version: '3.2'
 services:
-  app:
+  cpq-decomposition:
     build: .
-    image: decomposition-app
+    image: decomposition-java-python
+    container_name: decomposition
+    user: "${USER_ID}:${GROUP_ID}"  # run as host user to make created files writable outside the container
+    entrypoint: ["/bin/sh", "-c", "tail -f /dev/null"]  # override app entrypoint to keep container alive
     volumes:
-      - ./graphs:/app/graphs
-      - ./logs:/app/logs
-      - ./temp:/app/temp
+      - .:/app  # mount entire repo so gradlew/gradle config are available inside
     stdin_open: true # docker run -i
     tty: true        # docker run -t

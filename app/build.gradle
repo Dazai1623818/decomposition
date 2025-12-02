@@ -6,9 +6,7 @@ plugins {
 
 repositories {
     mavenCentral()
-    flatDir {
-        dirs 'libs'
-    }
+    flatDir { dirs 'libs' } // only for local jars like the CPQ fork
 }
 
 application {
@@ -34,11 +32,11 @@ sourceSets {
 }
 
 dependencies {
-    // Use local forks/releases instead of Maven Central for CPQ-native-index and gMark.
-    implementation name: 'cpq-native-index-1.0'
-    implementation name: 'gmark-2.1'
+    implementation name: 'cpq-native-index-1.0'          // from libs/cpq-native-index-1.0.jar
+    implementation 'dev.roanh.gmark:gmark:2.1'           // from Maven Central
     implementation 'com.google.guava:guava:32.1.2-jre'
     implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'commons-cli:commons-cli:1.6.0'
     implementation 'org.slf4j:slf4j-api:2.0.12'
     implementation 'org.slf4j:slf4j-simple:2.0.12'
 
