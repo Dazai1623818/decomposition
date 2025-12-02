@@ -67,11 +67,7 @@ public final class Pipeline {
    * </ol>
    */
   public DecompositionResult benchmark(
-      CQ query,
-      Set<String> freeVariables,
-      DecompositionOptions options,
-      Path graphPath,
-      int indexK)
+      CQ query, Set<String> freeVariables, DecompositionOptions options, Path graphPath, int indexK)
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
 
