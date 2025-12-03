@@ -6,17 +6,14 @@ import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.core.model.Component;
 import decomposition.cpq.CPQExpression;
-import decomposition.examples.RandomExampleConfig;
 import decomposition.pipeline.Pipeline;
 import decomposition.pipeline.PlanMode;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.util.graph.GraphPanel;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -78,23 +75,10 @@ final class RunCommand {
       System.out.println(json);
     }
 
-    if (cliOptions.showVisualization()) {
-      showComponents(result);
-    }
-
     if (result.terminationReason() != null) {
       return 3;
     }
     return 0;
-  }
-
-  private void showComponents(DecompositionResult result) {
-    for (CPQExpression component : result.recognizedCatalogue()) {
-      GraphPanel.show(component.cpq());
-    }
-    if (result.hasFinalExpression()) {
-      GraphPanel.show(result.finalExpression().cpq());
-    }
   }
 
   private CliOptions parseRunArgs(String[] args) {
@@ -103,7 +87,8 @@ final class RunCommand {
     }
     String command = args[0];
     if ("run".equalsIgnoreCase(command)) {
-      return parseDecomposeArgs(asDecomposeArgs(Arrays.copyOfRange(args, 1, args.length)));
+      return parseDecomposeArgs(
+          CliParsers.asDecomposeArgs(Arrays.copyOfRange(args, 1, args.length)));
     }
     if ("decompose".equalsIgnoreCase(command)) {
       return parseDecomposeArgs(args);
@@ -125,15 +110,9 @@ final class RunCommand {
     String timeBudgetRaw = null;
     String outputPath = null;
     String limitRaw = null;
-    boolean show = false;
     String planRaw = null;
     Integer tupleLimit = null;
-    String randomFreeRaw = null;
-    String randomEdgesRaw = null;
-    String randomLabelsRaw = null;
-    String randomSeedRaw = null;
     String compareGraphRaw = null;
-    List<String> compareDecompositionRaw = new ArrayList<>();
     boolean compareIndex = false;
     boolean buildIndexOnly = false;
     String indexKRaw = null;
@@ -176,7 +155,6 @@ final class RunCommand {
         case "--out" ->
             outputPath =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--show" -> show = true;
         case "--compare-index" -> compareIndex = true;
         case "--build-index-only" -> {
           buildIndexOnly = true;
@@ -184,23 +162,6 @@ final class RunCommand {
         }
         case "--compare-graph" ->
             compareGraphRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--compare-decomposition" -> {
-          String value =
-              inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-          compareDecompositionRaw.add(value);
-        }
-        case "--random-free-vars" ->
-            randomFreeRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--random-edges" ->
-            randomEdgesRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--random-labels" ->
-            randomLabelsRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--random-seed" ->
-            randomSeedRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--k" ->
             indexKRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -248,35 +209,6 @@ final class RunCommand {
       limit = tupleLimit;
     }
     PlanMode planMode = parsePlanMode(planRaw);
-    boolean randomOptionsProvided =
-        randomFreeRaw != null
-            || randomEdgesRaw != null
-            || randomLabelsRaw != null
-            || randomSeedRaw != null;
-    if (randomOptionsProvided && !CliParsers.isRandomExampleName(exampleName)) {
-      throw new IllegalArgumentException("--random-* options require --example random");
-    }
-
-    RandomExampleConfig randomExampleConfig = null;
-    if (CliParsers.isRandomExampleName(exampleName)) {
-      int freeVariables =
-          CliParsers.parseInt(
-              randomFreeRaw, RandomExampleConfig.DEFAULT_FREE_VARIABLES, "--random-free-vars");
-      int edges =
-          CliParsers.parseInt(
-              randomEdgesRaw, RandomExampleConfig.DEFAULT_EDGE_COUNT, "--random-edges");
-      int labels =
-          CliParsers.parseInt(
-              randomLabelsRaw, RandomExampleConfig.DEFAULT_PREDICATE_LABELS, "--random-labels");
-      Long seed =
-          randomSeedRaw != null ? CliParsers.parseLong(randomSeedRaw, 0L, "--random-seed") : null;
-      randomExampleConfig = new RandomExampleConfig(freeVariables, edges, labels, seed);
-    }
-
-    List<Path> compareDecompositions = new ArrayList<>();
-    for (String raw : compareDecompositionRaw) {
-      compareDecompositions.add(Path.of(raw));
-    }
     Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
     int indexK = CliParsers.parseInt(indexKRaw, DEFAULT_INDEX_K, "--index-k");
     return new CliOptions(
@@ -288,19 +220,16 @@ final class RunCommand {
         timeBudget,
         limit,
         planMode,
-        show,
         outputPath,
-        randomExampleConfig,
         compareIndex,
         compareGraphPath,
-        compareDecompositions,
         indexK,
         buildIndexOnly);
   }
 
   private CQ loadQuery(CliOptions options) throws IOException {
     if (options.hasExample()) {
-      return CliParsers.loadExampleByName(options.exampleName(), options.randomExampleConfig());
+      return CliParsers.loadExampleByName(options.exampleName());
     }
 
     if (options.hasQueryFile()) {
@@ -361,8 +290,7 @@ final class RunCommand {
 
   private void exportForVisualization(DecompositionResult result) {
     try {
-      var cwd = Paths.get("").toAbsolutePath().normalize();
-      Path projectRoot = findProjectRoot(cwd);
+      Path projectRoot = CliParsers.findProjectRoot();
       Path baseDir = projectRoot.resolve("temp");
       VisualizationExporter.export(
           baseDir,
@@ -383,29 +311,6 @@ final class RunCommand {
       Files.createDirectories(parent);
     }
     Files.writeString(path, json);
-  }
-
-  private String[] asDecomposeArgs(String[] remaining) {
-    String[] remapped = new String[remaining.length + 1];
-    remapped[0] = "decompose";
-    System.arraycopy(remaining, 0, remapped, 1, remaining.length);
-    return remapped;
-  }
-
-  private Path findProjectRoot(Path cwd) {
-    Path current = cwd;
-    while (current != null) {
-      Path settingsHere = current.resolve("settings.gradle");
-      if (Files.exists(settingsHere)) {
-        return current;
-      }
-      Path nestedAppSettings = current.resolve("app").resolve("settings.gradle");
-      if (Files.exists(nestedAppSettings)) {
-        return current.resolve("app");
-      }
-      current = current.getParent();
-    }
-    return cwd;
   }
 
   private PlanMode parsePlanMode(String raw) {

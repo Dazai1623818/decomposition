@@ -1,7 +1,6 @@
 package decomposition.cli;
 
 import decomposition.examples.Example;
-import decomposition.examples.RandomExampleConfig;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,24 +51,7 @@ final class CliParsers {
     return vars;
   }
 
-  static boolean isRandomExampleName(String exampleName) {
-    if (exampleName == null) {
-      return false;
-    }
-    String normalized = exampleName.trim().toLowerCase(Locale.ROOT);
-    return normalized.equals("random") || normalized.equals("examplerandom");
-  }
-
-  static RandomExampleConfig iterationRandomConfig(RandomExampleConfig base, int offset) {
-    if (base == null) {
-      return null;
-    }
-    Long seed = base.seed() != null ? base.seed() + offset : null;
-    return new RandomExampleConfig(
-        base.freeVariableCount(), base.edgeCount(), base.predicateLabelCount(), seed);
-  }
-
-  static CQ loadExampleByName(String exampleName, RandomExampleConfig randomConfig) {
+  static CQ loadExampleByName(String exampleName) {
     if (exampleName == null || exampleName.isBlank()) {
       throw new IllegalArgumentException("Unknown example: " + exampleName);
     }
@@ -83,11 +65,6 @@ final class CliParsers {
       case "example6" -> Example.example6();
       case "example7" -> Example.example7();
       case "example8" -> Example.example8();
-      case "random", "examplerandom" -> {
-        RandomExampleConfig config =
-            randomConfig != null ? randomConfig : RandomExampleConfig.defaults();
-        yield Example.random(config);
-      }
       default -> throw new IllegalArgumentException("Unknown example: " + exampleName);
     };
   }
@@ -99,5 +76,29 @@ final class CliParsers {
     }
     String content = Files.readString(path);
     return CQ.parse(content);
+  }
+
+  static String[] asDecomposeArgs(String[] remaining) {
+    String[] remapped = new String[remaining.length + 1];
+    remapped[0] = "decompose";
+    System.arraycopy(remaining, 0, remapped, 1, remaining.length);
+    return remapped;
+  }
+
+  static Path findProjectRoot() {
+    Path cwd = Path.of("").toAbsolutePath().normalize();
+    Path current = cwd;
+    while (current != null) {
+      Path settingsHere = current.resolve("settings.gradle");
+      if (Files.exists(settingsHere)) {
+        return current;
+      }
+      Path nestedAppSettings = current.resolve("app").resolve("settings.gradle");
+      if (Files.exists(nestedAppSettings)) {
+        return current.resolve("app");
+      }
+      current = current.getParent();
+    }
+    return cwd;
   }
 }

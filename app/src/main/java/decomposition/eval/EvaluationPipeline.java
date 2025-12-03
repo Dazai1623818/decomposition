@@ -35,7 +35,7 @@ public final class EvaluationPipeline {
     // Note: Using a fresh runner helper or extracting logic to get components from atoms
     // In a full refactor, 'componentsFromAtoms' should be a static utility.
     List<CpqIndexExecutor.Component> baselineComponents =
-        new QueryEvaluationRunner().componentsFromAtomsPublic(query);
+        CpqIndexExecutor.componentsFromAtoms(query);
 
     LOG.info("Executing baseline...");
     Timing baselineTimer = Timing.start();

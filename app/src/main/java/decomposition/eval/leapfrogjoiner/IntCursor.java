@@ -1,4 +1,4 @@
-package decomposition.eval.engine;
+package decomposition.eval.leapfrogjoiner;
 
 /** A lightweight cursor over a sorted integer array for Leapfrog Trie Join. */
 public final class IntCursor {

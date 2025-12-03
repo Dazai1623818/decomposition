@@ -1,10 +1,10 @@
 package decomposition.eval;
 
 import decomposition.cpq.CPQExpression;
-import decomposition.eval.engine.IntAccumulator;
-import decomposition.eval.engine.LeapfrogJoiner;
-import decomposition.eval.engine.RelationBinding;
-import decomposition.eval.engine.RelationProjection;
+import decomposition.eval.leapfrogjoiner.IntAccumulator;
+import decomposition.eval.leapfrogjoiner.LeapfrogJoiner;
+import decomposition.eval.leapfrogjoiner.RelationBinding;
+import decomposition.eval.leapfrogjoiner.RelationProjection;
 import dev.roanh.cpqindex.Index;
 import dev.roanh.cpqindex.Pair;
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -52,12 +52,14 @@ public final class CpqIndexExecutor {
     return joiner.join(bindings);
   }
 
-  public List<Component> componentsFromAtoms(dev.roanh.gmark.lang.cq.CQ cq) {
-    // Helper adapter logic to create Components from Atoms (moved from old Pipeline/Runner)
-    // implementation omitted for brevity, logic remains similar to original runner
-    return new QueryEvaluationRunner().componentsFromAtomsPublic(cq);
-    // Note: In practice, you'd likely move the static helper logic from QueryEvaluationRunner
-    // to a shared utility or duplicate the minimal logic here.
+  public static List<Component> componentsFromAtoms(dev.roanh.gmark.lang.cq.CQ cq) {
+    Objects.requireNonNull(cq, "cq");
+    List<dev.roanh.gmark.lang.cq.AtomCQ> atoms = atomsOf(cq);
+    List<Component> components = new ArrayList<>(atoms.size());
+    for (dev.roanh.gmark.lang.cq.AtomCQ atom : atoms) {
+      components.add(componentFromAtom(atom));
+    }
+    return components;
   }
 
   private RelationBinding evaluateComponent(Component component) {
@@ -159,6 +161,27 @@ public final class CpqIndexExecutor {
       return null;
     }
     return raw.startsWith("?") ? raw : ("?" + raw);
+  }
+
+  private static List<dev.roanh.gmark.lang.cq.AtomCQ> atomsOf(dev.roanh.gmark.lang.cq.CQ cq) {
+    dev.roanh.gmark.util.graph.generic.UniqueGraph<
+            dev.roanh.gmark.lang.cq.VarCQ, dev.roanh.gmark.lang.cq.AtomCQ>
+        graph = cq.toQueryGraph().toUniqueGraph();
+    List<dev.roanh.gmark.lang.cq.AtomCQ> atoms = new ArrayList<>(graph.getEdgeCount());
+    for (dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge<
+            dev.roanh.gmark.lang.cq.VarCQ, dev.roanh.gmark.lang.cq.AtomCQ>
+        edge : graph.getEdges()) {
+      atoms.add(edge.getData());
+    }
+    return atoms;
+  }
+
+  private static Component componentFromAtom(dev.roanh.gmark.lang.cq.AtomCQ atom) {
+    CPQ cpq = CPQ.label(atom.getLabel());
+    String source = variableName(atom.getSource().getName());
+    String target = variableName(atom.getTarget().getName());
+    String description = atom.getLabel().getAlias() + " (" + source + "→" + target + ")";
+    return new Component(source, target, cpq, description);
   }
 
   private static int[] sortedKeys(Set<Integer> keys) {

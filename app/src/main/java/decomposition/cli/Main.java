@@ -21,9 +21,7 @@ public final class Main {
       }
       String command = args[0].toLowerCase(Locale.ROOT);
       return switch (command) {
-        case "profile" -> new ProfileCommand().execute(args);
         case "plot" -> new PlotCommand().execute(args);
-        case "evaluate" -> new EvaluateCommand().execute(args);
         default -> new RunCommand().execute(args);
       };
     } catch (IllegalArgumentException ex) {
