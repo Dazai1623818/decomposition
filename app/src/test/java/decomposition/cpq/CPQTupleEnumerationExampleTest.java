@@ -29,7 +29,8 @@ final class CPQTupleEnumerationExampleTest {
             defaults.timeBudgetMs(),
             tupleLimit,
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     Pipeline pipeline = new Pipeline();
     DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);

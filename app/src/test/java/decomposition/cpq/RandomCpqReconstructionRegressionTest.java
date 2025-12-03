@@ -44,7 +44,8 @@ final class RandomCpqReconstructionRegressionTest {
             defaults.timeBudgetMs(),
             defaults.tupleLimit() > 0 ? defaults.tupleLimit() : 1,
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     Pipeline pipeline = new Pipeline();
     DecompositionResult result = pipeline.decompose(cq, freeVars, options);

@@ -63,7 +63,8 @@ final class DecompositionPipelineTest {
             defaults.timeBudgetMs(),
             TestDefaults.tupleLimit(),
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     DecompositionResult result = pipeline.decompose(cq, Set.of(), options);
 
@@ -89,7 +90,8 @@ final class DecompositionPipelineTest {
             defaults.timeBudgetMs(),
             TestDefaults.tupleLimit(),
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     Pipeline pipeline = new Pipeline();
     DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);
@@ -172,7 +174,8 @@ final class DecompositionPipelineTest {
             defaults.timeBudgetMs(),
             TestDefaults.tupleLimit(),
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     Pipeline pipeline = new Pipeline();
     DecompositionResult result = pipeline.decompose(cq, Set.of("src", "trg"), options);
@@ -232,7 +235,8 @@ final class DecompositionPipelineTest {
             defaults.timeBudgetMs(),
             TestDefaults.tupleLimit(),
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     Pipeline pipeline = new Pipeline();
     DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);

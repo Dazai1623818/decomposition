@@ -16,6 +16,7 @@ record CliOptions(
     long timeBudgetMs,
     int tupleLimit,
     PlanMode planMode,
+    int diameterCap,
     boolean evaluate,
     Path compareGraphPath,
     int indexK,
@@ -27,6 +28,9 @@ record CliOptions(
     planMode = planMode == null ? PlanMode.ALL : planMode;
     if (tupleLimit < 0) {
       throw new IllegalArgumentException("tupleLimit must be non-negative");
+    }
+    if (diameterCap < 0) {
+      throw new IllegalArgumentException("diameterCap must be non-negative");
     }
     if (buildIndexOnly) {
       evaluate = true;
@@ -58,6 +62,7 @@ record CliOptions(
     private long timeBudgetMs = DecompositionOptions.defaults().timeBudgetMs();
     private int tupleLimit = DecompositionOptions.defaults().tupleLimit();
     private PlanMode planMode = PlanMode.ALL;
+    private int diameterCap = DecompositionOptions.defaults().diameterCap();
     private boolean evaluate;
     private Path compareGraphPath = Path.of("graph_huge.edge");
     private int indexK = 3;
@@ -105,6 +110,11 @@ record CliOptions(
       return this;
     }
 
+    Builder diameterCap(int diameterCap) {
+      this.diameterCap = diameterCap;
+      return this;
+    }
+
     Builder evaluate(boolean evaluate) {
       this.evaluate = evaluate;
       return this;
@@ -137,6 +147,7 @@ record CliOptions(
       }
 
       boolean effectiveEvaluate = evaluate || buildIndexOnly;
+      int effectiveDiameterCap = diameterCap;
       return new CliOptions(
           queryFile,
           exampleName,
@@ -146,6 +157,7 @@ record CliOptions(
           timeBudgetMs,
           tupleLimit,
           planMode,
+          effectiveDiameterCap,
           effectiveEvaluate,
           compareGraphPath,
           indexK,

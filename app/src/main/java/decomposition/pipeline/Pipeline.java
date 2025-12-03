@@ -50,10 +50,19 @@ import org.slf4j.LoggerFactory;
 public final class Pipeline {
   private static final Logger LOG = LoggerFactory.getLogger(Pipeline.class);
   private static final int DEFAULT_INDEX_DIAMETER = 3;
+  private static final int MAX_RANDOM_ATTEMPTS = 5;
 
   /** Workflow 1: Decomposition only. */
   public DecompositionResult decompose(
       CQ query, Set<String> freeVariables, DecompositionOptions options) {
+    return decompose(query, freeVariables, options, null);
+  }
+
+  private DecompositionResult decompose(
+      CQ query,
+      Set<String> freeVariables,
+      DecompositionOptions options,
+      Map<ComponentCacheKey, CachedComponentExpressions> sharedCache) {
     DecompositionOptions effective = DecompositionOptions.normalize(options);
     PlanMode mode = effective.planMode();
     LOG.info("Executing decomposition pipeline (plan mode: {})...", mode);
@@ -71,7 +80,8 @@ public final class Pipeline {
     PartitionFilter filter = new PartitionFilter(GeneratorDefaults.MAX_JOIN_NODES);
     PartitionExpressionAssembler assembler = new PartitionExpressionAssembler(edges);
     CacheStats cacheStats = new CacheStats();
-    Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
+    Map<ComponentCacheKey, CachedComponentExpressions> componentCache =
+        sharedCache != null ? sharedCache : new ConcurrentHashMap<>();
 
     List<Partition> partitions = new ArrayList<>();
     List<FilteredPartition> filtered = new ArrayList<>();
@@ -87,6 +97,7 @@ public final class Pipeline {
     long tEnum = 0L;
     long tFilter = 0L;
     long tSynthesize = 0L;
+    long tTupleEnum = 0L;
 
     if (mode == PlanMode.FIRST || mode == PlanMode.RANDOM) {
       long tEnumStart = timer.elapsedMillis();
@@ -101,6 +112,7 @@ public final class Pipeline {
         long enumerate = 0L;
         long filter = 0L;
         long synthesize = 0L;
+        long tupleEnum = 0L;
         String termination;
       }
 
@@ -142,7 +154,8 @@ public final class Pipeline {
                     extraction.freeVariables(),
                     varToNodeMap,
                     componentCache,
-                    cacheStats);
+                    cacheStats,
+                    effective.diameterCap());
             state.synthesize += timer.elapsedMillis() - synthesizeStart;
 
             if (perComponent == null) {
@@ -155,8 +168,10 @@ public final class Pipeline {
                 perComponent.stream().flatMap(List::stream).toList();
             recognisedCatalogue.addAll(catalogForPartition);
 
+            long tupleStart = timer.elapsedMillis();
             List<List<CPQExpression>> tuples =
                 enumerateTuples ? enumerateTuples(perComponent, tupleLimit) : List.of();
+            state.tupleEnum += timer.elapsedMillis() - tupleStart;
             int maxDiameter = maxDiameter(tuples, catalogForPartition);
 
             PartitionEvaluation evaluation =
@@ -177,6 +192,7 @@ public final class Pipeline {
       tEnum = state.enumerate;
       tFilter = state.filter;
       tSynthesize = state.synthesize;
+      tTupleEnum = state.tupleEnum;
       terminationReason = state.termination;
     } else {
       // Enumerate partitions according to plan mode
@@ -192,7 +208,6 @@ public final class Pipeline {
       tFilter = timer.elapsedMillis() - tFilterStart;
 
       // Generate CPQ expressions for each partition
-      long tSynthesizeStart = timer.elapsedMillis();
       for (int i = 0; i < filtered.size(); i++) {
         if (isOverBudget(effective, timer)) {
           terminationReason = "time_budget_exceeded";
@@ -201,13 +216,16 @@ public final class Pipeline {
 
         int partitionIndex = i + 1;
         FilteredPartition filteredPartition = filtered.get(i);
+        long synthesizeStart = timer.elapsedMillis();
         List<List<CPQExpression>> perComponent =
             assembler.synthesize(
                 filteredPartition,
                 extraction.freeVariables(),
                 varToNodeMap,
                 componentCache,
-                cacheStats);
+                cacheStats,
+                effective.diameterCap());
+        tSynthesize += timer.elapsedMillis() - synthesizeStart;
 
         if (perComponent == null) {
           diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitionIndex));
@@ -218,8 +236,10 @@ public final class Pipeline {
             perComponent.stream().flatMap(List::stream).toList();
         recognisedCatalogue.addAll(catalogForPartition);
 
+        long tupleStart = timer.elapsedMillis();
         List<List<CPQExpression>> tuples =
             enumerateTuples ? enumerateTuples(perComponent, tupleLimit) : List.of();
+        tTupleEnum += timer.elapsedMillis() - tupleStart;
         int maxDiameter = maxDiameter(tuples, catalogForPartition);
 
         PartitionEvaluation evaluation =
@@ -233,7 +253,6 @@ public final class Pipeline {
         validPartitions.add(filteredPartition.partition());
         evaluations.add(evaluation);
       }
-      tSynthesize = timer.elapsedMillis() - tSynthesizeStart;
     }
 
     // 5) Assemble global candidate
@@ -284,11 +303,12 @@ public final class Pipeline {
         result.cpqPartitions().size(),
         result.elapsedMillis());
     LOG.info(
-        "Timing breakdown (ms): extract={}, enumerate={}, filter={}, synthesize/tuples={}, assemble={}",
+        "Timing breakdown (ms): extract={}, enumerate={}, filter={}, synthesize={}, tuples={}, assemble={}",
         tExtract,
         tEnum,
         tFilter,
         tSynthesize,
+        tTupleEnum,
         tAssemble);
     if (terminationReason != null) {
       LOG.warn("Decomposition terminated early: {}", terminationReason);
@@ -323,18 +343,71 @@ public final class Pipeline {
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
     DecompositionOptions normalized = DecompositionOptions.normalize(options);
+    int effectiveK = indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER;
+    int diameterCap = normalized.diameterCap() > 0 ? normalized.diameterCap() : effectiveK;
 
     // 1. Run decomposition (force ENUMERATE to ensure we have tuples to evaluate)
     DecompositionOptions benchmarkOptions =
         normalized.mode().enumerateTuples()
-            ? normalized
+            ? new DecompositionOptions(
+                normalized.mode(),
+                normalized.maxPartitions(),
+                normalized.timeBudgetMs(),
+                normalized.tupleLimit(),
+                normalized.deepVerification(),
+                normalized.planMode(),
+                diameterCap)
             : new DecompositionOptions(
                 DecompositionOptions.Mode.ENUMERATE,
                 normalized.maxPartitions(),
                 normalized.timeBudgetMs(),
                 normalized.tupleLimit(),
                 normalized.deepVerification(),
-                normalized.planMode());
+                normalized.planMode(),
+                diameterCap);
+
+    if (benchmarkOptions.planMode() == PlanMode.RANDOM) {
+      EvaluationPipeline evaluator = new EvaluationPipeline();
+      IndexManager indexManager = new IndexManager();
+      Timing indexTimer = Timing.start();
+      Index index = indexManager.loadOrBuild(graphPath, effectiveK);
+      long indexLoadMs = indexTimer.elapsedMillis();
+      Map<ComponentCacheKey, CachedComponentExpressions> sharedCache = new ConcurrentHashMap<>();
+
+      DecompositionResult chosenResult = null;
+      PartitionEvaluation chosenEvaluation = null;
+      for (int attempt = 1; attempt <= MAX_RANDOM_ATTEMPTS; attempt++) {
+        LOG.info("Random attempt {}/{}...", attempt, MAX_RANDOM_ATTEMPTS);
+        DecompositionResult attemptResult =
+            decompose(query, freeVariables, benchmarkOptions, sharedCache);
+        PartitionEvaluation eval = firstEvaluable(attemptResult, effectiveK);
+        if (eval != null) {
+          chosenResult = attemptResult;
+          chosenEvaluation = eval;
+          break;
+        }
+        LOG.info(
+            "No evaluable partition found in attempt {} (maxDiameter too large or no tuples).",
+            attempt);
+      }
+
+      if (chosenResult == null) {
+        LOG.warn("No evaluable random partition found after {} attempts.", MAX_RANDOM_ATTEMPTS);
+        return null;
+      }
+
+      EvaluationPipeline.EvaluationMetrics metrics =
+          evaluator.runBenchmarkWithIndex(query, chosenResult, index, effectiveK, indexLoadMs);
+      long totalDecomposeEval = chosenResult.elapsedMillis() + metrics.tuplesMs();
+      LOG.info(
+          "Evaluation phase took {} ms (excluding index load); decomposition total: {} ms; tuples: {} ms; decompose+tuples: {} ms; baseline: {} ms",
+          metrics.evalMs(),
+          chosenResult.elapsedMillis(),
+          metrics.tuplesMs(),
+          totalDecomposeEval,
+          metrics.baselineMs());
+      return chosenResult;
+    }
 
     DecompositionResult result = decompose(query, freeVariables, benchmarkOptions);
     if (result.cpqPartitions().isEmpty()) {
@@ -344,9 +417,17 @@ public final class Pipeline {
 
     // 2. Run comparative evaluation
     EvaluationPipeline evaluator = new EvaluationPipeline();
-    Timing evalTimer = Timing.start();
-    evaluator.runBenchmark(query, result, graphPath, indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER);
-    LOG.info("Evaluation phase took {} ms", evalTimer.elapsedMillis());
+    EvaluationPipeline.EvaluationMetrics metrics =
+        evaluator.runBenchmark(query, result, graphPath, effectiveK);
+    long totalDecompositionMs = result.elapsedMillis();
+    long decomposePlusTuples = totalDecompositionMs + metrics.tuplesMs();
+    LOG.info(
+        "Evaluation phase took {} ms (excluding index load); decomposition total: {} ms; tuples: {} ms; decompose+tuples: {} ms; baseline: {} ms",
+        metrics.evalMs(),
+        totalDecompositionMs,
+        metrics.tuplesMs(),
+        decomposePlusTuples,
+        metrics.baselineMs());
     return result;
   }
 
@@ -432,5 +513,21 @@ public final class Pipeline {
 
   private boolean isOverBudget(DecompositionOptions options, long elapsedMillis) {
     return options.timeBudgetMs() > 0 && elapsedMillis > options.timeBudgetMs();
+  }
+
+  private PartitionEvaluation firstEvaluable(DecompositionResult result, int indexK) {
+    if (result == null) {
+      return null;
+    }
+    for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
+      if (evaluation.decompositionTuples().isEmpty()) {
+        continue;
+      }
+      if (evaluation.maxDiameter() > indexK) {
+        continue;
+      }
+      return evaluation;
+    }
+    return null;
   }
 }

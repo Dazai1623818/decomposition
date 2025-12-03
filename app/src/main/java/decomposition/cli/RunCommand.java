@@ -42,6 +42,7 @@ final class RunCommand {
 
     Mode effectiveMode = cliOptions.evaluate() ? Mode.ENUMERATE : cliOptions.mode();
     int effectiveTupleLimit = cliOptions.tupleLimit() > 0 ? cliOptions.tupleLimit() : 1;
+    int diameterCap = cliOptions.evaluate() ? cliOptions.indexK() : cliOptions.diameterCap();
     DecompositionOptions pipelineOptions =
         new DecompositionOptions(
             effectiveMode,
@@ -49,7 +50,8 @@ final class RunCommand {
             cliOptions.timeBudgetMs(),
             effectiveTupleLimit,
             false,
-            cliOptions.planMode());
+            cliOptions.planMode(),
+            diameterCap);
 
     if (cliOptions.evaluate()) {
       DecompositionResult result =
@@ -59,10 +61,7 @@ final class RunCommand {
               pipelineOptions,
               cliOptions.compareGraphPath(),
               cliOptions.indexK());
-      logSummary(result, cliOptions);
-      if (!cliOptions.evaluate()) {
-        exportForVisualization(result);
-      }
+      // In evaluate mode, rely on pipeline/evaluator timing logs; skip verbose summary.
       return 0;
     }
 

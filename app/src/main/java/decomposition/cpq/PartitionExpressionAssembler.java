@@ -41,7 +41,8 @@ public final class PartitionExpressionAssembler {
       Set<String> freeVariables,
       Map<String, String> originalVarMap,
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
-      CacheStats cacheStats) {
+      CacheStats cacheStats,
+      int diameterCap) {
 
     Objects.requireNonNull(filteredPartition, "filteredPartition");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
@@ -55,40 +56,54 @@ public final class PartitionExpressionAssembler {
     List<Component> components = partition.components();
     int totalComponents = components.size();
 
-    List<List<CPQExpression>> finalExpressionsPerComponent = new ArrayList<>(totalComponents);
+    @SuppressWarnings("unchecked")
+    List<CPQExpression>[] expressionsByIndex = new List[totalComponents];
 
-    for (int idx = 0; idx < totalComponents; idx++) {
-      Component component = components.get(idx);
-      Set<String> localJoinNodes = filteredPartition.joinNodesForComponent(component);
-      ComponentCacheKey key =
-          new ComponentCacheKey(
-              BitsetUtils.signature(component.edgeBits(), edges.size()),
-              joinNodes,
-              freeVars,
-              component.edgeCount(),
-              totalComponents,
-              DecompositionPipelineUtils.hashVarContext(originalVarMap));
+    java.util.stream.IntStream.range(0, totalComponents)
+        .parallel()
+        .forEach(
+            idx -> {
+              Component component = components.get(idx);
+              Set<String> localJoinNodes = filteredPartition.joinNodesForComponent(component);
+              ComponentCacheKey key =
+                  new ComponentCacheKey(
+                      BitsetUtils.signature(component.edgeBits(), edges.size()),
+                      joinNodes,
+                      freeVars,
+                      component.edgeCount(),
+                      totalComponents,
+                      DecompositionPipelineUtils.hashVarContext(originalVarMap),
+                      diameterCap);
 
-      CachedComponentExpressions cached = lookupComponentCache(key, componentCache, cacheStats);
-      if (cached == null) {
-        List<CPQExpression> raw =
-            buildRawExpressions(component.edgeBits(), joinNodes, originalVarMap);
-        List<CPQExpression> joinFiltered = applyJoinFiltering(raw, component, localJoinNodes);
-        List<CPQExpression> finals =
-            applyOrientationPreferences(joinFiltered, joinNodes, freeVars, originalVarMap);
-        cached =
-            cacheFinalExpressions(
-                componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
-      }
+              CachedComponentExpressions cached =
+                  lookupComponentCache(key, componentCache, cacheStats);
+              if (cached == null) {
+                List<CPQExpression> raw =
+                    buildRawExpressions(component.edgeBits(), joinNodes, originalVarMap);
+                if (diameterCap > 0) {
+                  raw =
+                      raw.stream().filter(expr -> expr.cpq().getDiameter() <= diameterCap).toList();
+                }
+                List<CPQExpression> joinFiltered =
+                    applyJoinFiltering(raw, component, localJoinNodes);
+                List<CPQExpression> finals =
+                    applyOrientationPreferences(joinFiltered, joinNodes, freeVars, originalVarMap);
+                cached =
+                    cacheFinalExpressions(
+                        componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
+              }
 
-      List<CPQExpression> finalExpressions = cached.finalExpressions();
-      if (finalExpressions.isEmpty()) {
+              List<CPQExpression> finalExpressions = cached.finalExpressions();
+              expressionsByIndex[idx] = finalExpressions;
+            });
+
+    for (List<CPQExpression> expressions : expressionsByIndex) {
+      if (expressions == null || expressions.isEmpty()) {
         return null;
       }
-      finalExpressionsPerComponent.add(finalExpressions);
     }
 
-    return List.copyOf(finalExpressionsPerComponent);
+    return java.util.Arrays.stream(expressionsByIndex).map(List::copyOf).toList();
   }
 
   public List<CPQExpression> synthesizeGlobal(
@@ -194,7 +209,8 @@ public final class PartitionExpressionAssembler {
       Set<String> freeVars,
       int componentSize,
       int totalComponents,
-      int varContextHash) {
+      int varContextHash,
+      int diameterCap) {
 
     public ComponentCacheKey {
       joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);

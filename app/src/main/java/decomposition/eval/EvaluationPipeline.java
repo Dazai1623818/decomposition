@@ -20,8 +20,13 @@ public final class EvaluationPipeline {
   private static final Logger LOG = LoggerFactory.getLogger(EvaluationPipeline.class);
   private final IndexManager indexManager = new IndexManager();
 
-  public void runBenchmark(CQ query, DecompositionResult result, Path graphPath, int indexK)
-      throws IOException {
+  /**
+   * Executes baseline and decomposition tuple evaluation against the CPQ index.
+   *
+   * @return timing metrics (index load is reported but excluded from aggregates)
+   */
+  public EvaluationMetrics runBenchmark(
+      CQ query, DecompositionResult result, Path graphPath, int indexK) throws IOException {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(result, "result");
     Objects.requireNonNull(graphPath, "graphPath");
@@ -31,16 +36,30 @@ public final class EvaluationPipeline {
     Timing indexTimer = Timing.start();
     Index index = indexManager.loadOrBuild(graphPath, k);
     long indexLoadMs = indexTimer.elapsedMillis();
+    return runBenchmarkWithIndex(query, result, index, k, indexLoadMs);
+  }
+
+  /**
+   * Executes baseline and decomposition tuple evaluation against a preloaded CPQ index.
+   *
+   * @return timing metrics (index load is reported but excluded from aggregates)
+   */
+  public EvaluationMetrics runBenchmarkWithIndex(
+      CQ query, DecompositionResult result, Index index, int k, long indexLoadMs) {
+    Objects.requireNonNull(query, "query");
+    Objects.requireNonNull(result, "result");
+    Objects.requireNonNull(index, "index");
+
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     // 2. Baseline
     // Note: Using a fresh runner helper or extracting logic to get components from atoms
     // In a full refactor, 'componentsFromAtoms' should be a static utility.
+    LOG.info("Executing baseline...");
+    Timing evalTimer = Timing.start(); // excludes index load
+    Timing baselineTimer = Timing.start(); // includes atom->component extraction
     List<CpqIndexExecutor.Component> baselineComponents =
         CpqIndexExecutor.componentsFromAtoms(query);
-
-    LOG.info("Executing baseline...");
-    Timing baselineTimer = Timing.start();
     List<Map<String, Integer>> baselineResults = executor.execute(baselineComponents);
     long baselineMs = baselineTimer.elapsedMillis();
     LOG.info("Baseline finished in {}ms. Results: {}", baselineMs, baselineResults.size());
@@ -82,13 +101,22 @@ public final class EvaluationPipeline {
       }
     }
 
+    long evalMs = evalTimer.elapsedMillis();
+    long baselineTotalMs = baselineMs; // already includes atom extraction + execution
+    long decompositionEvalMs = tupleTotalMs;
+
     LOG.info(
-        "Evaluation timing (ms): indexLoad={}, baseline(single-edge atoms)={}, tuplesTotal={}, firstTuple={}",
+        "Evaluation timing (ms): indexLoad={}, baselineTotal={}, tuplesTotal={}, firstTuple={}, evalNoLoad={}",
         indexLoadMs,
-        baselineMs,
-        tupleTotalMs,
-        firstTupleMs == null ? "n/a" : firstTupleMs);
+        baselineTotalMs,
+        decompositionEvalMs,
+        firstTupleMs == null ? "n/a" : firstTupleMs,
+        evalMs);
+    return new EvaluationMetrics(indexLoadMs, baselineTotalMs, decompositionEvalMs, evalMs);
   }
+
+  /** Structured timing metrics for evaluation. */
+  public record EvaluationMetrics(long indexLoadMs, long baselineMs, long tuplesMs, long evalMs) {}
 
   private PartitionEvaluation findEvaluation(DecompositionResult result, Partition partition) {
     return result.partitionEvaluations().stream()

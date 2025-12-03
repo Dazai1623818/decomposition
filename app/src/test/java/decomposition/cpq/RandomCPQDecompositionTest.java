@@ -38,7 +38,8 @@ final class RandomCPQDecompositionTest {
           DEFAULT_OPTIONS.timeBudgetMs(),
           TestDefaults.tupleLimit(),
           false,
-          PlanMode.ALL);
+          PlanMode.ALL,
+          0);
 
   @Test
   void decompositionReconstructsOriginalCpq() {
@@ -133,7 +134,8 @@ final class RandomCPQDecompositionTest {
             1, // 1ms time budget - very tight
             100,
             false,
-            PlanMode.ALL);
+            PlanMode.ALL,
+            0);
 
     CPQ complex = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
     CQ cq = complex.toCQ();

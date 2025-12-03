@@ -9,10 +9,11 @@ public record DecompositionOptions(
     long timeBudgetMs,
     int tupleLimit,
     boolean deepVerification,
-    PlanMode planMode) {
+    PlanMode planMode,
+    int diameterCap) {
 
   public static DecompositionOptions defaults() {
-    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 1, false, PlanMode.ALL);
+    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 1, false, PlanMode.ALL, 0);
   }
 
   public static DecompositionOptions normalize(DecompositionOptions options) {
@@ -27,8 +28,9 @@ public record DecompositionOptions(
     int tupleLimit = Math.max(0, options.tupleLimit());
     boolean deepVerification = options.deepVerification();
     PlanMode planMode = options.planMode() != null ? options.planMode() : defaults.planMode();
+    int diameterCap = Math.max(0, options.diameterCap());
     return new DecompositionOptions(
-        mode, maxPartitions, timeBudgetMs, tupleLimit, deepVerification, planMode);
+        mode, maxPartitions, timeBudgetMs, tupleLimit, deepVerification, planMode, diameterCap);
   }
 
   public enum Mode {
