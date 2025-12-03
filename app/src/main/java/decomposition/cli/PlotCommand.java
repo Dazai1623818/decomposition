@@ -23,7 +23,9 @@ public final class PlotCommand {
 
   int execute(String[] args) {
     if (args != null && args.length > 0) {
-      LOG.info("Ignoring positional plot arguments; running interactive mode instead: {}", Arrays.toString(args));
+      LOG.info(
+          "Ignoring positional plot arguments; running interactive mode instead: {}",
+          Arrays.toString(args));
     }
     return runInteractive();
   }

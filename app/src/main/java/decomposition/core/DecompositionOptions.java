@@ -12,7 +12,7 @@ public record DecompositionOptions(
     PlanMode planMode) {
 
   public static DecompositionOptions defaults() {
-    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 0, false, PlanMode.ALL);
+    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 1, false, PlanMode.ALL);
   }
 
   public static DecompositionOptions normalize(DecompositionOptions options) {
@@ -21,7 +21,8 @@ public record DecompositionOptions(
     }
     DecompositionOptions defaults = defaults();
     Mode mode = options.mode() != null ? options.mode() : defaults.mode();
-    int maxPartitions = options.maxPartitions() > 0 ? options.maxPartitions() : defaults.maxPartitions();
+    int maxPartitions =
+        options.maxPartitions() > 0 ? options.maxPartitions() : defaults.maxPartitions();
     long timeBudgetMs = options.timeBudgetMs();
     int tupleLimit = Math.max(0, options.tupleLimit());
     boolean deepVerification = options.deepVerification();

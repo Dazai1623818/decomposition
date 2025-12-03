@@ -12,7 +12,6 @@ import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,7 +49,7 @@ final class RunCommand {
             false,
             cliOptions.planMode());
 
-    if (cliOptions.compareWithIndex()) {
+    if (cliOptions.evaluate()) {
       DecompositionResult result =
           pipeline.benchmark(
               query,
@@ -68,15 +67,6 @@ final class RunCommand {
 
     logSummary(result, cliOptions);
     exportForVisualization(result);
-
-    JsonReportBuilder reportBuilder = new JsonReportBuilder();
-    String json = reportBuilder.build(result);
-
-    if (cliOptions.outputPath() != null) {
-      writeOutput(cliOptions.outputPath(), json);
-    } else {
-      System.out.println(json);
-    }
 
     if (result.terminationReason() != null) {
       return 3;
@@ -122,7 +112,9 @@ final class RunCommand {
             (b, raw) ->
                 b.maxPartitions(
                     CliParsers.parseInt(
-                        raw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions"))));
+                        raw,
+                        DecompositionOptions.defaults().maxPartitions(),
+                        "--max-partitions"))));
     specs.put(
         "--time-budget-ms",
         OptionSpec.withValue(
@@ -131,15 +123,7 @@ final class RunCommand {
                     CliParsers.parseLong(
                         raw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms"))));
     specs.put("--plan", OptionSpec.withValue((b, raw) -> b.planMode(parsePlanMode(raw))));
-    specs.put(
-        "--limit",
-        OptionSpec.withValue(
-            (b, raw) ->
-                b.tupleLimit(
-                    CliParsers.parseInt(raw, DecompositionOptions.defaults().tupleLimit(), "--limit"))));
-    specs.put("--single-tuple", OptionSpec.flag(b -> b.tupleLimit(1)));
-    specs.put("--out", OptionSpec.withValue((b, raw) -> b.outputPath(raw)));
-    specs.put("--compare-index", OptionSpec.flag(b -> b.compareWithIndex(true)));
+    specs.put("--evaluate", OptionSpec.flag(b -> b.evaluate(true)));
     specs.put("--build-index-only", OptionSpec.flag(b -> b.buildIndexOnly(true)));
     specs.put(
         "--compare-graph", OptionSpec.withValue((b, raw) -> b.compareGraphPath(Path.of(raw))));
@@ -268,15 +252,6 @@ final class RunCommand {
     } catch (IOException ex) {
       LOG.warn("Failed to export visualization artifacts: {}", ex.getMessage());
     }
-  }
-
-  private void writeOutput(String outputPath, String json) throws IOException {
-    Path path = Path.of(outputPath);
-    Path parent = path.getParent();
-    if (parent != null) {
-      Files.createDirectories(parent);
-    }
-    Files.writeString(path, json);
   }
 
   private record ParsedArg(String option, String value) {

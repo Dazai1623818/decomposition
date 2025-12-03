@@ -16,8 +16,7 @@ record CliOptions(
     long timeBudgetMs,
     int tupleLimit,
     PlanMode planMode,
-    String outputPath,
-    boolean compareWithIndex,
+    boolean evaluate,
     Path compareGraphPath,
     int indexK,
     boolean buildIndexOnly) {
@@ -30,7 +29,7 @@ record CliOptions(
       throw new IllegalArgumentException("tupleLimit must be non-negative");
     }
     if (buildIndexOnly) {
-      compareWithIndex = true;
+      evaluate = true;
     }
     compareGraphPath = compareGraphPath == null ? Path.of("graph_huge.edge") : compareGraphPath;
     if (indexK < 1) {
@@ -59,8 +58,7 @@ record CliOptions(
     private long timeBudgetMs = DecompositionOptions.defaults().timeBudgetMs();
     private int tupleLimit = DecompositionOptions.defaults().tupleLimit();
     private PlanMode planMode = PlanMode.ALL;
-    private String outputPath;
-    private boolean compareWithIndex;
+    private boolean evaluate;
     private Path compareGraphPath = Path.of("graph_huge.edge");
     private int indexK = 3;
     private boolean buildIndexOnly;
@@ -107,13 +105,8 @@ record CliOptions(
       return this;
     }
 
-    Builder outputPath(String outputPath) {
-      this.outputPath = outputPath;
-      return this;
-    }
-
-    Builder compareWithIndex(boolean compareWithIndex) {
-      this.compareWithIndex = compareWithIndex;
+    Builder evaluate(boolean evaluate) {
+      this.evaluate = evaluate;
       return this;
     }
 
@@ -143,7 +136,7 @@ record CliOptions(
         throw new IllegalArgumentException("Provide at most one of --file or --example");
       }
 
-      boolean effectiveCompare = compareWithIndex || buildIndexOnly;
+      boolean effectiveEvaluate = evaluate || buildIndexOnly;
       return new CliOptions(
           queryFile,
           exampleName,
@@ -153,8 +146,7 @@ record CliOptions(
           timeBudgetMs,
           tupleLimit,
           planMode,
-          outputPath,
-          effectiveCompare,
+          effectiveEvaluate,
           compareGraphPath,
           indexK,
           buildIndexOnly);
