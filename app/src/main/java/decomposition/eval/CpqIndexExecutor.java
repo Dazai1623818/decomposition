@@ -4,7 +4,7 @@ import decomposition.cpq.CPQExpression;
 import decomposition.eval.leapfrogjoiner.IntAccumulator;
 import decomposition.eval.leapfrogjoiner.LeapfrogJoiner;
 import decomposition.eval.leapfrogjoiner.RelationBinding;
-import decomposition.eval.leapfrogjoiner.RelationProjection;
+import decomposition.eval.leapfrogjoiner.RelationBinding.RelationProjection;
 import dev.roanh.cpqindex.Index;
 import dev.roanh.cpqindex.Pair;
 import dev.roanh.gmark.lang.cpq.CPQ;
