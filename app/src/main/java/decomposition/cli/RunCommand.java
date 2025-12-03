@@ -8,6 +8,7 @@ import decomposition.core.model.Component;
 import decomposition.cpq.CPQExpression;
 import decomposition.examples.RandomExampleConfig;
 import decomposition.pipeline.Pipeline;
+import decomposition.pipeline.PlanMode;
 import decomposition.util.BitsetUtils;
 import decomposition.util.VisualizationExporter;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -55,6 +56,7 @@ final class RunCommand {
               query,
               cliOptions.freeVariables(),
               pipelineOptions,
+              cliOptions.planMode(),
               cliOptions.compareGraphPath(),
               cliOptions.indexK());
       logSummary(result, cliOptions);
@@ -63,7 +65,8 @@ final class RunCommand {
     }
 
     DecompositionResult result =
-        pipeline.decompose(query, cliOptions.freeVariables(), pipelineOptions);
+        pipeline.decompose(
+            query, cliOptions.freeVariables(), pipelineOptions, cliOptions.planMode());
 
     logSummary(result, cliOptions);
     exportForVisualization(result);
@@ -125,6 +128,7 @@ final class RunCommand {
     String outputPath = null;
     String limitRaw = null;
     boolean show = false;
+    String planRaw = null;
     boolean singleTuplePerPartition = false;
     String randomFreeRaw = null;
     String randomEdgesRaw = null;
@@ -166,6 +170,8 @@ final class RunCommand {
         case "--time-budget-ms" ->
             timeBudgetRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
+        case "--plan" ->
+            planRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--limit" ->
             limitRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--single-tuple" -> singleTuplePerPartition = true;
@@ -241,6 +247,7 @@ final class RunCommand {
     int limit =
         CliParsers.parseInt(
             limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
+    PlanMode planMode = parsePlanMode(planRaw);
     boolean randomOptionsProvided =
         randomFreeRaw != null
             || randomEdgesRaw != null
@@ -280,6 +287,7 @@ final class RunCommand {
         maxPartitions,
         timeBudget,
         limit,
+        planMode,
         singleTuplePerPartition,
         show,
         outputPath,
@@ -399,5 +407,17 @@ final class RunCommand {
       current = current.getParent();
     }
     return cwd;
+  }
+
+  private PlanMode parsePlanMode(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return PlanMode.ALL;
+    }
+    return switch (raw.toLowerCase(Locale.ROOT)) {
+      case "single", "single-edge", "edges" -> PlanMode.SINGLE_EDGE;
+      case "first", "first-valid" -> PlanMode.FIRST;
+      case "all", "default" -> PlanMode.ALL;
+      default -> throw new IllegalArgumentException("Invalid plan: " + raw);
+    };
   }
 }

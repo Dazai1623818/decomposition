@@ -2,6 +2,7 @@ package decomposition.cli;
 
 import decomposition.core.DecompositionOptions.Mode;
 import decomposition.examples.RandomExampleConfig;
+import decomposition.pipeline.PlanMode;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -15,6 +16,7 @@ record CliOptions(
     int maxPartitions,
     long timeBudgetMs,
     int enumerationLimit,
+    PlanMode planMode,
     boolean singleTuplePerPartition,
     boolean showVisualization,
     String outputPath,
@@ -28,6 +30,7 @@ record CliOptions(
   CliOptions {
     freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);
     Objects.requireNonNull(mode, "mode");
+    planMode = planMode == null ? PlanMode.ALL : planMode;
     if (enumerationLimit < 0) {
       throw new IllegalArgumentException("enumerationLimit must be non-negative");
     }

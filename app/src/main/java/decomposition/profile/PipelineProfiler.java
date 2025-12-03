@@ -2,11 +2,10 @@ package decomposition.profile;
 
 import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
-import decomposition.cpq.model.CacheStats;
 import decomposition.examples.Example;
 import decomposition.examples.RandomExampleConfig;
-import decomposition.pipeline.builder.CpqBuilder;
-import decomposition.pipeline.builder.CpqBuilderResult;
+import decomposition.pipeline.Pipeline;
+import decomposition.pipeline.PlanMode;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +36,6 @@ public final class PipelineProfiler {
       int filteredPartitions,
       int validPartitions,
       int recognizedComponents,
-      CacheStats cacheSnapshot,
       String terminationReason) {}
 
   /** Aggregated profiling report. */
@@ -49,20 +47,6 @@ public final class PipelineProfiler {
     public long totalElapsedMillis() {
       return runs.stream().mapToLong(ProfileRun::elapsedMillis).sum();
     }
-
-    public CacheStats aggregateCache() {
-      long hits = 0;
-      long misses = 0;
-      for (ProfileRun run : runs) {
-        CacheStats snapshot = run.cacheSnapshot();
-        if (snapshot == null) {
-          continue;
-        }
-        hits += snapshot.hits();
-        misses += snapshot.misses();
-      }
-      return CacheStats.of(hits, misses);
-    }
   }
 
   public PipelineProfile profile(List<NamedQuery> queries, DecompositionOptions options) {
@@ -73,10 +57,10 @@ public final class PipelineProfiler {
     DecompositionOptions effective = options != null ? options : DecompositionOptions.defaults();
 
     List<ProfileRun> runs = new ArrayList<>(queries.size());
+    Pipeline pipeline = new Pipeline();
     for (NamedQuery query : queries) {
-      CpqBuilderResult builderResult =
-          CpqBuilder.defaultBuilder().build(query.query(), query.freeVariables(), effective);
-      DecompositionResult result = builderResult.result();
+      DecompositionResult result =
+          pipeline.decompose(query.query(), query.freeVariables(), effective, PlanMode.ALL);
       runs.add(
           new ProfileRun(
               query.name(),
@@ -85,7 +69,6 @@ public final class PipelineProfiler {
               result.filteredPartitions(),
               result.cpqPartitions().size(),
               result.recognizedCatalogue().size(),
-              builderResult.cacheStats(),
               result.terminationReason()));
     }
     return new PipelineProfile(runs);

@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.core.DecompositionOptions;
-import decomposition.cpq.model.CacheStats;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;
 import decomposition.profile.PipelineProfiler.ProfileRun;
@@ -22,11 +21,7 @@ final class PipelineProfilerTest {
     assertEquals(queries.size(), profile.runs().size(), "Runs should match query count");
 
     for (ProfileRun run : profile.runs()) {
-      CacheStats cache = run.cacheSnapshot();
-      assertTrue(cache.lookups() >= 0, "Cache stats should never be negative");
+      assertTrue(run.elapsedMillis() >= 0, "Elapsed time should be non-negative");
     }
-
-    CacheStats aggregate = profile.aggregateCache();
-    assertTrue(aggregate.lookups() >= 0, "Aggregate cache lookups should be non-negative");
   }
 }

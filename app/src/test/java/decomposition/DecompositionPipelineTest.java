@@ -9,8 +9,8 @@ import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.cpq.CPQExpression;
 import decomposition.examples.Example;
-import decomposition.pipeline.builder.CpqBuilder;
-import decomposition.pipeline.builder.CpqBuilderResult;
+import decomposition.pipeline.Pipeline;
+import decomposition.pipeline.PlanMode;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -29,9 +29,9 @@ final class DecompositionPipelineTest {
     VarCQ y = cq.addBoundVariable("y");
     cq.addAtom(x, new Predicate(1, "r1"), y);
 
-    CpqBuilderResult builderResult =
-        CpqBuilder.defaultBuilder().build(cq, Set.of(), DecompositionOptions.defaults());
-    DecompositionResult result = builderResult.result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result =
+        pipeline.decompose(cq, Set.of(), DecompositionOptions.defaults(), PlanMode.ALL);
 
     assertEquals(
         1, result.cpqPartitions().size(), "Single-edge query should have one valid partition");
@@ -55,7 +55,7 @@ final class DecompositionPipelineTest {
   void exampleOnePartitionsAreRecognized() {
     CQ cq = Example.example1();
 
-    CpqBuilder builder = CpqBuilder.defaultBuilder();
+    Pipeline pipeline = new Pipeline();
     DecompositionOptions defaults = DecompositionOptions.defaults();
     DecompositionOptions options =
         new DecompositionOptions(
@@ -66,7 +66,7 @@ final class DecompositionPipelineTest {
             TestDefaults.singleTuplePerPartition(),
             false);
 
-    DecompositionResult result = builder.build(cq, Set.of(), options).result();
+    DecompositionResult result = pipeline.decompose(cq, Set.of(), options, PlanMode.ALL);
 
     assertEquals(
         12, result.filteredPartitionList().size(), "Example1 should yield 12 filtered partitions");
@@ -92,8 +92,8 @@ final class DecompositionPipelineTest {
             TestDefaults.singleTuplePerPartition(),
             false);
 
-    CpqBuilder builder = CpqBuilder.defaultBuilder();
-    DecompositionResult result = builder.build(cq, Set.of("A"), options).result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
 
     Optional<PartitionEvaluation> singleEdgePartition =
         result.partitionEvaluations().stream()
@@ -175,8 +175,9 @@ final class DecompositionPipelineTest {
             TestDefaults.singleTuplePerPartition(),
             false);
 
-    CpqBuilder builder = CpqBuilder.defaultBuilder();
-    DecompositionResult result = builder.build(cq, Set.of("src", "trg"), options).result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result =
+        pipeline.decompose(cq, Set.of("src", "trg"), options, PlanMode.ALL);
 
     // Find the single-component partition
     Optional<PartitionEvaluation> singleComponent =
@@ -235,8 +236,8 @@ final class DecompositionPipelineTest {
             true,
             false);
 
-    DecompositionResult result =
-        CpqBuilder.defaultBuilder().build(cq, Set.of("A"), options).result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
 
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       assertTrue(

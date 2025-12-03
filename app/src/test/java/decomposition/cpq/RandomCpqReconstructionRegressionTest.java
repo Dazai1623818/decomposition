@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
-import decomposition.pipeline.builder.CpqBuilder;
+import decomposition.pipeline.Pipeline;
+import decomposition.pipeline.PlanMode;
 import decomposition.pipeline.extract.CQExtractor;
 import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
 import decomposition.util.JoinAnalysisBuilder;
@@ -45,7 +46,8 @@ final class RandomCpqReconstructionRegressionTest {
             false, // allow multiple tuples so we can look for a match
             false);
 
-    DecompositionResult result = CpqBuilder.defaultBuilder().build(cq, freeVars, options).result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result = pipeline.decompose(cq, freeVars, options, PlanMode.ALL);
 
     PartitionEvaluation single =
         result.partitionEvaluations().stream()

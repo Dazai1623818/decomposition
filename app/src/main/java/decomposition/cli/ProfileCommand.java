@@ -1,7 +1,6 @@
 package decomposition.cli;
 
 import decomposition.core.DecompositionOptions;
-import decomposition.cpq.model.CacheStats;
 import decomposition.examples.RandomExampleConfig;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
@@ -189,27 +188,10 @@ final class ProfileCommand {
           run.filteredPartitions(),
           run.validPartitions(),
           run.recognizedComponents());
-      CacheStats cache = run.cacheSnapshot();
-      if (cache != null && cache.lookups() > 0) {
-        double hitRatePct = cache.hitRate() * 100.0;
-        String pct = String.format(Locale.ROOT, "%.2f", hitRatePct);
-        LOG.info(
-            "  cache: lookups={} hits={} misses={} hitRate={}%%",
-            cache.lookups(), cache.hits(), cache.misses(), pct);
-      } else {
-        LOG.info("  cache: no lookups");
-      }
       if (run.terminationReason() != null) {
         LOG.warn("  termination: {}", run.terminationReason());
       }
     }
-
-    CacheStats aggregate = report.aggregateCache();
-    double aggregatePct = aggregate.hitRate() * 100.0;
-    String pct = String.format(Locale.ROOT, "%.2f", aggregatePct);
-    LOG.info(
-        "Aggregate cache: lookups={} hits={} misses={} hitRate={}%%",
-        aggregate.lookups(), aggregate.hits(), aggregate.misses(), pct);
     LOG.info("Total elapsed millis: {}", report.totalElapsedMillis());
   }
 }

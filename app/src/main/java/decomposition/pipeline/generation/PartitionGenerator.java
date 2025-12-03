@@ -4,9 +4,7 @@ import decomposition.core.DecompositionOptions;
 import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
-import decomposition.pipeline.builder.CpqBuilderContext;
 import decomposition.pipeline.partitioning.PartitionFilter;
-import decomposition.pipeline.partitioning.PartitionFilter.FilterResult;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
 import java.util.ArrayList;
@@ -44,20 +42,6 @@ public final class PartitionGenerator {
 
   public PartitionGenerator(DecompositionOptions options) {
     this(options != null ? options.maxPartitions() : 0);
-  }
-
-  public FilterResult generate(CpqBuilderContext context) {
-    Objects.requireNonNull(context, "context");
-    List<Component> components = enumerateConnectedComponents(context.edges());
-    List<Partition> partitions =
-        enumeratePartitions(
-            context.edges(),
-            components,
-            context.extraction().freeVariables(),
-            GeneratorDefaults.MAX_JOIN_NODES);
-
-    context.setPartitions(partitions);
-    return filter.filter(partitions, context.extraction().freeVariables());
   }
 
   /**

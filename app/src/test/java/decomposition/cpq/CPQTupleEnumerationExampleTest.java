@@ -6,8 +6,8 @@ import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
 import decomposition.core.PartitionEvaluation;
 import decomposition.examples.Example;
-import decomposition.pipeline.builder.CpqBuilder;
-import decomposition.pipeline.builder.CpqBuilderResult;
+import decomposition.pipeline.Pipeline;
+import decomposition.pipeline.PlanMode;
 import decomposition.testing.TestDefaults;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
@@ -31,8 +31,8 @@ final class CPQTupleEnumerationExampleTest {
             singleTupleOnly,
             false);
 
-    CpqBuilderResult builderResult = CpqBuilder.defaultBuilder().build(cq, Set.of("A"), options);
-    DecompositionResult result = builderResult.result();
+    Pipeline pipeline = new Pipeline();
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
 
     PartitionEvaluation evaluation =
         result.partitionEvaluations().stream()
