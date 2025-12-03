@@ -46,9 +46,9 @@ final class RunCommand {
             cliOptions.mode(),
             cliOptions.maxPartitions(),
             cliOptions.timeBudgetMs(),
-            cliOptions.enumerationLimit(),
-            cliOptions.singleTuplePerPartition(),
-            false);
+            cliOptions.tupleLimit(),
+            false,
+            cliOptions.planMode());
 
     if (cliOptions.compareWithIndex()) {
       DecompositionResult result =
@@ -56,7 +56,6 @@ final class RunCommand {
               query,
               cliOptions.freeVariables(),
               pipelineOptions,
-              cliOptions.planMode(),
               cliOptions.compareGraphPath(),
               cliOptions.indexK());
       logSummary(result, cliOptions);
@@ -65,8 +64,7 @@ final class RunCommand {
     }
 
     DecompositionResult result =
-        pipeline.decompose(
-            query, cliOptions.freeVariables(), pipelineOptions, cliOptions.planMode());
+        pipeline.decompose(query, cliOptions.freeVariables(), pipelineOptions);
 
     logSummary(result, cliOptions);
     exportForVisualization(result);
@@ -129,7 +127,7 @@ final class RunCommand {
     String limitRaw = null;
     boolean show = false;
     String planRaw = null;
-    boolean singleTuplePerPartition = false;
+    Integer tupleLimit = null;
     String randomFreeRaw = null;
     String randomEdgesRaw = null;
     String randomLabelsRaw = null;
@@ -174,7 +172,7 @@ final class RunCommand {
             planRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--limit" ->
             limitRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--single-tuple" -> singleTuplePerPartition = true;
+        case "--single-tuple" -> tupleLimit = 1;
         case "--out" ->
             outputPath =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -245,8 +243,10 @@ final class RunCommand {
         CliParsers.parseLong(
             timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
     int limit =
-        CliParsers.parseInt(
-            limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
+        CliParsers.parseInt(limitRaw, DecompositionOptions.defaults().tupleLimit(), "--limit");
+    if (tupleLimit != null) {
+      limit = tupleLimit;
+    }
     PlanMode planMode = parsePlanMode(planRaw);
     boolean randomOptionsProvided =
         randomFreeRaw != null
@@ -288,7 +288,6 @@ final class RunCommand {
         timeBudget,
         limit,
         planMode,
-        singleTuplePerPartition,
         show,
         outputPath,
         randomExampleConfig,
@@ -352,8 +351,8 @@ final class RunCommand {
             }
             LOG.info("    #{}: {}", i + 1, String.join(" | ", fragments));
           }
-          if (options.enumerationLimit() > 0 && tuples.size() >= options.enumerationLimit()) {
-            LOG.info("    ... limit reached ({})", options.enumerationLimit());
+          if (options.tupleLimit() > 0 && tuples.size() >= options.tupleLimit()) {
+            LOG.info("    ... limit reached ({})", options.tupleLimit());
           }
         }
       }

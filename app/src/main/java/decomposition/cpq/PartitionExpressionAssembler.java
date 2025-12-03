@@ -41,19 +41,15 @@ public final class PartitionExpressionAssembler {
       Set<String> freeVariables,
       Map<String, String> originalVarMap,
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
-      CacheStats cacheStats,
-      PartitionDiagnostics partitionDiagnostics,
-      int partitionIndex) {
+      CacheStats cacheStats) {
 
     Objects.requireNonNull(filteredPartition, "filteredPartition");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
     Objects.requireNonNull(componentCache, "componentCache");
     Objects.requireNonNull(cacheStats, "cacheStats");
-    Objects.requireNonNull(partitionDiagnostics, "partitionDiagnostics");
     Partition partition = filteredPartition.partition();
     JoinAnalysis joinAnalysis =
         Objects.requireNonNull(filteredPartition.joinAnalysis(), "joinAnalysis");
-    partitionDiagnostics.beginPartition();
     Set<String> joinNodes = JoinNodeUtils.normalizeNodeSet(joinAnalysis.globalJoinNodes());
     Set<String> freeVars = JoinNodeUtils.normalizeNodeSet(freeVariables);
     List<Component> components = partition.components();
@@ -85,18 +81,13 @@ public final class PartitionExpressionAssembler {
                 componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
       }
 
-      recordComponentDiagnostics(
-          partitionIndex, idx, component, filteredPartition, cached, partitionDiagnostics);
-
       List<CPQExpression> finalExpressions = cached.finalExpressions();
       if (finalExpressions.isEmpty()) {
-        partitionDiagnostics.failPartition();
         return null;
       }
       finalExpressionsPerComponent.add(finalExpressions);
     }
 
-    partitionDiagnostics.succeedPartition();
     return List.copyOf(finalExpressionsPerComponent);
   }
 
@@ -194,25 +185,6 @@ public final class PartitionExpressionAssembler {
             diagnosticCandidates);
     componentCache.put(key, cached);
     return cached;
-  }
-
-  private void recordComponentDiagnostics(
-      int partitionIndex,
-      int idx,
-      Component component,
-      FilteredPartition filteredPartition,
-      CachedComponentExpressions cached,
-      PartitionDiagnostics partitionDiagnostics) {
-    String componentSig = BitsetUtils.signature(component.edgeBits(), edges.size());
-    partitionDiagnostics.recordComponent(
-        partitionIndex,
-        idx + 1,
-        component,
-        filteredPartition,
-        componentSig,
-        cached.hasRawExpressions(),
-        cached.hasJoinFilteredExpressions(),
-        cached.diagnosticCandidates());
   }
 
   /** Key used for memoizing cached component expression sets. */

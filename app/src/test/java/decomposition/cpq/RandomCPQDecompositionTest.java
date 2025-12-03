@@ -36,9 +36,9 @@ final class RandomCPQDecompositionTest {
           DecompositionOptions.Mode.ENUMERATE,
           DEFAULT_OPTIONS.maxPartitions(),
           DEFAULT_OPTIONS.timeBudgetMs(),
-          DEFAULT_OPTIONS.enumerationLimit(),
-          TestDefaults.singleTuplePerPartition(),
-          false);
+          TestDefaults.tupleLimit(),
+          false,
+          PlanMode.ALL);
 
   @Test
   void decompositionReconstructsOriginalCpq() {
@@ -88,8 +88,7 @@ final class RandomCPQDecompositionTest {
     Set<String> freeVars =
         cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    DecompositionResult result =
-        pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
     assertTrue(
         result.cpqPartitions().size() >= 1,
         "Single edge CPQ should have at least one valid partition");
@@ -103,8 +102,7 @@ final class RandomCPQDecompositionTest {
     Set<String> freeVars =
         cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    DecompositionResult result =
-        pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
     assertTrue(result.edges().size() >= 1, "Loop CPQ should produce edges");
   }
 
@@ -117,8 +115,7 @@ final class RandomCPQDecompositionTest {
         cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
     // Should complete without throwing exception
-    DecompositionResult result =
-        pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
     // Just verify the result is not null - intersection may have zero or more
     // partitions
     assertTrue(
@@ -135,15 +132,15 @@ final class RandomCPQDecompositionTest {
             100_000,
             1, // 1ms time budget - very tight
             100,
-            TestDefaults.singleTuplePerPartition(),
-            false);
+            false,
+            PlanMode.ALL);
 
     CPQ complex = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
     CQ cq = complex.toCQ();
     Set<String> freeVars =
         cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    DecompositionResult result = pipeline.decompose(cq, freeVars, timedOptions, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, timedOptions);
     // Should complete without hanging, possibly with early termination
     assertTrue(
         result.terminationReason() == null || result.terminationReason().contains("time"),
@@ -152,8 +149,7 @@ final class RandomCPQDecompositionTest {
 
   private static ReconstructionResult analyseReconstruction(
       Pipeline pipeline, CPQ original, CQ cq, Set<String> freeVars, List<Predicate> alphabet) {
-    DecompositionResult result =
-        pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
 
     Optional<PartitionEvaluation> singleComponentEvaluation =
         result.partitionEvaluations().stream()

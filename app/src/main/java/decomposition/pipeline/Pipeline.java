@@ -9,7 +9,6 @@ import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
-import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
@@ -54,17 +53,9 @@ public final class Pipeline {
   /** Workflow 1: Decomposition only. */
   public DecompositionResult decompose(
       CQ query, Set<String> freeVariables, DecompositionOptions options) {
-    return decompose(query, freeVariables, options, PlanMode.ALL);
-  }
-
-  /**
-   * Lean decomposition flow that can return a single-edge plan, the first valid plan, or all plans.
-   */
-  public DecompositionResult decompose(
-      CQ query, Set<String> freeVariables, DecompositionOptions options, PlanMode planMode) {
-    LOG.info("Executing decomposition pipeline (plan mode: {})...", planMode);
     DecompositionOptions effective = options != null ? options : DecompositionOptions.defaults();
-    PlanMode mode = planMode == null ? PlanMode.ALL : planMode;
+    PlanMode mode = effective.planMode() == null ? PlanMode.ALL : effective.planMode();
+    LOG.info("Executing decomposition pipeline (plan mode: {})...", mode);
     Timing timer = Timing.start();
 
     // 1) Extract
@@ -86,15 +77,14 @@ public final class Pipeline {
     // 4) Generate CPQ expressions for each partition
     PartitionExpressionAssembler assembler = new PartitionExpressionAssembler(edges);
     CacheStats cacheStats = new CacheStats();
-    PartitionDiagnostics partitionDiagnostics = new PartitionDiagnostics();
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
 
     List<Partition> validPartitions = new ArrayList<>();
     List<CPQExpression> recognisedCatalogue = new ArrayList<>();
     List<PartitionEvaluation> evaluations = new ArrayList<>();
 
-    int tupleLimit = computeTupleLimit(effective);
-    boolean enumerateTuples = effective.mode().enumerateTuples();
+    int tupleLimit = Math.max(0, effective.tupleLimit());
+    boolean enumerateTuples = effective.mode().enumerateTuples() && tupleLimit > 0;
     String terminationReason = null;
 
     for (int i = 0; i < filtered.size(); i++) {
@@ -111,12 +101,10 @@ public final class Pipeline {
               extraction.freeVariables(),
               varToNodeMap,
               componentCache,
-              cacheStats,
-              partitionDiagnostics,
-              partitionIndex);
+              cacheStats);
 
       if (perComponent == null) {
-        diagnostics.addAll(partitionDiagnostics.lastComponentDiagnostics());
+        diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitionIndex));
         continue;
       }
 
@@ -211,12 +199,7 @@ public final class Pipeline {
    * </ol>
    */
   public DecompositionResult benchmark(
-      CQ query,
-      Set<String> freeVariables,
-      DecompositionOptions options,
-      PlanMode planMode,
-      Path graphPath,
-      int indexK)
+      CQ query, Set<String> freeVariables, DecompositionOptions options, Path graphPath, int indexK)
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
 
@@ -228,12 +211,11 @@ public final class Pipeline {
                 DecompositionOptions.Mode.ENUMERATE,
                 options.maxPartitions(),
                 options.timeBudgetMs(),
-                options.enumerationLimit(),
-                options.singleTuplePerPartition(),
-                options.deepVerification());
+                options.tupleLimit() > 0 ? options.tupleLimit() : 0,
+                options.deepVerification(),
+                options.planMode() == null ? PlanMode.ALL : options.planMode());
 
-    PlanMode effectivePlan = planMode == null ? PlanMode.ALL : planMode;
-    DecompositionResult result = decompose(query, freeVariables, benchmarkOptions, effectivePlan);
+    DecompositionResult result = decompose(query, freeVariables, benchmarkOptions);
     if (result.cpqPartitions().isEmpty()) {
       LOG.warn("No valid partitions generated. Aborting evaluation phase.");
       return result;
@@ -319,14 +301,6 @@ public final class Pipeline {
       }
     }
     return max;
-  }
-
-  private int computeTupleLimit(DecompositionOptions options) {
-    if (options.singleTuplePerPartition()) {
-      return 1;
-    }
-    int limit = options.enumerationLimit();
-    return limit <= 0 ? 1 : limit;
   }
 
   private boolean isOverBudget(DecompositionOptions options, Timing timer) {

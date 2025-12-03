@@ -42,12 +42,12 @@ final class RandomCpqReconstructionRegressionTest {
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            false, // allow multiple tuples so we can look for a match
-            false);
+            defaults.tupleLimit() > 0 ? defaults.tupleLimit() : 1,
+            false,
+            PlanMode.ALL);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result = pipeline.decompose(cq, freeVars, options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, freeVars, options);
 
     PartitionEvaluation single =
         result.partitionEvaluations().stream()

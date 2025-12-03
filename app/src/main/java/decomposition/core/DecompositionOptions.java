@@ -1,16 +1,18 @@
 package decomposition.core;
 
+import decomposition.pipeline.PlanMode;
+
 /** Configuration for the CQ to CPQ decomposition pipeline. */
 public record DecompositionOptions(
     Mode mode,
     int maxPartitions,
     long timeBudgetMs,
-    int enumerationLimit,
-    boolean singleTuplePerPartition,
-    boolean deepVerification) {
+    int tupleLimit,
+    boolean deepVerification,
+    PlanMode planMode) {
 
   public static DecompositionOptions defaults() {
-    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 1, false, false);
+    return new DecompositionOptions(Mode.VALIDATE, Integer.MAX_VALUE, 0, 0, false, PlanMode.ALL);
   }
 
   public enum Mode {

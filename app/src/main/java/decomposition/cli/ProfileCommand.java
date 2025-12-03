@@ -2,6 +2,7 @@ package decomposition.cli;
 
 import decomposition.core.DecompositionOptions;
 import decomposition.examples.RandomExampleConfig;
+import decomposition.pipeline.PlanMode;
 import decomposition.profile.PipelineProfiler;
 import decomposition.profile.PipelineProfiler.NamedQuery;
 import decomposition.profile.PipelineProfiler.PipelineProfile;
@@ -36,7 +37,6 @@ final class ProfileCommand {
     String maxPartitionsRaw = null;
     String timeBudgetRaw = null;
     String limitRaw = null;
-    boolean singleTuple = false;
     String randomCountRaw = null;
     String randomFreeRaw = null;
     String randomEdgesRaw = null;
@@ -72,7 +72,6 @@ final class ProfileCommand {
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
         case "--limit" ->
             limitRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--single-tuple" -> singleTuple = true;
         case "--random-count" ->
             randomCountRaw =
                 inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
@@ -109,8 +108,7 @@ final class ProfileCommand {
         CliParsers.parseLong(
             timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
     int limit =
-        CliParsers.parseInt(
-            limitRaw, DecompositionOptions.defaults().enumerationLimit(), "--limit");
+        CliParsers.parseInt(limitRaw, DecompositionOptions.defaults().tupleLimit(), "--limit");
     int randomCount = CliParsers.parseInt(randomCountRaw, 0, "--random-count");
     boolean randomOptionsProvided =
         randomFreeRaw != null
@@ -166,18 +164,18 @@ final class ProfileCommand {
     }
 
     DecompositionOptions options =
-        new DecompositionOptions(mode, maxPartitions, timeBudget, limit, singleTuple, false);
+        new DecompositionOptions(mode, maxPartitions, timeBudget, limit, false, PlanMode.ALL);
     return new ProfileOptions(queries, options);
   }
 
   private void logProfileReport(PipelineProfile report, DecompositionOptions options) {
     LOG.info(
-        "Profiling {} queries with options: mode={}, maxPartitions={}, timeBudgetMs={}, enumerationLimit={}",
+        "Profiling {} queries with options: mode={}, maxPartitions={}, timeBudgetMs={}, tupleLimit={}",
         report.runs().size(),
         options.mode(),
         options.maxPartitions(),
         options.timeBudgetMs(),
-        options.enumerationLimit());
+        options.tupleLimit());
 
     for (ProfileRun run : report.runs()) {
       LOG.info(

@@ -15,9 +15,8 @@ record CliOptions(
     Mode mode,
     int maxPartitions,
     long timeBudgetMs,
-    int enumerationLimit,
+    int tupleLimit,
     PlanMode planMode,
-    boolean singleTuplePerPartition,
     boolean showVisualization,
     String outputPath,
     RandomExampleConfig randomExampleConfig,
@@ -31,8 +30,8 @@ record CliOptions(
     freeVariables = freeVariables == null ? Set.of() : Set.copyOf(freeVariables);
     Objects.requireNonNull(mode, "mode");
     planMode = planMode == null ? PlanMode.ALL : planMode;
-    if (enumerationLimit < 0) {
-      throw new IllegalArgumentException("enumerationLimit must be non-negative");
+    if (tupleLimit < 0) {
+      throw new IllegalArgumentException("tupleLimit must be non-negative");
     }
     if (buildIndexOnly) {
       compareWithIndex = true;

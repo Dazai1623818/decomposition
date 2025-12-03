@@ -6,7 +6,6 @@ import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
-import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
@@ -43,28 +42,15 @@ final class CPQEnumeratorCacheTest {
         JoinAnalysisBuilder.analyzePartition(partition, extraction.freeVariables());
     FilteredPartition filteredPartition = new FilteredPartition(partition, analysis);
     CacheStats stats = new CacheStats();
-    PartitionDiagnostics diagnostics = new PartitionDiagnostics();
     PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
 
     List<List<CPQExpression>> first =
         synthesizer.synthesize(
-            filteredPartition,
-            extraction.freeVariables(),
-            varMap,
-            componentCache,
-            stats,
-            diagnostics,
-            1);
+            filteredPartition, extraction.freeVariables(), varMap, componentCache, stats);
     List<List<CPQExpression>> second =
         synthesizer.synthesize(
-            filteredPartition,
-            extraction.freeVariables(),
-            varMap,
-            componentCache,
-            stats,
-            diagnostics,
-            1);
+            filteredPartition, extraction.freeVariables(), varMap, componentCache, stats);
 
     assertTrue(first != null && second != null, "Expected at least one component expression set");
     assertTrue(second.size() == first.size(), "Repeated lookups should return same count");

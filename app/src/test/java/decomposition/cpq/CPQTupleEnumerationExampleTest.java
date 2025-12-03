@@ -21,18 +21,18 @@ final class CPQTupleEnumerationExampleTest {
     CQ cq = Example.example7();
 
     DecompositionOptions defaults = DecompositionOptions.defaults();
-    boolean singleTupleOnly = TestDefaults.singleTuplePerPartition();
+    int tupleLimit = TestDefaults.tupleLimit();
     DecompositionOptions options =
         new DecompositionOptions(
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            singleTupleOnly,
-            false);
+            tupleLimit,
+            false,
+            PlanMode.ALL);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);
 
     PartitionEvaluation evaluation =
         result.partitionEvaluations().stream()

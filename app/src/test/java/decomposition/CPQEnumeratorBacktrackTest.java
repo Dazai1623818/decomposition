@@ -10,7 +10,6 @@ import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
-import decomposition.cpq.PartitionDiagnostics;
 import decomposition.cpq.PartitionExpressionAssembler;
 import decomposition.cpq.PartitionExpressionAssembler.CachedComponentExpressions;
 import decomposition.cpq.PartitionExpressionAssembler.ComponentCacheKey;
@@ -122,18 +121,11 @@ final class CPQEnumeratorBacktrackTest {
         JoinAnalysisBuilder.analyzePartition(singleEdgePartition, extraction.freeVariables());
     FilteredPartition filteredPartition = new FilteredPartition(singleEdgePartition, analysis);
     CacheStats stats = new CacheStats();
-    PartitionDiagnostics diagnosticsHelper = new PartitionDiagnostics();
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
     PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
     List<List<CPQExpression>> built =
         synthesizer.synthesize(
-            filteredPartition,
-            extraction.freeVariables(),
-            varMap,
-            componentCache,
-            stats,
-            diagnosticsHelper,
-            1);
+            filteredPartition, extraction.freeVariables(), varMap, componentCache, stats);
     assertTrue(built != null, "Single-edge partition should now be a valid CPQ decomposition");
   }
 

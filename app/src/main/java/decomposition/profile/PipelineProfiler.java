@@ -5,7 +5,6 @@ import decomposition.core.DecompositionResult;
 import decomposition.examples.Example;
 import decomposition.examples.RandomExampleConfig;
 import decomposition.pipeline.Pipeline;
-import decomposition.pipeline.PlanMode;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,7 +59,7 @@ public final class PipelineProfiler {
     Pipeline pipeline = new Pipeline();
     for (NamedQuery query : queries) {
       DecompositionResult result =
-          pipeline.decompose(query.query(), query.freeVariables(), effective, PlanMode.ALL);
+          pipeline.decompose(query.query(), query.freeVariables(), effective);
       runs.add(
           new ProfileRun(
               query.name(),

@@ -30,8 +30,7 @@ final class DecompositionPipelineTest {
     cq.addAtom(x, new Predicate(1, "r1"), y);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result =
-        pipeline.decompose(cq, Set.of(), DecompositionOptions.defaults(), PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of(), DecompositionOptions.defaults());
 
     assertEquals(
         1, result.cpqPartitions().size(), "Single-edge query should have one valid partition");
@@ -62,11 +61,11 @@ final class DecompositionPipelineTest {
             DecompositionOptions.Mode.VALIDATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            TestDefaults.singleTuplePerPartition(),
-            false);
+            TestDefaults.tupleLimit(),
+            false,
+            PlanMode.ALL);
 
-    DecompositionResult result = pipeline.decompose(cq, Set.of(), options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of(), options);
 
     assertEquals(
         12, result.filteredPartitionList().size(), "Example1 should yield 12 filtered partitions");
@@ -88,12 +87,12 @@ final class DecompositionPipelineTest {
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            TestDefaults.singleTuplePerPartition(),
-            false);
+            TestDefaults.tupleLimit(),
+            false,
+            PlanMode.ALL);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);
 
     Optional<PartitionEvaluation> singleEdgePartition =
         result.partitionEvaluations().stream()
@@ -171,13 +170,12 @@ final class DecompositionPipelineTest {
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            TestDefaults.singleTuplePerPartition(),
-            false);
+            TestDefaults.tupleLimit(),
+            false,
+            PlanMode.ALL);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result =
-        pipeline.decompose(cq, Set.of("src", "trg"), options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of("src", "trg"), options);
 
     // Find the single-component partition
     Optional<PartitionEvaluation> singleComponent =
@@ -232,12 +230,12 @@ final class DecompositionPipelineTest {
             DecompositionOptions.Mode.ENUMERATE,
             defaults.maxPartitions(),
             defaults.timeBudgetMs(),
-            defaults.enumerationLimit(),
-            true,
-            false);
+            TestDefaults.tupleLimit(),
+            false,
+            PlanMode.ALL);
 
     Pipeline pipeline = new Pipeline();
-    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options, PlanMode.ALL);
+    DecompositionResult result = pipeline.decompose(cq, Set.of("A"), options);
 
     for (PartitionEvaluation evaluation : result.partitionEvaluations()) {
       assertTrue(
