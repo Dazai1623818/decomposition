@@ -28,7 +28,9 @@ public final class EvaluationPipeline {
 
     // 1. Setup
     int k = indexK > 0 ? indexK : 3;
+    Timing indexTimer = Timing.start();
     Index index = indexManager.loadOrBuild(graphPath, k);
+    long indexLoadMs = indexTimer.elapsedMillis();
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     // 2. Baseline
@@ -40,12 +42,12 @@ public final class EvaluationPipeline {
     LOG.info("Executing baseline...");
     Timing baselineTimer = Timing.start();
     List<Map<String, Integer>> baselineResults = executor.execute(baselineComponents);
-    LOG.info(
-        "Baseline finished in {}ms. Results: {}",
-        baselineTimer.elapsedMillis(),
-        baselineResults.size());
+    long baselineMs = baselineTimer.elapsedMillis();
+    LOG.info("Baseline finished in {}ms. Results: {}", baselineMs, baselineResults.size());
 
     // 3. Decompositions
+    long tupleTotalMs = 0L;
+    Long firstTupleMs = null;
     for (Partition partition : result.cpqPartitions()) {
       PartitionEvaluation evaluation = findEvaluation(result, partition);
       if (evaluation == null || evaluation.decompositionTuples().isEmpty()) {
@@ -68,6 +70,10 @@ public final class EvaluationPipeline {
         Timing tupleTimer = Timing.start();
         List<Map<String, Integer>> tupleResults = executor.execute(components);
         long elapsed = tupleTimer.elapsedMillis();
+        tupleTotalMs += elapsed;
+        if (firstTupleMs == null) {
+          firstTupleMs = elapsed;
+        }
 
         boolean match =
             DecompositionComparisonReporter.compare(
@@ -75,6 +81,13 @@ public final class EvaluationPipeline {
         LOG.info("Tuple #{} finished in {}ms. Matches baseline? {}", tupleIdx++, elapsed, match);
       }
     }
+
+    LOG.info(
+        "Evaluation timing (ms): indexLoad={}, baseline(single-edge atoms)={}, tuplesTotal={}, firstTuple={}",
+        indexLoadMs,
+        baselineMs,
+        tupleTotalMs,
+        firstTupleMs == null ? "n/a" : firstTupleMs);
   }
 
   private PartitionEvaluation findEvaluation(DecompositionResult result, Partition partition) {

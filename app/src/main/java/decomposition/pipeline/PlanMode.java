@@ -6,6 +6,8 @@ public enum PlanMode {
   SINGLE_EDGE,
   /** Return only the first valid decomposition encountered. */
   FIRST,
+  /** Return a single valid decomposition using a randomized visit order. */
+  RANDOM,
   /** Enumerate all valid decompositions (subject to max partition caps). */
   ALL
 }

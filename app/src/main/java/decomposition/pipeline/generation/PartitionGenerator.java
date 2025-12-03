@@ -90,8 +90,32 @@ public final class PartitionGenerator {
    */
   public List<Partition> enumeratePartitions(
       List<Edge> edges, List<Component> components, Set<String> freeVariables, int maxJoinNodes) {
+    List<Partition> partitions = new ArrayList<>();
+    visitPartitions(
+        edges,
+        components,
+        freeVariables,
+        maxJoinNodes,
+        partition -> {
+          partitions.add(partition);
+          return true;
+        });
+    return partitions;
+  }
+
+  /**
+   * Enumerate partitions and invoke a visitor for each. Enumeration stops early if the visitor
+   * returns {@code false} or the {@code maxPartitions} cap is reached.
+   */
+  public void visitPartitions(
+      List<Edge> edges,
+      List<Component> components,
+      Set<String> freeVariables,
+      int maxJoinNodes,
+      java.util.function.Predicate<Partition> visitor) {
     Objects.requireNonNull(edges, "edges");
     Objects.requireNonNull(components, "components");
+    Objects.requireNonNull(visitor, "visitor");
 
     int edgeCount = edges.size();
     BitSet allEdges = BitsetUtils.allOnes(edgeCount); // target: all edges covered
@@ -99,19 +123,18 @@ public final class PartitionGenerator {
     Set<String> normalizedFreeVars =
         (freeVariables == null || freeVariables.isEmpty()) ? Set.of() : Set.copyOf(freeVariables);
 
-    List<Partition> partitions = new ArrayList<>();
     // Backtrack by always choosing the smallest-index uncovered edge
     // and trying all components that cover it and don't overlap used edges.
     backtrack(
         allEdges,
         new BitSet(edgeCount),
         new ArrayList<>(),
-        partitions,
         componentsByEdge,
         normalizedFreeVars,
         maxJoinNodes,
-        new HashMap<>());
-    return partitions;
+        new HashMap<>(),
+        visitor,
+        new int[] {0});
   }
 
   /**
@@ -190,24 +213,33 @@ public final class PartitionGenerator {
    * - choose the smallest-index uncovered edge, - try each component that includes it and doesn't
    * overlap 'used', - stop when we've covered 'allEdges'.
    */
-  private void backtrack(
+  private boolean backtrack(
       BitSet allEdges,
       BitSet used,
       List<Component> chosen,
-      List<Partition> output,
       Map<Integer, List<Component>> componentsByEdge,
       Set<String> freeVariables,
       int maxJoinNodes,
-      Map<String, Integer> multiplicity) {
+      Map<String, Integer> multiplicity,
+      java.util.function.Predicate<Partition> visitor,
+      int[] produced) {
     // Success: all edges are covered exactly once
     if (used.equals(allEdges)) {
-      output.add(new Partition(chosen));
-      return;
+      produced[0]++;
+      Partition partition = new Partition(new ArrayList<>(chosen));
+      boolean keepGoing = visitor.test(partition);
+      if (!keepGoing) {
+        return false;
+      }
+      if (maxPartitions > 0 && produced[0] >= maxPartitions) {
+        return false;
+      }
+      return true;
     }
 
     // Optional cap to avoid combinatorial blow-up
-    if (maxPartitions > 0 && output.size() >= maxPartitions) {
-      return;
+    if (maxPartitions > 0 && produced[0] >= maxPartitions) {
+      return false;
     }
 
     // Pick the smallest-index edge that is still uncovered
@@ -237,18 +269,24 @@ public final class PartitionGenerator {
       nextChosen.add(candidate);
       incrementMultiplicity(candidate, multiplicity);
 
-      backtrack(
-          allEdges,
-          nextUsed,
-          nextChosen,
-          output,
-          componentsByEdge,
-          freeVariables,
-          maxJoinNodes,
-          multiplicity);
+      boolean continueSearch =
+          backtrack(
+              allEdges,
+              nextUsed,
+              nextChosen,
+              componentsByEdge,
+              freeVariables,
+              maxJoinNodes,
+              multiplicity,
+              visitor,
+              produced);
 
       decrementMultiplicity(candidate, multiplicity);
+      if (!continueSearch) {
+        return false;
+      }
     }
+    return true;
   }
 
   private boolean violatesJoinLimit(

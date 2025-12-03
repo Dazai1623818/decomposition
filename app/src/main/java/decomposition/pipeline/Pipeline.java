@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,6 +58,7 @@ public final class Pipeline {
     PlanMode mode = effective.planMode();
     LOG.info("Executing decomposition pipeline (plan mode: {})...", mode);
     Timing timer = Timing.start();
+    long tExtractStart = timer.elapsedMillis();
 
     // 1) Extract
     CQExtractor extractor = new CQExtractor();
@@ -64,21 +66,16 @@ public final class Pipeline {
     List<Edge> edges = extraction.edges();
     Map<String, String> varToNodeMap = extraction.variableNodeMap();
     BitSet fullBits = BitsetUtils.allOnes(edges.size());
+    long tExtract = timer.elapsedMillis() - tExtractStart;
 
-    // 2) Enumerate partitions according to plan mode
-    List<Partition> partitions = enumeratePartitions(mode, extraction, effective);
-
-    // 3) Filter partitions (join-node constraints + free-var visibility)
     PartitionFilter filter = new PartitionFilter(GeneratorDefaults.MAX_JOIN_NODES);
-    FilterResult filterResult = filter.filter(partitions, extraction.freeVariables());
-    List<FilteredPartition> filtered = filterResult.partitions();
-    List<PartitionDiagnostic> diagnostics = new ArrayList<>(filterResult.diagnostics());
-
-    // 4) Generate CPQ expressions for each partition
     PartitionExpressionAssembler assembler = new PartitionExpressionAssembler(edges);
     CacheStats cacheStats = new CacheStats();
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache = new ConcurrentHashMap<>();
 
+    List<Partition> partitions = new ArrayList<>();
+    List<FilteredPartition> filtered = new ArrayList<>();
+    List<PartitionDiagnostic> diagnostics = new ArrayList<>();
     List<Partition> validPartitions = new ArrayList<>();
     List<CPQExpression> recognisedCatalogue = new ArrayList<>();
     List<PartitionEvaluation> evaluations = new ArrayList<>();
@@ -87,61 +84,175 @@ public final class Pipeline {
     boolean enumerateTuples = effective.mode().enumerateTuples() && tupleLimit > 0;
     String terminationReason = null;
 
-    for (int i = 0; i < filtered.size(); i++) {
-      if (isOverBudget(effective, timer)) {
-        terminationReason = "time_budget_exceeded";
-        break;
+    long tEnum = 0L;
+    long tFilter = 0L;
+    long tSynthesize = 0L;
+
+    if (mode == PlanMode.FIRST || mode == PlanMode.RANDOM) {
+      long tEnumStart = timer.elapsedMillis();
+      PartitionGenerator generator = new PartitionGenerator(effective.maxPartitions());
+      List<Component> components = generator.enumerateConnectedComponents(edges);
+      if (mode == PlanMode.RANDOM) {
+        Collections.shuffle(components);
       }
 
-      int partitionIndex = i + 1;
-      FilteredPartition filteredPartition = filtered.get(i);
-      List<List<CPQExpression>> perComponent =
-          assembler.synthesize(
-              filteredPartition,
-              extraction.freeVariables(),
-              varToNodeMap,
-              componentCache,
-              cacheStats);
-
-      if (perComponent == null) {
-        diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitionIndex));
-        continue;
+      class FirstPlanState {
+        long lastMark = timer.elapsedMillis();
+        long enumerate = 0L;
+        long filter = 0L;
+        long synthesize = 0L;
+        String termination;
       }
 
-      List<CPQExpression> catalogForPartition =
-          perComponent.stream().flatMap(List::stream).toList();
-      recognisedCatalogue.addAll(catalogForPartition);
+      FirstPlanState state = new FirstPlanState();
+      state.enumerate += timer.elapsedMillis() - tEnumStart;
+      state.lastMark = timer.elapsedMillis();
 
-      List<List<CPQExpression>> tuples =
-          enumerateTuples ? enumerateTuples(perComponent, tupleLimit) : List.of();
-      int maxDiameter = maxDiameter(tuples, catalogForPartition);
+      generator.visitPartitions(
+          edges,
+          components,
+          extraction.freeVariables(),
+          GeneratorDefaults.MAX_JOIN_NODES,
+          partition -> {
+            long now = timer.elapsedMillis();
+            state.enumerate += now - state.lastMark;
+            partitions.add(partition);
 
-      PartitionEvaluation evaluation =
-          new PartitionEvaluation(
-              filteredPartition.partition(),
-              partitionIndex,
-              perComponent.stream().map(List::size).toList(),
-              tuples,
-              maxDiameter);
+            if (state.termination == null && isOverBudget(effective, timer)) {
+              state.termination = "time_budget_exceeded";
+              return false;
+            }
 
-      validPartitions.add(filteredPartition.partition());
-      evaluations.add(evaluation);
+            long filterStart = timer.elapsedMillis();
+            FilterResult single = filter.filter(List.of(partition), extraction.freeVariables());
+            state.filter += timer.elapsedMillis() - filterStart;
+            diagnostics.addAll(single.diagnostics());
+            if (single.partitions().isEmpty()) {
+              state.lastMark = timer.elapsedMillis();
+              return true;
+            }
 
-      if (mode == PlanMode.FIRST) {
-        break;
+            FilteredPartition filteredPartition = single.partitions().get(0);
+            filtered.add(filteredPartition);
+
+            long synthesizeStart = timer.elapsedMillis();
+            List<List<CPQExpression>> perComponent =
+                assembler.synthesize(
+                    filteredPartition,
+                    extraction.freeVariables(),
+                    varToNodeMap,
+                    componentCache,
+                    cacheStats);
+            state.synthesize += timer.elapsedMillis() - synthesizeStart;
+
+            if (perComponent == null) {
+              diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitions.size()));
+              state.lastMark = timer.elapsedMillis();
+              return true;
+            }
+
+            List<CPQExpression> catalogForPartition =
+                perComponent.stream().flatMap(List::stream).toList();
+            recognisedCatalogue.addAll(catalogForPartition);
+
+            List<List<CPQExpression>> tuples =
+                enumerateTuples ? enumerateTuples(perComponent, tupleLimit) : List.of();
+            int maxDiameter = maxDiameter(tuples, catalogForPartition);
+
+            PartitionEvaluation evaluation =
+                new PartitionEvaluation(
+                    filteredPartition.partition(),
+                    partitions.size(),
+                    perComponent.stream().map(List::size).toList(),
+                    tuples,
+                    maxDiameter);
+
+            validPartitions.add(filteredPartition.partition());
+            evaluations.add(evaluation);
+
+            state.lastMark = timer.elapsedMillis();
+            return false; // Stop after the first synthesized partition
+          });
+
+      tEnum = state.enumerate;
+      tFilter = state.filter;
+      tSynthesize = state.synthesize;
+      terminationReason = state.termination;
+    } else {
+      // Enumerate partitions according to plan mode
+      long tEnumStart = timer.elapsedMillis();
+      partitions.addAll(enumeratePartitions(mode, extraction, effective));
+      tEnum = timer.elapsedMillis() - tEnumStart;
+
+      // Filter partitions (join-node constraints + free-var visibility)
+      long tFilterStart = timer.elapsedMillis();
+      FilterResult filterResult = filter.filter(partitions, extraction.freeVariables());
+      filtered.addAll(filterResult.partitions());
+      diagnostics.addAll(filterResult.diagnostics());
+      tFilter = timer.elapsedMillis() - tFilterStart;
+
+      // Generate CPQ expressions for each partition
+      long tSynthesizeStart = timer.elapsedMillis();
+      for (int i = 0; i < filtered.size(); i++) {
+        if (isOverBudget(effective, timer)) {
+          terminationReason = "time_budget_exceeded";
+          break;
+        }
+
+        int partitionIndex = i + 1;
+        FilteredPartition filteredPartition = filtered.get(i);
+        List<List<CPQExpression>> perComponent =
+            assembler.synthesize(
+                filteredPartition,
+                extraction.freeVariables(),
+                varToNodeMap,
+                componentCache,
+                cacheStats);
+
+        if (perComponent == null) {
+          diagnostics.add(PartitionDiagnostic.diagnosticsUnavailable(partitionIndex));
+          continue;
+        }
+
+        List<CPQExpression> catalogForPartition =
+            perComponent.stream().flatMap(List::stream).toList();
+        recognisedCatalogue.addAll(catalogForPartition);
+
+        List<List<CPQExpression>> tuples =
+            enumerateTuples ? enumerateTuples(perComponent, tupleLimit) : List.of();
+        int maxDiameter = maxDiameter(tuples, catalogForPartition);
+
+        PartitionEvaluation evaluation =
+            new PartitionEvaluation(
+                filteredPartition.partition(),
+                partitionIndex,
+                perComponent.stream().map(List::size).toList(),
+                tuples,
+                maxDiameter);
+
+        validPartitions.add(filteredPartition.partition());
+        evaluations.add(evaluation);
       }
+      tSynthesize = timer.elapsedMillis() - tSynthesizeStart;
     }
 
     // 5) Assemble global candidate
-    Set<String> globalJoinNodes =
-        JoinAnalysisBuilder.analyzePartition(
-                new Partition(
-                    List.of(new Component(fullBits, GraphUtils.vertices(fullBits, edges)))),
-                extraction.freeVariables())
-            .globalJoinNodes();
-    List<CPQExpression> globalCatalogue =
-        assembler.synthesizeGlobal(fullBits, globalJoinNodes, varToNodeMap);
-    CPQExpression finalExpression = globalCatalogue.isEmpty() ? null : globalCatalogue.get(0);
+    long tAssembleStart = timer.elapsedMillis();
+    List<CPQExpression> globalCatalogue = List.of();
+    CPQExpression finalExpression = null;
+    long tAssemble = 0L;
+    boolean skipGlobal = mode == PlanMode.FIRST || mode == PlanMode.RANDOM;
+    if (!skipGlobal) {
+      Set<String> globalJoinNodes =
+          JoinAnalysisBuilder.analyzePartition(
+                  new Partition(
+                      List.of(new Component(fullBits, GraphUtils.vertices(fullBits, edges)))),
+                  extraction.freeVariables())
+              .globalJoinNodes();
+      globalCatalogue = assembler.synthesizeGlobal(fullBits, globalJoinNodes, varToNodeMap);
+      finalExpression = globalCatalogue.isEmpty() ? null : globalCatalogue.get(0);
+      tAssemble = timer.elapsedMillis() - tAssembleStart;
+    }
 
     long elapsed = timer.elapsedMillis();
     if (terminationReason == null && isOverBudget(effective, elapsed)) {
@@ -149,7 +260,9 @@ public final class Pipeline {
     }
 
     List<CPQExpression> dedupCatalogue =
-        ComponentExpressionBuilder.dedupeExpressions(recognisedCatalogue);
+        validPartitions.size() <= 1
+            ? recognisedCatalogue
+            : ComponentExpressionBuilder.dedupeExpressions(recognisedCatalogue);
 
     DecompositionResult result =
         DecompositionPipelineUtils.buildResult(
@@ -170,6 +283,13 @@ public final class Pipeline {
         "Decomposition complete. Found {} valid partition(s) in {} ms.",
         result.cpqPartitions().size(),
         result.elapsedMillis());
+    LOG.info(
+        "Timing breakdown (ms): extract={}, enumerate={}, filter={}, synthesize/tuples={}, assemble={}",
+        tExtract,
+        tEnum,
+        tFilter,
+        tSynthesize,
+        tAssemble);
     if (terminationReason != null) {
       LOG.warn("Decomposition terminated early: {}", terminationReason);
     }
@@ -224,7 +344,9 @@ public final class Pipeline {
 
     // 2. Run comparative evaluation
     EvaluationPipeline evaluator = new EvaluationPipeline();
+    Timing evalTimer = Timing.start();
     evaluator.runBenchmark(query, result, graphPath, indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER);
+    LOG.info("Evaluation phase took {} ms", evalTimer.elapsedMillis());
     return result;
   }
 

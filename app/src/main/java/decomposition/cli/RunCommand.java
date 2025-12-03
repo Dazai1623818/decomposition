@@ -40,12 +40,14 @@ final class RunCommand {
 
     CQ query = loadQuery(cliOptions);
 
+    Mode effectiveMode = cliOptions.evaluate() ? Mode.ENUMERATE : cliOptions.mode();
+    int effectiveTupleLimit = cliOptions.tupleLimit() > 0 ? cliOptions.tupleLimit() : 1;
     DecompositionOptions pipelineOptions =
         new DecompositionOptions(
-            cliOptions.mode(),
+            effectiveMode,
             cliOptions.maxPartitions(),
             cliOptions.timeBudgetMs(),
-            cliOptions.tupleLimit(),
+            effectiveTupleLimit,
             false,
             cliOptions.planMode());
 
@@ -58,7 +60,9 @@ final class RunCommand {
               cliOptions.compareGraphPath(),
               cliOptions.indexK());
       logSummary(result, cliOptions);
-      exportForVisualization(result);
+      if (!cliOptions.evaluate()) {
+        exportForVisualization(result);
+      }
       return 0;
     }
 
@@ -172,6 +176,7 @@ final class RunCommand {
     return switch (raw.toLowerCase(Locale.ROOT)) {
       case "single", "single-edge", "edges" -> PlanMode.SINGLE_EDGE;
       case "first", "first-valid" -> PlanMode.FIRST;
+      case "random", "rand" -> PlanMode.RANDOM;
       case "all", "default" -> PlanMode.ALL;
       default -> throw new IllegalArgumentException("Invalid plan: " + raw);
     };
