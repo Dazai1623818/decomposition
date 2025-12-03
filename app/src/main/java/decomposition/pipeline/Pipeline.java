@@ -53,8 +53,8 @@ public final class Pipeline {
   /** Workflow 1: Decomposition only. */
   public DecompositionResult decompose(
       CQ query, Set<String> freeVariables, DecompositionOptions options) {
-    DecompositionOptions effective = options != null ? options : DecompositionOptions.defaults();
-    PlanMode mode = effective.planMode() == null ? PlanMode.ALL : effective.planMode();
+    DecompositionOptions effective = DecompositionOptions.normalize(options);
+    PlanMode mode = effective.planMode();
     LOG.info("Executing decomposition pipeline (plan mode: {})...", mode);
     Timing timer = Timing.start();
 
@@ -83,7 +83,7 @@ public final class Pipeline {
     List<CPQExpression> recognisedCatalogue = new ArrayList<>();
     List<PartitionEvaluation> evaluations = new ArrayList<>();
 
-    int tupleLimit = Math.max(0, effective.tupleLimit());
+    int tupleLimit = effective.tupleLimit();
     boolean enumerateTuples = effective.mode().enumerateTuples() && tupleLimit > 0;
     String terminationReason = null;
 
@@ -202,18 +202,19 @@ public final class Pipeline {
       CQ query, Set<String> freeVariables, DecompositionOptions options, Path graphPath, int indexK)
       throws IOException {
     LOG.info("Executing full benchmark pipeline...");
+    DecompositionOptions normalized = DecompositionOptions.normalize(options);
 
     // 1. Run decomposition (force ENUMERATE to ensure we have tuples to evaluate)
     DecompositionOptions benchmarkOptions =
-        options.mode().enumerateTuples()
-            ? options
+        normalized.mode().enumerateTuples()
+            ? normalized
             : new DecompositionOptions(
                 DecompositionOptions.Mode.ENUMERATE,
-                options.maxPartitions(),
-                options.timeBudgetMs(),
-                options.tupleLimit() > 0 ? options.tupleLimit() : 0,
-                options.deepVerification(),
-                options.planMode() == null ? PlanMode.ALL : options.planMode());
+                normalized.maxPartitions(),
+                normalized.timeBudgetMs(),
+                normalized.tupleLimit(),
+                normalized.deepVerification(),
+                normalized.planMode());
 
     DecompositionResult result = decompose(query, freeVariables, benchmarkOptions);
     if (result.cpqPartitions().isEmpty()) {

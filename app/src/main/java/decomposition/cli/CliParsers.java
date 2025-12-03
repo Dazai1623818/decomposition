@@ -5,12 +5,17 @@ import dev.roanh.gmark.lang.cq.CQ;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /** Shared helpers for CLI argument parsing and CQ/CPQ loading. */
 final class CliParsers {
+  private static final Map<String, Supplier<CQ>> EXAMPLE_LOADERS = buildExampleLoaders();
+
   private CliParsers() {}
 
   static String nextValue(String[] args, int index, String option) {
@@ -56,17 +61,11 @@ final class CliParsers {
       throw new IllegalArgumentException("Unknown example: " + exampleName);
     }
     String normalized = exampleName.trim().toLowerCase(Locale.ROOT);
-    return switch (normalized) {
-      case "example1" -> Example.example1();
-      case "example2" -> Example.example2();
-      case "example3" -> Example.example3();
-      case "example4" -> Example.example4();
-      case "example5" -> Example.example5();
-      case "example6" -> Example.example6();
-      case "example7" -> Example.example7();
-      case "example8" -> Example.example8();
-      default -> throw new IllegalArgumentException("Unknown example: " + exampleName);
-    };
+    Supplier<CQ> supplier = EXAMPLE_LOADERS.get(normalized);
+    if (supplier == null) {
+      throw new IllegalArgumentException("Unknown example: " + exampleName);
+    }
+    return supplier.get();
   }
 
   static CQ loadQueryFromFile(String queryFile) throws java.io.IOException {
@@ -76,13 +75,6 @@ final class CliParsers {
     }
     String content = Files.readString(path);
     return CQ.parse(content);
-  }
-
-  static String[] asDecomposeArgs(String[] remaining) {
-    String[] remapped = new String[remaining.length + 1];
-    remapped[0] = "decompose";
-    System.arraycopy(remaining, 0, remapped, 1, remaining.length);
-    return remapped;
   }
 
   static Path findProjectRoot() {
@@ -100,5 +92,18 @@ final class CliParsers {
       current = current.getParent();
     }
     return cwd;
+  }
+
+  private static Map<String, Supplier<CQ>> buildExampleLoaders() {
+    Map<String, Supplier<CQ>> loaders = new LinkedHashMap<>();
+    loaders.put("example1", Example::example1);
+    loaders.put("example2", Example::example2);
+    loaders.put("example3", Example::example3);
+    loaders.put("example4", Example::example4);
+    loaders.put("example5", Example::example5);
+    loaders.put("example6", Example::example6);
+    loaders.put("example7", Example::example7);
+    loaders.put("example8", Example::example8);
+    return Map.copyOf(loaders);
   }
 }

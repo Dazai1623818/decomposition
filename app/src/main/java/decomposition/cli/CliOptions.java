@@ -1,5 +1,6 @@
 package decomposition.cli;
 
+import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionOptions.Mode;
 import decomposition.pipeline.PlanMode;
 import java.nio.file.Path;
@@ -43,5 +44,120 @@ record CliOptions(
 
   boolean hasExample() {
     return exampleName != null && !exampleName.isBlank();
+  }
+
+  static Builder builder() {
+    return new Builder();
+  }
+
+  static final class Builder {
+    private String queryFile;
+    private String exampleName;
+    private Set<String> freeVariables = Set.of();
+    private Mode mode = DecompositionOptions.defaults().mode();
+    private int maxPartitions = DecompositionOptions.defaults().maxPartitions();
+    private long timeBudgetMs = DecompositionOptions.defaults().timeBudgetMs();
+    private int tupleLimit = DecompositionOptions.defaults().tupleLimit();
+    private PlanMode planMode = PlanMode.ALL;
+    private String outputPath;
+    private boolean compareWithIndex;
+    private Path compareGraphPath = Path.of("graph_huge.edge");
+    private int indexK = 3;
+    private boolean buildIndexOnly;
+
+    Builder queryFile(String queryFile) {
+      this.queryFile = queryFile;
+      return this;
+    }
+
+    Builder exampleName(String exampleName) {
+      this.exampleName = exampleName;
+      return this;
+    }
+
+    Builder freeVariables(Set<String> freeVariables) {
+      if (freeVariables != null) {
+        this.freeVariables = Set.copyOf(freeVariables);
+      }
+      return this;
+    }
+
+    Builder mode(Mode mode) {
+      this.mode = mode;
+      return this;
+    }
+
+    Builder maxPartitions(int maxPartitions) {
+      this.maxPartitions = maxPartitions;
+      return this;
+    }
+
+    Builder timeBudgetMs(long timeBudgetMs) {
+      this.timeBudgetMs = timeBudgetMs;
+      return this;
+    }
+
+    Builder tupleLimit(int tupleLimit) {
+      this.tupleLimit = tupleLimit;
+      return this;
+    }
+
+    Builder planMode(PlanMode planMode) {
+      this.planMode = planMode;
+      return this;
+    }
+
+    Builder outputPath(String outputPath) {
+      this.outputPath = outputPath;
+      return this;
+    }
+
+    Builder compareWithIndex(boolean compareWithIndex) {
+      this.compareWithIndex = compareWithIndex;
+      return this;
+    }
+
+    Builder compareGraphPath(Path compareGraphPath) {
+      this.compareGraphPath = compareGraphPath;
+      return this;
+    }
+
+    Builder indexK(int indexK) {
+      this.indexK = indexK;
+      return this;
+    }
+
+    Builder buildIndexOnly(boolean buildIndexOnly) {
+      this.buildIndexOnly = buildIndexOnly;
+      return this;
+    }
+
+    CliOptions build() {
+      int sources = 0;
+      if (queryFile != null && !queryFile.isBlank()) sources++;
+      if (exampleName != null && !exampleName.isBlank()) sources++;
+      if (!buildIndexOnly && sources == 0) {
+        throw new IllegalArgumentException("Provide exactly one of --file or --example");
+      }
+      if (sources > 1) {
+        throw new IllegalArgumentException("Provide at most one of --file or --example");
+      }
+
+      boolean effectiveCompare = compareWithIndex || buildIndexOnly;
+      return new CliOptions(
+          queryFile,
+          exampleName,
+          freeVariables,
+          mode,
+          maxPartitions,
+          timeBudgetMs,
+          tupleLimit,
+          planMode,
+          outputPath,
+          effectiveCompare,
+          compareGraphPath,
+          indexK,
+          buildIndexOnly);
+    }
   }
 }

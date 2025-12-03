@@ -16,9 +16,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +31,7 @@ final class RunCommand {
   private static final int DEFAULT_INDEX_K = 3;
 
   int execute(String[] args) throws IOException {
-    CliOptions cliOptions = parseRunArgs(args);
+    CliOptions cliOptions = parseDecomposeArgs(args);
     Pipeline pipeline = new Pipeline();
 
     if (cliOptions.buildIndexOnly()) {
@@ -81,150 +84,113 @@ final class RunCommand {
     return 0;
   }
 
-  private CliOptions parseRunArgs(String[] args) {
-    if (args == null || args.length == 0) {
-      throw new IllegalArgumentException("Missing command. Use: run [options]");
-    }
-    String command = args[0];
-    if ("run".equalsIgnoreCase(command)) {
-      return parseDecomposeArgs(
-          CliParsers.asDecomposeArgs(Arrays.copyOfRange(args, 1, args.length)));
-    }
-    if ("decompose".equalsIgnoreCase(command)) {
-      return parseDecomposeArgs(args);
+  private CliOptions parseDecomposeArgs(String[] args) {
+    String[] effectiveArgs = stripCommand(args);
+    CliOptions.Builder builder = CliOptions.builder();
+    Map<String, OptionSpec> specs = optionSpecs();
+
+    for (int i = 0; i < effectiveArgs.length; i++) {
+      ParsedArg parsed = ParsedArg.parse(effectiveArgs[i]);
+      OptionSpec spec = specs.get(parsed.option());
+      if (spec == null) {
+        throw new IllegalArgumentException("Unknown option: " + effectiveArgs[i]);
+      }
+
+      String value = parsed.value();
+      if (spec.requiresValue()) {
+        if (value == null || value.isBlank()) {
+          if (i + 1 >= effectiveArgs.length) {
+            throw new IllegalArgumentException("Missing value for " + parsed.option());
+          }
+          value = effectiveArgs[++i];
+        }
+      }
+      spec.apply(builder, value);
     }
 
-    throw new IllegalArgumentException("Unknown command: " + command);
+    return builder.build();
   }
 
-  private CliOptions parseDecomposeArgs(String[] args) {
-    if (args.length == 0 || !"decompose".equalsIgnoreCase(args[0])) {
-      throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
+  private Map<String, OptionSpec> optionSpecs() {
+    Map<String, OptionSpec> specs = new LinkedHashMap<>();
+    specs.put("--file", OptionSpec.withValue((b, raw) -> b.queryFile(raw)));
+    specs.put("--example", OptionSpec.withValue((b, raw) -> b.exampleName(raw)));
+    specs.put("--mode", OptionSpec.withValue((b, raw) -> b.mode(parseMode(raw))));
+    specs.put(
+        "--max-partitions",
+        OptionSpec.withValue(
+            (b, raw) ->
+                b.maxPartitions(
+                    CliParsers.parseInt(
+                        raw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions"))));
+    specs.put(
+        "--time-budget-ms",
+        OptionSpec.withValue(
+            (b, raw) ->
+                b.timeBudgetMs(
+                    CliParsers.parseLong(
+                        raw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms"))));
+    specs.put("--plan", OptionSpec.withValue((b, raw) -> b.planMode(parsePlanMode(raw))));
+    specs.put(
+        "--limit",
+        OptionSpec.withValue(
+            (b, raw) ->
+                b.tupleLimit(
+                    CliParsers.parseInt(raw, DecompositionOptions.defaults().tupleLimit(), "--limit"))));
+    specs.put("--single-tuple", OptionSpec.flag(b -> b.tupleLimit(1)));
+    specs.put("--out", OptionSpec.withValue((b, raw) -> b.outputPath(raw)));
+    specs.put("--compare-index", OptionSpec.flag(b -> b.compareWithIndex(true)));
+    specs.put("--build-index-only", OptionSpec.flag(b -> b.buildIndexOnly(true)));
+    specs.put(
+        "--compare-graph", OptionSpec.withValue((b, raw) -> b.compareGraphPath(Path.of(raw))));
+    specs.put(
+        "--k",
+        OptionSpec.withValue(
+            (b, raw) -> b.indexK(CliParsers.parseInt(raw, DEFAULT_INDEX_K, "--index-k"))));
+    return specs;
+  }
+
+  private String[] stripCommand(String[] args) {
+    if (args == null || args.length == 0) {
+      return new String[0];
     }
+    String first = args[0];
+    if ("run".equalsIgnoreCase(first) || "decompose".equalsIgnoreCase(first)) {
+      return Arrays.copyOfRange(args, 1, args.length);
+    }
+    return args;
+  }
 
-    String queryFile = null;
-    String exampleName = null;
-
-    String modeRaw = null;
-    String maxPartitionsRaw = null;
-    String timeBudgetRaw = null;
-    String outputPath = null;
-    String limitRaw = null;
-    String planRaw = null;
-    Integer tupleLimit = null;
-    String compareGraphRaw = null;
-    boolean compareIndex = false;
-    boolean buildIndexOnly = false;
-    String indexKRaw = null;
-
-    for (int i = 1; i < args.length; i++) {
-      String rawArg = args[i];
-      String option = rawArg;
-      String inlineValue = null;
-      if (rawArg.startsWith("--")) {
-        int equalsIndex = rawArg.indexOf('=');
-        if (equalsIndex > 0) {
-          option = rawArg.substring(0, equalsIndex);
-          inlineValue = rawArg.substring(equalsIndex + 1);
-          if (inlineValue.isEmpty()) {
-            inlineValue = null;
-          }
-        }
+  private Mode parseMode(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return Mode.VALIDATE;
+    }
+    String normalized = raw.toLowerCase(Locale.ROOT);
+    return switch (normalized) {
+      case "validate" -> Mode.VALIDATE;
+      case "enumerate" -> Mode.ENUMERATE;
+      case "both", "decompose" -> {
+        LOG.warn("--mode {} is deprecated; using --mode enumerate.", raw);
+        yield Mode.ENUMERATE;
       }
-
-      switch (option) {
-        case "--file" ->
-            queryFile = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--example" ->
-            exampleName =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-
-        case "--mode" ->
-            modeRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--max-partitions" ->
-            maxPartitionsRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--time-budget-ms" ->
-            timeBudgetRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--plan" ->
-            planRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--limit" ->
-            limitRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--single-tuple" -> tupleLimit = 1;
-        case "--out" ->
-            outputPath =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--compare-index" -> compareIndex = true;
-        case "--build-index-only" -> {
-          buildIndexOnly = true;
-          compareIndex = true;
-        }
-        case "--compare-graph" ->
-            compareGraphRaw =
-                inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        case "--k" ->
-            indexKRaw = inlineValue != null ? inlineValue : CliParsers.nextValue(args, ++i, option);
-        default -> throw new IllegalArgumentException("Unknown option: " + rawArg);
+      case "partitions" -> {
+        LOG.warn("--mode {} is deprecated; using --mode validate.", raw);
+        yield Mode.VALIDATE;
       }
-    }
+      default -> throw new IllegalArgumentException("Invalid mode: " + raw);
+    };
+  }
 
-    int sources = 0;
-    if (queryFile != null) sources++;
-    if (exampleName != null) sources++;
-    if (sources == 0 && !buildIndexOnly) {
-      throw new IllegalArgumentException("Provide exactly one of --file or --example");
+  private PlanMode parsePlanMode(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return PlanMode.ALL;
     }
-    if (sources > 1) {
-      throw new IllegalArgumentException("Provide at most one of --file or --example");
-    }
-
-    Mode mode = Mode.VALIDATE;
-    if (modeRaw != null) {
-      String normalized = modeRaw.toLowerCase(Locale.ROOT);
-      switch (normalized) {
-        case "validate" -> mode = Mode.VALIDATE;
-        case "enumerate" -> mode = Mode.ENUMERATE;
-        case "both", "decompose" -> {
-          mode = Mode.ENUMERATE;
-          LOG.warn("--mode {} is deprecated; using --mode enumerate.", modeRaw);
-        }
-        case "partitions" -> {
-          mode = Mode.VALIDATE;
-          LOG.warn("--mode {} is deprecated; using --mode validate.", modeRaw);
-        }
-        default -> throw new IllegalArgumentException("Invalid mode: " + modeRaw);
-      }
-    }
-
-    int maxPartitions =
-        CliParsers.parseInt(
-            maxPartitionsRaw, DecompositionOptions.defaults().maxPartitions(), "--max-partitions");
-    long timeBudget =
-        CliParsers.parseLong(
-            timeBudgetRaw, DecompositionOptions.defaults().timeBudgetMs(), "--time-budget-ms");
-    int limit =
-        CliParsers.parseInt(limitRaw, DecompositionOptions.defaults().tupleLimit(), "--limit");
-    if (tupleLimit != null) {
-      limit = tupleLimit;
-    }
-    PlanMode planMode = parsePlanMode(planRaw);
-    Path compareGraphPath = compareGraphRaw != null ? Path.of(compareGraphRaw) : null;
-    int indexK = CliParsers.parseInt(indexKRaw, DEFAULT_INDEX_K, "--index-k");
-    return new CliOptions(
-        queryFile,
-        exampleName,
-        Set.of(),
-        mode,
-        maxPartitions,
-        timeBudget,
-        limit,
-        planMode,
-        outputPath,
-        compareIndex,
-        compareGraphPath,
-        indexK,
-        buildIndexOnly);
+    return switch (raw.toLowerCase(Locale.ROOT)) {
+      case "single", "single-edge", "edges" -> PlanMode.SINGLE_EDGE;
+      case "first", "first-valid" -> PlanMode.FIRST;
+      case "all", "default" -> PlanMode.ALL;
+      default -> throw new IllegalArgumentException("Invalid plan: " + raw);
+    };
   }
 
   private CQ loadQuery(CliOptions options) throws IOException {
@@ -313,15 +279,34 @@ final class RunCommand {
     Files.writeString(path, json);
   }
 
-  private PlanMode parsePlanMode(String raw) {
-    if (raw == null || raw.isBlank()) {
-      return PlanMode.ALL;
+  private record ParsedArg(String option, String value) {
+    static ParsedArg parse(String raw) {
+      if (raw == null || raw.isBlank()) {
+        throw new IllegalArgumentException("Unknown option: " + raw);
+      }
+      if (raw.startsWith("--")) {
+        int equalsIndex = raw.indexOf('=');
+        if (equalsIndex > 0) {
+          String option = raw.substring(0, equalsIndex);
+          String value = raw.substring(equalsIndex + 1);
+          return new ParsedArg(option, value.isEmpty() ? null : value);
+        }
+      }
+      return new ParsedArg(raw, null);
     }
-    return switch (raw.toLowerCase(Locale.ROOT)) {
-      case "single", "single-edge", "edges" -> PlanMode.SINGLE_EDGE;
-      case "first", "first-valid" -> PlanMode.FIRST;
-      case "all", "default" -> PlanMode.ALL;
-      default -> throw new IllegalArgumentException("Invalid plan: " + raw);
-    };
+  }
+
+  private record OptionSpec(boolean requiresValue, BiConsumer<CliOptions.Builder, String> apply) {
+    static OptionSpec withValue(BiConsumer<CliOptions.Builder, String> consumer) {
+      return new OptionSpec(true, consumer);
+    }
+
+    static OptionSpec flag(Consumer<CliOptions.Builder> consumer) {
+      return new OptionSpec(false, (builder, ignored) -> consumer.accept(builder));
+    }
+
+    void apply(CliOptions.Builder builder, String value) {
+      apply.accept(builder, value);
+    }
   }
 }

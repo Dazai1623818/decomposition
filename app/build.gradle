@@ -85,7 +85,7 @@ tasks.test.dependsOn tasks.spotlessCheck
 tasks.register('runPlot', JavaExec) {
     group = 'application'
     description = 'Launches the CPQ plotting utility'
-    mainClass = 'decomposition.tools.PlotCPQ'
+    mainClass = 'decomposition.cli.PlotCommand'
     classpath = sourceSets.main.runtimeClasspath
     standardInput = System.in
     javaLauncher = javaToolchains.launcherFor {

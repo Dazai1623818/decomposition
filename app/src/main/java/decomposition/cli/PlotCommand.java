@@ -1,55 +1,31 @@
 package decomposition.cli;
 
-import com.google.common.base.Splitter;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.util.graph.GraphPanel;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Handles the `plot` command used to visualize CPQ expressions. */
-final class PlotCommand {
+public final class PlotCommand {
   private static final Logger LOG = LoggerFactory.getLogger(PlotCommand.class);
 
-  int execute(String[] args) throws IOException {
-    if (args.length == 0 || !"plot".equalsIgnoreCase(args[0])) {
-      throw new IllegalArgumentException("Unknown command: " + (args.length == 0 ? "" : args[0]));
+  public static void main(String[] args) {
+    int exit = new PlotCommand().execute(args);
+    if (exit != 0) {
+      System.exit(exit);
     }
-    if (args.length == 1) {
-      return runInteractive();
-    }
-    return runFromArgs(args);
   }
 
-  private int runFromArgs(String[] args) {
-    String rawInput = String.join(" ", stripCommand(args)).trim();
-    if (rawInput.isEmpty()) {
-      throw new IllegalArgumentException("Provide one or more CPQ expressions to plot.");
+  int execute(String[] args) {
+    if (args != null && args.length > 0) {
+      LOG.info("Ignoring positional plot arguments; running interactive mode instead: {}", Arrays.toString(args));
     }
-
-    List<String> expressions = new ArrayList<>();
-    Iterable<String> tokens =
-        Splitter.onPattern("[\\r\\n;]+").trimResults().omitEmptyStrings().split(rawInput);
-    for (String token : tokens) {
-      expressions.add(token);
-    }
-
-    if (expressions.isEmpty()) {
-      throw new IllegalArgumentException("No valid CPQ expressions found in input.");
-    }
-
-    int failures = 0;
-    for (int i = 0; i < expressions.size(); i++) {
-      if (!plotExpression(expressions.get(i), i + 1)) {
-        failures++;
-      }
-    }
-    return failures == 0 ? 0 : 2;
+    return runInteractive();
   }
 
   private int runInteractive() {
@@ -65,7 +41,6 @@ final class PlotCommand {
         if (trimmed.isEmpty()) {
           continue;
         }
-
         if (plotExpression(trimmed, count)) {
           count++;
         }
@@ -86,21 +61,9 @@ final class PlotCommand {
       GraphPanel.show(cpq);
       return true;
     } catch (IllegalArgumentException ex) {
-      LOG.error(
-          "Unable to parse CPQ #{} ({}): {}",
-          index,
-          originalExpression,
-          ex.getMessage() != null ? ex.getMessage() : ex.toString());
+      String reason = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+      LOG.error("Unable to parse CPQ #{} ({}): {}", index, originalExpression, reason);
       return false;
     }
-  }
-
-  private String[] stripCommand(String[] args) {
-    if (args.length <= 1) {
-      return new String[0];
-    }
-    String[] remaining = new String[args.length - 1];
-    System.arraycopy(args, 1, remaining, 0, remaining.length);
-    return remaining;
   }
 }
