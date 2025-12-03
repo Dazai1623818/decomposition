@@ -227,7 +227,7 @@ final class CPQEnumeratorTest {
     BitSet bits = new BitSet(edges.size());
     bits.set(0, edges.size());
 
-    List<CPQExpression> rules = resolver.build(bits, Set.of("x", "y"), varMap);
+    List<CPQExpression> rules = resolver.build(bits, Set.of("x", "y"), varMap, 0, false);
     assertFalse(rules.isEmpty(), "Expected at least one construction rule for simple CQ");
 
     CPQExpression component = rules.get(0);
@@ -305,7 +305,8 @@ final class CPQEnumeratorTest {
     Set<String> summaries = new LinkedHashSet<>();
     for (Scenario scenario : scenarios) {
       List<CPQExpression> raw =
-          resolver.build(scenario.component().edgeBits(), scenario.joinNodes(), varToNodeMap);
+          resolver.build(
+              scenario.component().edgeBits(), scenario.joinNodes(), varToNodeMap, 0, false);
       List<CPQExpression> joinFiltered = raw;
       if (!scenario.joinNodes().isEmpty() && scenario.component().edgeCount() > 1) {
         Set<String> local =

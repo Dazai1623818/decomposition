@@ -125,7 +125,7 @@ final class CPQEnumeratorBacktrackTest {
     PartitionExpressionAssembler synthesizer = new PartitionExpressionAssembler(edges);
     List<List<CPQExpression>> built =
         synthesizer.synthesize(
-            filteredPartition, extraction.freeVariables(), varMap, componentCache, stats, 0);
+            filteredPartition, extraction.freeVariables(), varMap, componentCache, stats, 0, false);
     assertTrue(built != null, "Single-edge partition should now be a valid CPQ decomposition");
   }
 

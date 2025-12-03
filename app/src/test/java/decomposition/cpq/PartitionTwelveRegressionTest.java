@@ -40,7 +40,7 @@ final class PartitionTwelveRegressionTest {
                 new Partition(List.of(component)), extraction.freeVariables())
             .globalJoinNodes();
 
-    List<CPQExpression> expressions = resolver.build(fullBits, joinNodes, varMap);
+    List<CPQExpression> expressions = resolver.build(fullBits, joinNodes, varMap, 0, false);
 
     assertFalse(
         expressions.isEmpty(), "Expected at least one CPQ expression for the full component");

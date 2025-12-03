@@ -42,7 +42,8 @@ public final class PartitionExpressionAssembler {
       Map<String, String> originalVarMap,
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
       CacheStats cacheStats,
-      int diameterCap) {
+      int diameterCap,
+      boolean firstHit) {
 
     Objects.requireNonNull(filteredPartition, "filteredPartition");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
@@ -73,21 +74,22 @@ public final class PartitionExpressionAssembler {
                       component.edgeCount(),
                       totalComponents,
                       DecompositionPipelineUtils.hashVarContext(originalVarMap),
-                      diameterCap);
+                      diameterCap,
+                      firstHit);
 
               CachedComponentExpressions cached =
                   lookupComponentCache(key, componentCache, cacheStats);
               if (cached == null) {
                 List<CPQExpression> raw =
-                    buildRawExpressions(component.edgeBits(), joinNodes, originalVarMap);
-                if (diameterCap > 0) {
-                  raw =
-                      raw.stream().filter(expr -> expr.cpq().getDiameter() <= diameterCap).toList();
-                }
+                    buildRawExpressions(
+                        component.edgeBits(), joinNodes, originalVarMap, diameterCap, firstHit);
                 List<CPQExpression> joinFiltered =
                     applyJoinFiltering(raw, component, localJoinNodes);
                 List<CPQExpression> finals =
-                    applyOrientationPreferences(joinFiltered, joinNodes, freeVars, originalVarMap);
+                    firstHit
+                        ? joinFiltered
+                        : applyOrientationPreferences(
+                            joinFiltered, joinNodes, freeVars, originalVarMap);
                 cached =
                     cacheFinalExpressions(
                         componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
@@ -110,7 +112,7 @@ public final class PartitionExpressionAssembler {
       BitSet edgeSubset, Set<String> joinNodes, Map<String, String> originalVarMap) {
     Objects.requireNonNull(edgeSubset, "edgeSubset");
     Objects.requireNonNull(originalVarMap, "originalVarMap");
-    return componentBuilder.build(edgeSubset, joinNodes, originalVarMap);
+    return componentBuilder.build(edgeSubset, joinNodes, originalVarMap, 0, false);
   }
 
   public record CachedComponentExpressions(
@@ -142,8 +144,12 @@ public final class PartitionExpressionAssembler {
   }
 
   private List<CPQExpression> buildRawExpressions(
-      BitSet edgeBits, Set<String> joinNodes, Map<String, String> originalVarMap) {
-    return componentBuilder.build(edgeBits, joinNodes, originalVarMap);
+      BitSet edgeBits,
+      Set<String> joinNodes,
+      Map<String, String> originalVarMap,
+      int diameterCap,
+      boolean firstHit) {
+    return componentBuilder.build(edgeBits, joinNodes, originalVarMap, diameterCap, firstHit);
   }
 
   private List<CPQExpression> applyJoinFiltering(
@@ -210,7 +216,8 @@ public final class PartitionExpressionAssembler {
       int componentSize,
       int totalComponents,
       int varContextHash,
-      int diameterCap) {
+      int diameterCap,
+      boolean firstHit) {
 
     public ComponentCacheKey {
       joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);

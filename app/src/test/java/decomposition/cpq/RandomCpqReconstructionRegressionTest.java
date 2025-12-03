@@ -72,7 +72,7 @@ final class RandomCpqReconstructionRegressionTest {
         JoinAnalysisBuilder.analyzePartition(single.partition(), freeVars).globalJoinNodes();
     List<CPQExpression> rawExpressions =
         new ComponentExpressionBuilder(extraction.edges())
-            .build(fullBits, joinNodes, extraction.variableNodeMap());
+            .build(fullBits, joinNodes, extraction.variableNodeMap(), 0, false);
 
     List<String> reconstructedStrings =
         reconstructed.stream().map(CPQ::toString).collect(Collectors.toList());

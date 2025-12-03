@@ -92,6 +92,7 @@ public final class Pipeline {
 
     int tupleLimit = effective.tupleLimit();
     boolean enumerateTuples = effective.mode().enumerateTuples() && tupleLimit > 0;
+    boolean firstHit = enumerateTuples && tupleLimit == 1 && effective.planMode() != PlanMode.ALL;
     String terminationReason = null;
 
     long tEnum = 0L;
@@ -155,7 +156,8 @@ public final class Pipeline {
                     varToNodeMap,
                     componentCache,
                     cacheStats,
-                    effective.diameterCap());
+                    effective.diameterCap(),
+                    firstHit);
             state.synthesize += timer.elapsedMillis() - synthesizeStart;
 
             if (perComponent == null) {
@@ -224,7 +226,8 @@ public final class Pipeline {
                 varToNodeMap,
                 componentCache,
                 cacheStats,
-                effective.diameterCap());
+                effective.diameterCap(),
+                firstHit);
         tSynthesize += timer.elapsedMillis() - synthesizeStart;
 
         if (perComponent == null) {
