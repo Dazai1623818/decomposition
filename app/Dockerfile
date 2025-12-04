@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install Python for helper scripts used during build/dev
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python-is-python3 git \
+    && apt-get install -y --no-install-recommends python3 python-is-python3 git htop \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Gradle files
@@ -35,7 +35,7 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Install Python for running helper scripts like scripts/generate.py
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python-is-python3 git \
+    && apt-get install -y --no-install-recommends python3 python-is-python3 git htop \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user to match the host UID/GID for mounted files
