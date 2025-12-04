@@ -30,6 +30,8 @@ WORKDIR /app
 ARG USER_ID=1014
 ARG GROUP_ID=1015
 ENV USERNAME=appuser
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Install Python for running helper scripts like scripts/generate.py
 RUN apt-get update \
@@ -53,6 +55,10 @@ RUN install -d -m 700 -o ${USERNAME} -g ${USERNAME} /home/${USERNAME}/.ssh \
     && touch /home/${USERNAME}/.ssh/authorized_keys \
     && chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/authorized_keys \
     && chmod 600 /home/${USERNAME}/.ssh/authorized_keys
+
+# Ensure Java is on PATH for interactive shells (ssh sessions)
+RUN echo 'export JAVA_HOME=/opt/java/openjdk' > /etc/profile.d/java.sh \
+    && echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> /etc/profile.d/java.sh
 
 # SSH server port for optional dev access
 EXPOSE 22
