@@ -325,12 +325,7 @@ public final class Pipeline {
     LOG.info("Executing index construction pipeline for: {}", graphPath);
     int effectiveK = k > 0 ? k : DEFAULT_INDEX_DIAMETER;
     Index index = new IndexManager().loadOrBuild(graphPath, effectiveK);
-    try {
-      index.print();
-    } catch (NullPointerException ex) {
-      // Some persisted indexes were saved without label metadata; skip printing in that case.
-      LOG.warn("Index loaded without labels; skipping printable summary.");
-    }
+    // Intentionally skip index.print() to avoid noisy console output.
   }
 
   /**
