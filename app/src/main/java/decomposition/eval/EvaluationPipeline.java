@@ -32,7 +32,7 @@ public final class EvaluationPipeline {
     Objects.requireNonNull(graphPath, "graphPath");
 
     // 1. Setup
-    int k = indexK > 0 ? indexK : 3;
+    int k = indexK > 0 ? indexK : 2;
     Timing indexTimer = Timing.start();
     Index index = indexManager.loadOrBuild(graphPath, k);
     long indexLoadMs = indexTimer.elapsedMillis();
@@ -53,7 +53,8 @@ public final class EvaluationPipeline {
     CpqIndexExecutor executor = new CpqIndexExecutor(index);
 
     // 2. Baseline
-    // Note: Using a fresh runner helper or extracting logic to get components from atoms
+    // Note: Using a fresh runner helper or extracting logic to get components from
+    // atoms
     // In a full refactor, 'componentsFromAtoms' should be a static utility.
     LOG.info("Executing baseline...");
     Timing evalTimer = Timing.start(); // excludes index load

@@ -27,6 +27,7 @@ public final class Main {
       return switch (operation) {
         case PLOT -> new PlotCommand().execute(remaining);
         case DECOMPOSE -> new RunCommand().execute(remaining);
+        case BATCH -> new BatchCommand().execute(remaining);
       };
     } catch (IllegalArgumentException ex) {
       LOG.error("CLI error: {}", ex.getMessage());
@@ -43,7 +44,8 @@ public final class Main {
 
   enum Operation {
     DECOMPOSE("run", "decompose"),
-    PLOT("plot");
+    PLOT("plot"),
+    BATCH("batch", "batch-random");
 
     private final Set<String> aliases;
 

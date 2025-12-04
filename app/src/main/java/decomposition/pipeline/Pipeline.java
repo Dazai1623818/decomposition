@@ -36,6 +36,7 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -344,7 +345,32 @@ public final class Pipeline {
   public DecompositionResult benchmark(
       CQ query, Set<String> freeVariables, DecompositionOptions options, Path graphPath, int indexK)
       throws IOException {
+    int effectiveK = indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER;
+    IndexManager indexManager = new IndexManager();
+    Timing indexTimer = Timing.start();
+    Index index = indexManager.loadOrBuild(graphPath, effectiveK);
+    long indexLoadMs = indexTimer.elapsedMillis();
+    return benchmarkWithIndex(
+        query, freeVariables, options, graphPath, index, effectiveK, indexLoadMs);
+  }
+
+  /**
+   * Executes full benchmark given a preloaded index. Keeps index in-memory so callers can reuse it
+   * across multiple queries/graphs without reloading.
+   */
+  public DecompositionResult benchmarkWithIndex(
+      CQ query,
+      Set<String> freeVariables,
+      DecompositionOptions options,
+      Path graphPath,
+      Index index,
+      int indexK,
+      long indexLoadMs)
+      throws IOException {
     LOG.info("Executing full benchmark pipeline...");
+    Objects.requireNonNull(graphPath, "graphPath");
+    Objects.requireNonNull(index, "index");
+
     DecompositionOptions normalized = DecompositionOptions.normalize(options);
     int effectiveK = indexK > 0 ? indexK : DEFAULT_INDEX_DIAMETER;
     int diameterCap = normalized.diameterCap() > 0 ? normalized.diameterCap() : effectiveK;
@@ -369,16 +395,11 @@ public final class Pipeline {
                 normalized.planMode(),
                 diameterCap);
 
+    EvaluationPipeline evaluator = new EvaluationPipeline();
     if (benchmarkOptions.planMode() == PlanMode.RANDOM) {
-      EvaluationPipeline evaluator = new EvaluationPipeline();
-      IndexManager indexManager = new IndexManager();
-      Timing indexTimer = Timing.start();
-      Index index = indexManager.loadOrBuild(graphPath, effectiveK);
-      long indexLoadMs = indexTimer.elapsedMillis();
       Map<ComponentCacheKey, CachedComponentExpressions> sharedCache = new ConcurrentHashMap<>();
 
       DecompositionResult chosenResult = null;
-      PartitionEvaluation chosenEvaluation = null;
       for (int attempt = 1; attempt <= MAX_RANDOM_ATTEMPTS; attempt++) {
         LOG.info("Random attempt {}/{}...", attempt, MAX_RANDOM_ATTEMPTS);
         DecompositionResult attemptResult =
@@ -386,7 +407,6 @@ public final class Pipeline {
         PartitionEvaluation eval = firstEvaluable(attemptResult, effectiveK);
         if (eval != null) {
           chosenResult = attemptResult;
-          chosenEvaluation = eval;
           break;
         }
         LOG.info(
@@ -419,9 +439,8 @@ public final class Pipeline {
     }
 
     // 2. Run comparative evaluation
-    EvaluationPipeline evaluator = new EvaluationPipeline();
     EvaluationPipeline.EvaluationMetrics metrics =
-        evaluator.runBenchmark(query, result, graphPath, effectiveK);
+        evaluator.runBenchmarkWithIndex(query, result, index, effectiveK, indexLoadMs);
     long totalDecompositionMs = result.elapsedMillis();
     long decomposePlusTuples = totalDecompositionMs + metrics.tuplesMs();
     LOG.info(
