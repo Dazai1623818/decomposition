@@ -9,12 +9,10 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 final class ReverseCpqExamplesTest {
 
-  @Disabled("Reverse is removed")
   @Test
   void printsSyntaxTreesForOriginalAndReversedCpqs() {
     List<String> expressions =

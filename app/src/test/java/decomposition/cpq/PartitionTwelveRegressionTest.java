@@ -15,12 +15,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 final class PartitionTwelveRegressionTest {
 
-  @Disabled("Backtracking is temporarily removed")
   @Test
   void fullComponentRetainsLoopAnchoredAtFreeVariable() {
     ExtractionResult extraction = new CQExtractor().extract(Example.example6(), Set.of("A"));

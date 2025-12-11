@@ -116,12 +116,3 @@ tasks.register('runSimpleVerifier', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
-tasks.named('run', JavaExec) {
-    jvmArgs(
-        '-Xms800g',
-        '-Xmx800g',
-        '-XX:+UseShenandoahGC'
-    )
-}
-
-
