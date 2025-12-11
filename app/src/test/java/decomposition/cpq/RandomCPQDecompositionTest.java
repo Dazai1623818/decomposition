@@ -61,8 +61,6 @@ final class RandomCPQDecompositionTest {
               + analysis.hasSingleComponent()
               + " homomorphic="
               + analysis.isHomomorphic()
-              + " reversedHomomorphic="
-              + analysis.isReversedHomomorphic()
               + " reconstructed="
               + analysis.reconstructed().map(CPQ::toString).orElse("n/a")
               + " candidates="
@@ -70,9 +68,7 @@ final class RandomCPQDecompositionTest {
       assertTrue(
           analysis.isHomomorphic(),
           () ->
-              "Reconstruction is not homomorphic to original; reversedHomomorphic="
-                  + analysis.isReversedHomomorphic()
-                  + " original="
+              "Reconstruction is not homomorphic to original; original="
                   + original
                   + " reconstructed="
                   + analysis.reconstructed().map(CPQ::toString).orElse("n/a")
@@ -158,12 +154,12 @@ final class RandomCPQDecompositionTest {
             .filter(eval -> eval.partition().size() == 1)
             .findFirst();
     if (singleComponentEvaluation.isEmpty()) {
-      return new ReconstructionResult(false, false, false, Optional.empty(), List.of());
+      return new ReconstructionResult(false, false, Optional.empty(), List.of());
     }
 
     List<List<CPQExpression>> tuples = singleComponentEvaluation.get().decompositionTuples();
     if (tuples.isEmpty() || tuples.get(0).isEmpty()) {
-      return new ReconstructionResult(false, false, false, Optional.empty(), List.of());
+      return new ReconstructionResult(false, false, Optional.empty(), List.of());
     }
 
     BitSet fullEdgeMask = BitsetUtils.allOnes(result.edges().size());
@@ -181,15 +177,9 @@ final class RandomCPQDecompositionTest {
             .findFirst();
 
     boolean homomorphic = matchingCandidate.isPresent();
-    boolean reversedHomomorphic =
-        candidates.stream().anyMatch(candidate -> areReversedHomomorphic(original, candidate));
 
     return new ReconstructionResult(
-        true,
-        homomorphic,
-        reversedHomomorphic,
-        matchingCandidate.or(() -> candidates.stream().findFirst()),
-        candidates);
+        true, homomorphic, matchingCandidate.or(() -> candidates.stream().findFirst()), candidates);
   }
 
   private static String summary(List<CPQ> candidates) {
@@ -212,19 +202,6 @@ final class RandomCPQDecompositionTest {
     }
   }
 
-  private static boolean areReversedHomomorphic(CPQ original, CPQ reconstructed) {
-    QueryGraphCPQ originalGraph = original.toQueryGraph();
-    QueryGraphCPQ reconstructedGraph = reconstructed.toQueryGraph();
-
-    QueryGraphCPQ reconstructedReversed = reconstructed.toQueryGraph();
-    reconstructedReversed.reverse();
-    QueryGraphCPQ originalReversed = original.toQueryGraph();
-    originalReversed.reverse();
-
-    return areMutuallyHomomorphic(originalGraph, reconstructedReversed)
-        || areMutuallyHomomorphic(originalReversed, reconstructedGraph);
-  }
-
   private static boolean areMutuallyHomomorphic(QueryGraphCPQ left, QueryGraphCPQ right) {
     return left.isHomomorphicTo(right) && right.isHomomorphicTo(left);
   }
@@ -244,7 +221,6 @@ final class RandomCPQDecompositionTest {
   private record ReconstructionResult(
       boolean hasSingleComponent,
       boolean isHomomorphic,
-      boolean isReversedHomomorphic,
       Optional<CPQ> reconstructed,
       List<CPQ> candidates) {}
 }
