@@ -25,13 +25,13 @@ import java.util.function.Function;
  */
 public final class ComponentExpressionBuilder {
   private final List<Edge> edges;
-  private final ReverseLoopGenerator reverseLoopGenerator;
+  private final LoopVariantGenerator loopVariantGenerator;
   private final Map<RuleCacheKey, List<CPQExpression>> ruleCache = new ConcurrentHashMap<>();
 
   public ComponentExpressionBuilder(List<Edge> edges) {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
     ComponentEdgeMatcher matcher = new ComponentEdgeMatcher(this.edges);
-    this.reverseLoopGenerator = new ReverseLoopGenerator(matcher);
+    this.loopVariantGenerator = new LoopVariantGenerator(matcher);
   }
 
   public List<CPQExpression> build(BitSet edgeSubset, Map<String, String> originalVarMap) {
@@ -158,7 +158,7 @@ public final class ComponentExpressionBuilder {
       if (diameterCap > 0 && expression.cpq().getDiameter() > diameterCap) {
         continue;
       }
-      expanded.addAll(reverseLoopGenerator.generate(expression, originalVarMap));
+      expanded.addAll(loopVariantGenerator.generate(expression, originalVarMap));
     }
     return expanded;
   }
