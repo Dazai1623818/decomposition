@@ -61,7 +61,12 @@ public final class CacheStats {
   }
 
   public static record RuleCacheKey(
-      String signature, Set<String> joinNodes, int edgeCount, int diameterCap, boolean firstHit) {
+      String signature,
+      Set<String> joinNodes,
+      int edgeCount,
+      int diameterCap,
+      boolean firstHit,
+      boolean enforceEndpointRoles) {
     public RuleCacheKey {
       joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
     }

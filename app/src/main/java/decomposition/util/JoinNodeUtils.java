@@ -83,43 +83,68 @@ public final class JoinNodeUtils {
    * inferred for the local join nodes of its component.
    *
    * @param rule CPQ expression to validate
+   * @param component component whose edges the rule covers
    * @param localJoinNodes join nodes present inside the component
    * @return {@code true} if endpoints comply with join node expectations
    */
   public static boolean endpointsRespectJoinNodeRoles(
       CPQExpression rule, Component component, Set<String> localJoinNodes) {
     Objects.requireNonNull(rule, "rule");
+    return endpointsRespectJoinNodeRoles(rule.source(), rule.target(), component, localJoinNodes);
+  }
+
+  /**
+   * Checks whether the given endpoints respect the directional roles inferred for the local join
+   * nodes of a component.
+   *
+   * <p>Semantics:
+   *
+   * <ul>
+   *   <li>If the component has a single vertex (CQ self-loop), the CPQ must be a self-loop anchored
+   *       at that vertex: {@code source == target == v}.
+   *   <li>If there are no local join nodes, any endpoints are allowed (subject to the self-loop
+   *       rule).
+   *   <li>If there is exactly one local join node {@code j}:
+   *       <ul>
+   *         <li>For single-edge components, at least one endpoint must equal {@code j}.
+   *         <li>For multi-edge components, both endpoints must equal {@code j}.
+   *       </ul>
+   *   <li>If there are exactly two local join nodes, the set of endpoints must equal the set of
+   *       join nodes.
+   *   <li>Components with more than two local join nodes are considered invalid (these are filtered
+   *       earlier).
+   * </ul>
+   */
+  public static boolean endpointsRespectJoinNodeRoles(
+      String source, String target, Component component, Set<String> localJoinNodes) {
+    Objects.requireNonNull(source, "source");
+    Objects.requireNonNull(target, "target");
     Objects.requireNonNull(component, "component");
     Objects.requireNonNull(localJoinNodes, "localJoinNodes");
+
+    Set<String> vertices = component.vertices();
+    if (vertices.size() == 1) {
+      String v = vertices.iterator().next();
+      return v.equals(source) && v.equals(target);
+    }
 
     if (localJoinNodes.isEmpty()) {
       return true;
     }
 
-    String source = rule.source();
-    String target = rule.target();
-
     if (localJoinNodes.size() == 1) {
       String join = localJoinNodes.iterator().next();
       if (component.edgeCount() == 1) {
-        boolean matchesSource = source.equals(join);
-        boolean matchesTarget = target.equals(join);
-        return matchesSource || matchesTarget;
+        return join.equals(source) || join.equals(target);
       }
-      if (!source.equals(join) || !target.equals(join)) {
-        return false;
-      }
-      return true;
+      return join.equals(source) && join.equals(target);
     }
 
     if (localJoinNodes.size() == 2) {
       Set<String> endpoints = new HashSet<>();
       endpoints.add(source);
       endpoints.add(target);
-      if (endpoints.size() != localJoinNodes.size() || !endpoints.containsAll(localJoinNodes)) {
-        return false;
-      }
-      return true;
+      return endpoints.size() == localJoinNodes.size() && endpoints.containsAll(localJoinNodes);
     }
 
     // Components with more than two join nodes are filtered earlier; treat as invalid.

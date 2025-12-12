@@ -65,7 +65,6 @@ public final class PartitionExpressionAssembler {
         .forEach(
             idx -> {
               Component component = components.get(idx);
-              Set<String> localJoinNodes = filteredPartition.joinNodesForComponent(component);
               ComponentCacheKey key =
                   new ComponentCacheKey(
                       BitsetUtils.signature(component.edgeBits(), edges.size()),
@@ -83,16 +82,11 @@ public final class PartitionExpressionAssembler {
                 List<CPQExpression> raw =
                     buildRawExpressions(
                         component.edgeBits(), joinNodes, originalVarMap, diameterCap, firstHit);
-                List<CPQExpression> joinFiltered =
-                    applyJoinFiltering(raw, component, localJoinNodes);
                 List<CPQExpression> finals =
                     firstHit
-                        ? joinFiltered
-                        : applyOrientationPreferences(
-                            joinFiltered, joinNodes, freeVars, originalVarMap);
-                cached =
-                    cacheFinalExpressions(
-                        componentCache, key, raw, joinFiltered, finals, localJoinNodes.isEmpty());
+                        ? raw
+                        : applyOrientationPreferences(raw, joinNodes, freeVars, originalVarMap);
+                cached = cacheFinalExpressions(componentCache, key, raw, finals);
               }
 
               List<CPQExpression> finalExpressions = cached.finalExpressions();
@@ -152,16 +146,6 @@ public final class PartitionExpressionAssembler {
     return componentBuilder.build(edgeBits, joinNodes, originalVarMap, diameterCap, firstHit);
   }
 
-  private List<CPQExpression> applyJoinFiltering(
-      List<CPQExpression> raw, Component component, Set<String> localJoinNodes) {
-    if (localJoinNodes.isEmpty() || component.edgeCount() <= 1) {
-      return raw;
-    }
-    return raw.stream()
-        .filter(kc -> JoinNodeUtils.endpointsRespectJoinNodeRoles(kc, component, localJoinNodes))
-        .toList();
-  }
-
   private List<CPQExpression> applyOrientationPreferences(
       List<CPQExpression> joinFiltered,
       Set<String> joinNodes,
@@ -191,19 +175,13 @@ public final class PartitionExpressionAssembler {
       Map<ComponentCacheKey, CachedComponentExpressions> componentCache,
       ComponentCacheKey key,
       List<CPQExpression> raw,
-      List<CPQExpression> joinFiltered,
-      List<CPQExpression> finals,
-      boolean localJoinNodesEmpty) {
-    List<CPQExpression> diagnosticCandidates =
-        (!localJoinNodesEmpty && joinFiltered.isEmpty() && !raw.isEmpty())
-            ? List.copyOf(raw)
-            : List.of();
+      List<CPQExpression> finals) {
     CachedComponentExpressions cached =
         new CachedComponentExpressions(
             finals.isEmpty() ? List.of() : List.copyOf(finals),
             !raw.isEmpty(),
-            !joinFiltered.isEmpty(),
-            diagnosticCandidates);
+            !finals.isEmpty(),
+            List.of());
     componentCache.put(key, cached);
     return cached;
   }

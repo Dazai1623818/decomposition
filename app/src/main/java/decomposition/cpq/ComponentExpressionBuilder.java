@@ -1,9 +1,11 @@
 package decomposition.cpq;
 
+import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
 import decomposition.cpq.model.CacheStats.ComponentKey;
 import decomposition.cpq.model.CacheStats.RuleCacheKey;
 import decomposition.util.BitsetUtils;
+import decomposition.util.GraphUtils;
 import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
@@ -51,7 +53,7 @@ public final class ComponentExpressionBuilder {
         (requestedJoinNodes == null || requestedJoinNodes.isEmpty())
             ? Set.of()
             : Set.copyOf(requestedJoinNodes);
-    return recurse(edgeSubset, normalizedJoinNodes, originalVarMap, diameterCap, firstHit);
+    return recurse(edgeSubset, normalizedJoinNodes, originalVarMap, diameterCap, firstHit, true);
   }
 
   private List<CPQExpression> recurse(
@@ -59,7 +61,8 @@ public final class ComponentExpressionBuilder {
       Set<String> requestedJoinNodes,
       Map<String, String> originalVarMap,
       int diameterCap,
-      boolean firstHit) {
+      boolean firstHit,
+      boolean enforceEndpointRoles) {
 
     Set<String> localJoinNodes =
         JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
@@ -70,7 +73,8 @@ public final class ComponentExpressionBuilder {
             localJoinNodes,
             edgeSubset.cardinality(),
             diameterCap,
-            firstHit);
+            firstHit,
+            enforceEndpointRoles);
 
     List<CPQExpression> cached = resolveCached(key);
     if (cached != null) {
@@ -85,11 +89,25 @@ public final class ComponentExpressionBuilder {
     if (edgeCount > 1) {
       expressions.addAll(
           generateCompositeExpressions(
-              edgeSubset, requestedJoinNodes, originalVarMap, diameterCap, firstHit));
+              edgeSubset,
+              requestedJoinNodes,
+              originalVarMap,
+              diameterCap,
+              firstHit,
+              enforceEndpointRoles));
     }
 
     List<CPQExpression> expanded = expandLoopVariants(expressions, originalVarMap, diameterCap);
     List<CPQExpression> result = dedupeExpressions(expanded);
+    if (enforceEndpointRoles) {
+      Component component = GraphUtils.buildComponent(edgeSubset, edges);
+      result =
+          result.stream()
+              .filter(
+                  rule ->
+                      JoinNodeUtils.endpointsRespectJoinNodeRoles(rule, component, localJoinNodes))
+              .toList();
+    }
     if (firstHit && !result.isEmpty()) {
       result = List.of(result.get(0));
     }
@@ -126,9 +144,10 @@ public final class ComponentExpressionBuilder {
       Set<String> requestedJoinNodes,
       Map<String, String> originalVarMap,
       int diameterCap,
-      boolean firstHit) {
+      boolean firstHit,
+      boolean enforceEndpointRoles) {
     Function<BitSet, List<CPQExpression>> resolver =
-        subset -> recurse(subset, requestedJoinNodes, originalVarMap, diameterCap, firstHit);
+        subset -> recurse(subset, requestedJoinNodes, originalVarMap, diameterCap, firstHit, false);
     return buildCompositeExpressions(edgeSubset, edges.size(), resolver, diameterCap, firstHit);
   }
 
