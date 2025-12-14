@@ -23,13 +23,13 @@ import java.util.Objects;
  */
 public final class Decomposer {
 
-    /** High-level decomposition algorithm selection. */
+    /** High-level decomposition strategy selection. */
     public enum DecompositionMethod {
         SINGLE_EDGE,
         EXHAUSTIVE_ENUMERATION
     }
 
-    interface Strategy {
+    private interface DecompositionStrategy {
         List<CPQ> decompose(CQ cq);
     }
 
@@ -42,7 +42,7 @@ public final class Decomposer {
         return strategyFor(method).decompose(cq);
     }
 
-    private static Strategy strategyFor(DecompositionMethod method) {
+    private static DecompositionStrategy strategyFor(DecompositionMethod method) {
         return switch (method) {
             case SINGLE_EDGE -> SingleEdge.INSTANCE;
             case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumeration.INSTANCE;
@@ -50,7 +50,7 @@ public final class Decomposer {
     }
 
     /** Single-edge decomposition: one CPQ per CQ edge label. */
-    private static final class SingleEdge implements Strategy {
+    private static final class SingleEdge implements DecompositionStrategy {
         private static final SingleEdge INSTANCE = new SingleEdge();
 
         private SingleEdge() {
@@ -81,7 +81,7 @@ public final class Decomposer {
      * <p>
      * Placeholder implementation for now.
      */
-    private static final class ExhaustiveEnumeration implements Strategy {
+    private static final class ExhaustiveEnumeration implements DecompositionStrategy {
         private static final ExhaustiveEnumeration INSTANCE = new ExhaustiveEnumeration();
 
         private ExhaustiveEnumeration() {
