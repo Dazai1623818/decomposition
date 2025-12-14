@@ -41,9 +41,6 @@ public final class CQExtractor {
     long nextSyntheticId = 0L;
     for (GraphEdge<VarCQ, AtomCQ> edge : graph.getEdges()) {
       AtomCQ atom = edge.getData();
-      if (atom.getSource() == null || atom.getTarget() == null) {
-        throw new IllegalArgumentException("Non-binary CQ atom encountered: " + atom);
-      }
       String sourceVar = atom.getSource().getName();
       String targetVar = atom.getTarget().getName();
       edges.add(new Edge(sourceVar, targetVar, atom.getLabel(), nextSyntheticId++));
