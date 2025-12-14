@@ -1,3 +1,5 @@
 logs/
 *.zip
 bin/
+.gradle/
+.gradle-user-home/
