@@ -26,9 +26,7 @@ public final class ConjunctiveQuery {
     return gmarkCQ;
   }
 
-  /**
-   * Decomposes this CQ using {@link Decomposer.DecompositionMethod#SINGLE_EDGE}.
-   */
+  /** Decomposes this CQ using {@link Decomposer.DecompositionMethod#SINGLE_EDGE}. */
   public List<CPQ> decompose() {
     return decompose(Decomposer.DecompositionMethod.SINGLE_EDGE);
   }

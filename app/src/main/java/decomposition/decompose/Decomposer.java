@@ -11,85 +11,76 @@ import java.util.Objects;
 
 /**
  * Performs CQ -> CPQ decompositions for gMark queries.
- *
- * <p>
- * Design goals:
- *
- * <ul>
- * <li>One public entry point: {@link #decompose(CQ, DecompositionMethod)}.
- * <li>Multiple methods supported via a small strategy interface.
- * <li>No extra file/package scattering: strategies are private nested classes.
- * </ul>
  */
 public final class Decomposer {
 
-    /** High-level decomposition strategy selection. */
-    public enum DecompositionMethod {
-        SINGLE_EDGE,
-        EXHAUSTIVE_ENUMERATION
+  /** High-level decomposition strategy selection. */
+  public enum DecompositionMethod {
+    SINGLE_EDGE,
+    EXHAUSTIVE_ENUMERATION
+  }
+
+  private interface DecompositionStrategy {
+    List<CPQ> decompose(CQ cq);
+  }
+
+  private Decomposer() {
+  }
+
+  public static List<CPQ> decompose(CQ cq, DecompositionMethod method) {
+    Objects.requireNonNull(cq, "cq");
+    Objects.requireNonNull(method, "method");
+    return strategyFor(method).decompose(cq);
+  }
+
+  private static DecompositionStrategy strategyFor(DecompositionMethod method) {
+    return switch (method) {
+      case SINGLE_EDGE -> SingleEdge.INSTANCE;
+      case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumeration.INSTANCE;
+    };
+  }
+
+  /** Single-edge decomposition: one CPQ per CQ edge label. */
+  private static final class SingleEdge implements DecompositionStrategy {
+    private static final SingleEdge INSTANCE = new SingleEdge();
+
+    private SingleEdge() {
     }
 
-    private interface DecompositionStrategy {
-        List<CPQ> decompose(CQ cq);
-    }
+    @Override
+    public List<CPQ> decompose(CQ cq) {
+      UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+      List<CPQ> cpqs = new ArrayList<>(graph.getEdges().size());
 
-    private Decomposer() {
-    }
-
-    public static List<CPQ> decompose(CQ cq, DecompositionMethod method) {
-        Objects.requireNonNull(cq, "cq");
-        Objects.requireNonNull(method, "method");
-        return strategyFor(method).decompose(cq);
-    }
-
-    private static DecompositionStrategy strategyFor(DecompositionMethod method) {
-        return switch (method) {
-            case SINGLE_EDGE -> SingleEdge.INSTANCE;
-            case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumeration.INSTANCE;
-        };
-    }
-
-    /** Single-edge decomposition: one CPQ per CQ edge label. */
-    private static final class SingleEdge implements DecompositionStrategy {
-        private static final SingleEdge INSTANCE = new SingleEdge();
-
-        private SingleEdge() {
+      for (var edge : graph.getEdges()) {
+        CPQ cpq = CPQ.label(edge.getData().getLabel());
+        VarCQ source = edge.getSourceNode().getData();
+        VarCQ target = edge.getTargetNode().getData();
+        if (source.equals(target)) {
+          cpq = CPQ.intersect(List.of(cpq, CPQ.id()));
         }
+        cpqs.add(cpq);
+      }
 
-        @Override
-        public List<CPQ> decompose(CQ cq) {
-            UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
-            List<CPQ> cpqs = new ArrayList<>(graph.getEdges().size());
+      return List.copyOf(cpqs);
+    }
+  }
 
-            for (var edge : graph.getEdges()) {
-                CPQ cpq = CPQ.label(edge.getData().getLabel());
-                VarCQ source = edge.getSourceNode().getData();
-                VarCQ target = edge.getTargetNode().getData();
-                if (source.equals(target)) {
-                    cpq = CPQ.intersect(List.of(cpq, CPQ.id()));
-                }
-                cpqs.add(cpq);
-            }
+  /**
+   * Exhaustive enumeration decomposition.
+   *
+   * <p>
+   * Placeholder implementation for now.
+   */
+  private static final class ExhaustiveEnumeration implements DecompositionStrategy {
+    private static final ExhaustiveEnumeration INSTANCE = new ExhaustiveEnumeration();
 
-            return List.copyOf(cpqs);
-        }
+    private ExhaustiveEnumeration() {
     }
 
-    /**
-     * Exhaustive enumeration decomposition.
-     *
-     * <p>
-     * Placeholder implementation for now.
-     */
-    private static final class ExhaustiveEnumeration implements DecompositionStrategy {
-        private static final ExhaustiveEnumeration INSTANCE = new ExhaustiveEnumeration();
-
-        private ExhaustiveEnumeration() {
-        }
-
-        @Override
-        public List<CPQ> decompose(CQ cq) {
-            throw new UnsupportedOperationException("EXHAUSTIVE_ENUMERATION not implemented yet.");
-        }
+    @Override
+    public List<CPQ> decompose(CQ cq) {
+      throw new UnsupportedOperationException("EXHAUSTIVE_ENUMERATION not implemented yet.");
     }
+  }
 }
