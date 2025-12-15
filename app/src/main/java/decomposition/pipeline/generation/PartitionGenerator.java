@@ -37,7 +37,7 @@ public final class PartitionGenerator {
 
   public PartitionGenerator(int maxPartitions) {
     this.maxPartitions = maxPartitions;
-    this.filter = new PartitionFilter(GeneratorDefaults.MAX_JOIN_NODES);
+    this.filter = new PartitionFilter(2);
   }
 
   public PartitionGenerator(DecompositionOptions options) {

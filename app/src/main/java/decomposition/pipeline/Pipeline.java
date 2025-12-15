@@ -17,7 +17,6 @@ import decomposition.eval.EvaluationPipeline;
 import decomposition.eval.IndexManager;
 import decomposition.pipeline.extract.CQExtractor;
 import decomposition.pipeline.extract.CQExtractor.ExtractionResult;
-import decomposition.pipeline.generation.GeneratorDefaults;
 import decomposition.pipeline.generation.PartitionGenerator;
 import decomposition.pipeline.partitioning.FilteredPartition;
 import decomposition.pipeline.partitioning.PartitionFilter;
@@ -78,7 +77,7 @@ public final class Pipeline {
     BitSet fullBits = BitsetUtils.allOnes(edges.size());
     long tExtract = timer.elapsedMillis() - tExtractStart;
 
-    PartitionFilter filter = new PartitionFilter(GeneratorDefaults.MAX_JOIN_NODES);
+    PartitionFilter filter = new PartitionFilter(2);
     PartitionExpressionAssembler assembler = new PartitionExpressionAssembler(edges);
     CacheStats cacheStats = new CacheStats();
     Map<ComponentCacheKey, CachedComponentExpressions> componentCache =
@@ -126,7 +125,7 @@ public final class Pipeline {
           edges,
           components,
           extraction.freeVariables(),
-          GeneratorDefaults.MAX_JOIN_NODES,
+          2,
           partition -> {
             long now = timer.elapsedMillis();
             state.enumerate += now - state.lastMark;
@@ -458,10 +457,7 @@ public final class Pipeline {
     PartitionGenerator generator = new PartitionGenerator(max);
     List<Component> components = generator.enumerateConnectedComponents(extraction.edges());
     return generator.enumeratePartitions(
-        extraction.edges(),
-        components,
-        extraction.freeVariables(),
-        GeneratorDefaults.MAX_JOIN_NODES);
+        extraction.edges(), components, extraction.freeVariables(), 2);
   }
 
   private Partition buildSingleEdgePartition(List<Edge> edges) {
