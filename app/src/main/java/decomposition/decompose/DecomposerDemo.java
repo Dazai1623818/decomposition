@@ -26,8 +26,7 @@ public final class DecomposerDemo {
 
     System.out.println("Running decomposition on example" + exampleId);
 
-    List<List<CPQ>> single =
-        Decomposer.decompose(cq, Decomposer.DecompositionMethod.SINGLE_EDGE);
+    List<List<CPQ>> single = Decomposer.decompose(cq, Decomposer.DecompositionMethod.SINGLE_EDGE);
     System.out.println("Single-edge decompositions (" + single.size() + "):");
     printDecompositions(single);
 

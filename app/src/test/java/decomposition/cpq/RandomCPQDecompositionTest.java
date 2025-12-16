@@ -4,23 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import decomposition.core.DecompositionOptions;
 import decomposition.core.DecompositionResult;
-import decomposition.core.PartitionEvaluation;
+import decomposition.decompose.Decomposer;
 import decomposition.pipeline.Pipeline;
 import decomposition.pipeline.PlanMode;
-import decomposition.testing.TestDefaults;
-import decomposition.util.BitsetUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 final class RandomCPQDecompositionTest {
@@ -30,41 +26,14 @@ final class RandomCPQDecompositionTest {
   private static final int LABEL_COUNT = 4;
   private static final List<Predicate> PREDICATE_ALPHABET = buildAlphabet(LABEL_COUNT);
 
-  private static final DecompositionOptions DEFAULT_OPTIONS = DecompositionOptions.defaults();
-  private static final DecompositionOptions ENUMERATION_OPTIONS =
-      new DecompositionOptions(
-          DecompositionOptions.Mode.ENUMERATE,
-          DEFAULT_OPTIONS.maxPartitions(),
-          DEFAULT_OPTIONS.timeBudgetMs(),
-          TestDefaults.tupleLimit(),
-          false,
-          PlanMode.ALL,
-          0);
-
   @Test
   void decompositionReconstructsOriginalCpq() {
-    Pipeline pipeline = new Pipeline();
     for (int i = 0; i < ITERATIONS; i++) {
       CPQ original = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
       CQ cq = original.toCQ();
-      Set<String> freeVars =
-          cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-      ReconstructionResult analysis =
-          analyseReconstruction(pipeline, original, cq, freeVars, PREDICATE_ALPHABET);
-      System.out.println(
-          "[Reconstruct] iteration="
-              + i
-              + " original="
-              + original
-              + " hasSingleComponent="
-              + analysis.hasSingleComponent()
-              + " homomorphic="
-              + analysis.isHomomorphic()
-              + " reconstructed="
-              + analysis.reconstructed().map(CPQ::toString).orElse("n/a")
-              + " candidates="
-              + analysis.candidates().size());
+      ReconstructionResult analysis = analyseReconstruction(original, cq, PREDICATE_ALPHABET);
+      logReconstructions(i, original, analysis);
       assertTrue(
           analysis.isHomomorphic(),
           () ->
@@ -79,45 +48,33 @@ final class RandomCPQDecompositionTest {
 
   @Test
   void decompositionHandlesSingleEdgeCpq() {
-    Pipeline pipeline = new Pipeline();
     CPQ single = CPQ.parse("0");
     CQ cq = single.toCQ();
-    Set<String> freeVars =
-        cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
     assertTrue(
-        result.cpqPartitions().size() >= 1,
-        "Single edge CPQ should have at least one valid partition");
+        Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION).stream()
+            .anyMatch(list -> !list.isEmpty()),
+        "Single edge CPQ should have at least one valid decomposition");
   }
 
   @Test
   void decompositionHandlesLoopCpq() {
-    Pipeline pipeline = new Pipeline();
     CPQ loop = CPQ.parse("(0 ◦ 0⁻ ∩ id)");
     CQ cq = loop.toCQ();
-    Set<String> freeVars =
-        cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
-    assertTrue(result.edges().size() >= 1, "Loop CPQ should produce edges");
+    List<List<CPQ>> decompositions =
+        Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
+    assertTrue(!decompositions.isEmpty(), "Loop CPQ should produce decompositions");
   }
 
   @Test
   void decompositionHandlesIntersectionCpq() {
-    Pipeline pipeline = new Pipeline();
     CPQ intersection = CPQ.parse("(0 ∩ 1)");
     CQ cq = intersection.toCQ();
-    Set<String> freeVars =
-        cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
 
-    // Should complete without throwing exception
-    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
-    // Just verify the result is not null - intersection may have zero or more
-    // partitions
-    assertTrue(
-        result != null && result.edges().size() >= 1,
-        "Intersection CPQ should execute successfully");
+    List<List<CPQ>> decompositions =
+        Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
+    assertTrue(!decompositions.isEmpty(), "Intersection CPQ should execute successfully");
   }
 
   @Test
@@ -146,30 +103,12 @@ final class RandomCPQDecompositionTest {
   }
 
   private static ReconstructionResult analyseReconstruction(
-      Pipeline pipeline, CPQ original, CQ cq, Set<String> freeVars, List<Predicate> alphabet) {
-    DecompositionResult result = pipeline.decompose(cq, freeVars, ENUMERATION_OPTIONS);
+      CPQ original, CQ cq, List<Predicate> alphabet) {
+    List<List<CPQ>> decompositions =
+        Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
 
-    Optional<PartitionEvaluation> singleComponentEvaluation =
-        result.partitionEvaluations().stream()
-            .filter(eval -> eval.partition().size() == 1)
-            .findFirst();
-    if (singleComponentEvaluation.isEmpty()) {
-      return new ReconstructionResult(false, false, Optional.empty(), List.of());
-    }
-
-    List<List<CPQExpression>> tuples = singleComponentEvaluation.get().decompositionTuples();
-    if (tuples.isEmpty() || tuples.get(0).isEmpty()) {
-      return new ReconstructionResult(false, false, Optional.empty(), List.of());
-    }
-
-    BitSet fullEdgeMask = BitsetUtils.allOnes(result.edges().size());
-    List<CPQExpression> fullCoverageCandidates =
-        Stream.concat(result.recognizedCatalogue().stream(), tuples.stream().flatMap(List::stream))
-            // Only consider expressions that actually cover every edge of the query graph
-            .filter(candidate -> candidate.edges().equals(fullEdgeMask))
-            .toList();
-
-    List<CPQ> candidates = fullCoverageCandidates.stream().map(CPQExpression::cpq).toList();
+    boolean hasSingleComponent = decompositions.stream().anyMatch(decomp -> decomp.size() == 1);
+    List<CPQ> candidates = decompositions.stream().flatMap(List::stream).toList();
 
     Optional<CPQ> matchingCandidate =
         candidates.stream()
@@ -179,7 +118,10 @@ final class RandomCPQDecompositionTest {
     boolean homomorphic = matchingCandidate.isPresent();
 
     return new ReconstructionResult(
-        true, homomorphic, matchingCandidate.or(() -> candidates.stream().findFirst()), candidates);
+        hasSingleComponent,
+        homomorphic,
+        matchingCandidate.or(() -> candidates.stream().findFirst()),
+        candidates);
   }
 
   private static String summary(List<CPQ> candidates) {
@@ -223,4 +165,25 @@ final class RandomCPQDecompositionTest {
       boolean isHomomorphic,
       Optional<CPQ> reconstructed,
       List<CPQ> candidates) {}
+
+  private static void logReconstructions(int iteration, CPQ original, ReconstructionResult result) {
+    System.out.println(
+        "[Reconstruct] iteration="
+            + iteration
+            + " original="
+            + original
+            + " hasSingleComponent="
+            + result.hasSingleComponent()
+            + " homomorphic="
+            + result.isHomomorphic()
+            + " reconstructed="
+            + result.reconstructed().map(CPQ::toString).orElse("n/a")
+            + " candidates="
+            + result.candidates().size());
+
+    System.out.println("Original CPQ: " + original);
+    for (CPQ candidate : result.candidates()) {
+      System.out.println("Reconstruction candidate: " + candidate);
+    }
+  }
 }

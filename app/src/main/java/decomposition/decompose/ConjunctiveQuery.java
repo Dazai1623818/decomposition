@@ -31,7 +31,7 @@ public final class ConjunctiveQuery {
   private final BitSet freeVars;
   private final int edgeCount;
   private final int varCount;
-  private final List<Edge> edgesDto;
+  private final List<Edge> edges;
 
   public ConjunctiveQuery(CQ gmarkCQ) {
     this.gmarkCQ = Objects.requireNonNull(gmarkCQ, "gmarkCQ");
@@ -46,6 +46,8 @@ public final class ConjunctiveQuery {
       incidentEdges[i] = new BitSet(edgeCount);
     }
 
+    List<Edge> edgeList = new ArrayList<>(graphEdges.size());
+    long syntheticId = 0L;
     for (int edgeId = 0; edgeId < graphEdges.size(); edgeId++) {
       GraphEdge<VarCQ, AtomCQ> edge = graphEdges.get(edgeId);
       int srcId = edge.getSourceNode().getID();
@@ -54,7 +56,13 @@ public final class ConjunctiveQuery {
       edgeVars[edgeId][1] = dstId;
       incidentEdges[srcId].set(edgeId);
       incidentEdges[dstId].set(edgeId);
+
+      AtomCQ atom = edge.getData();
+      String source = atom.getSource().getName();
+      String target = atom.getTarget().getName();
+      edgeList.add(new Edge(source, target, atom.getLabel(), syntheticId++));
     }
+    this.edges = edgeList;
 
     this.freeVars = new BitSet(varCount);
     for (VarCQ free : gmarkCQ.getFreeVariables()) {
@@ -63,16 +71,6 @@ public final class ConjunctiveQuery {
         freeVars.set(node.getID());
       }
     }
-
-    List<Edge> dto = new ArrayList<>(graphEdges.size());
-    long syntheticId = 0L;
-    for (GraphEdge<VarCQ, AtomCQ> graphEdge : graphEdges) {
-      AtomCQ atom = graphEdge.getData();
-      String source = atom.getSource().getName();
-      String target = atom.getTarget().getName();
-      dto.add(new Edge(source, target, atom.getLabel(), syntheticId++));
-    }
-    this.edgesDto = dto;
   }
 
   /** Returns the underlying gmark CQ (intended for internal use). */
@@ -82,15 +80,15 @@ public final class ConjunctiveQuery {
 
   /** Returns the CQ edges in the intermediate {@link Edge} model. */
   public List<Edge> getEdges() {
-    return edgesDto;
+    return edges;
   }
 
   /** Decomposes this CQ using {@link Decomposer.DecompositionMethod#SINGLE_EDGE}. */
-  public List<CPQ> decompose() {
+  public List<List<CPQ>> decompose() {
     return decompose(Decomposer.DecompositionMethod.SINGLE_EDGE);
   }
 
-  public List<CPQ> decompose(Decomposer.DecompositionMethod method) {
+  public List<List<CPQ>> decompose(Decomposer.DecompositionMethod method) {
     Objects.requireNonNull(method, "method");
     return Decomposer.decompose(this, method);
   }

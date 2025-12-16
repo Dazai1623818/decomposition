@@ -155,5 +155,6 @@ final class ExhaustiveEnumerator {
     }
   }
 
-  private record ComponentPool(List<Component> components, List<List<Component>> componentsByEdge) {}
+  private record ComponentPool(
+      List<Component> components, List<List<Component>> componentsByEdge) {}
 }
