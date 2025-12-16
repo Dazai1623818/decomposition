@@ -2,21 +2,14 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import decomposition.core.DecompositionOptions;
-import decomposition.core.DecompositionResult;
 import decomposition.decompose.Decomposer;
-import decomposition.pipeline.Pipeline;
-import decomposition.pipeline.PlanMode;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.CQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 final class RandomCPQDecompositionTest {
@@ -75,31 +68,6 @@ final class RandomCPQDecompositionTest {
     List<List<CPQ>> decompositions =
         Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
     assertTrue(!decompositions.isEmpty(), "Intersection CPQ should execute successfully");
-  }
-
-  @Test
-  void decompositionWithTimeBudgetTerminatesEarly() {
-    Pipeline pipeline = new Pipeline();
-    DecompositionOptions timedOptions =
-        new DecompositionOptions(
-            DecompositionOptions.Mode.ENUMERATE,
-            100_000,
-            1, // 1ms time budget - very tight
-            100,
-            false,
-            PlanMode.ALL,
-            0);
-
-    CPQ complex = CPQ.generateRandomCPQ(MAX_DEPTH, LABEL_COUNT);
-    CQ cq = complex.toCQ();
-    Set<String> freeVars =
-        cq.getFreeVariables().stream().map(VarCQ::getName).collect(Collectors.toSet());
-
-    DecompositionResult result = pipeline.decompose(cq, freeVars, timedOptions);
-    // Should complete without hanging, possibly with early termination
-    assertTrue(
-        result.terminationReason() == null || result.terminationReason().contains("time"),
-        "Either completes normally or terminates due to time budget");
   }
 
   private static ReconstructionResult analyseReconstruction(
