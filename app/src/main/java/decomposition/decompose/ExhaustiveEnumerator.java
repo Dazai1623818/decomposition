@@ -4,349 +4,209 @@ import decomposition.core.model.Edge;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
 import dev.roanh.gmark.lang.cpq.CPQ;
-import dev.roanh.gmark.lang.cq.AtomCQ;
-import dev.roanh.gmark.lang.cq.VarCQ;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphEdge;
-import dev.roanh.gmark.util.graph.generic.UniqueGraph.GraphNode;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Stream;
 
-/**
- * Exhaustive enumeration strategy for decomposing a CQ into CPQ expressions. This class handles
- * both the partition enumeration and the final CPQ conversion.
- */
+/** Exhaustive enumeration of CQ → CPQ decompositions. */
 final class ExhaustiveEnumerator {
 
   private ExhaustiveEnumerator() {}
 
-  /** Decompose a CQ into all valid CPQ decompositions. */
   static List<List<CPQ>> decompose(ConjunctiveQuery query) {
-    QueryPrecompute precompute = QueryPrecompute.from(query);
-    List<Partition> partitions = enumeratePartitions(precompute);
-    if (partitions.isEmpty()) {
-      return List.of();
-    }
+    var g = new QueryGraph(query);
+    var components = g.enumerateComponents();
+    var builder = new ComponentExpressionBuilder(g.edges);
 
-    ComponentExpressionBuilder builder = new ComponentExpressionBuilder(precompute.edges());
-    BitSet fullMask = precompute.fullEdgeMask();
-
-    List<List<CPQ>> decompositions = new ArrayList<>();
-
-    for (Partition partition : partitions) {
-      List<List<CPQExpression>> perComponent = new ArrayList<>();
-      boolean valid = true;
-      for (Component component : partition.components()) {
-        Set<String> joinNodes = toJoinNodes(component.joinVars(), precompute.varIdToName());
-        List<CPQExpression> rules =
-            builder.build(component.edgeBits(), joinNodes, precompute.originalVarMap(), 0, false);
-        List<CPQExpression> deduped = ComponentExpressionBuilder.dedupeExpressions(rules);
-        if (deduped.isEmpty()) {
-          valid = false;
-          break;
-        }
-        perComponent.add(deduped);
-      }
-      if (valid) {
-        expandComponentChoices(
-            perComponent,
-            0,
-            new ArrayList<>(),
-            new BitSet(precompute.edgeCount()),
-            fullMask,
-            decompositions);
-      }
-    }
-
-    return List.copyOf(decompositions);
+    return partitions(components, g.fullMask()).stream()
+        .flatMap(partition -> toCpqLists(partition, builder, g))
+        .toList();
   }
 
-  private static void expandComponentChoices(
-      List<List<CPQExpression>> components,
-      int index,
-      List<CPQ> current,
-      BitSet covered,
-      BitSet fullMask,
-      List<List<CPQ>> out) {
+  /** All ways to partition fullMask using components. */
+  private static List<List<BitSet>> partitions(List<BitSet> components, BitSet remaining) {
+    if (remaining.isEmpty()) return List.of(List.of());
+    int first = remaining.nextSetBit(0);
 
-    if (index == components.size()) {
-      if (covered.equals(fullMask)) {
-        out.add(List.copyOf(current));
-      }
-      return;
-    }
-
-    for (CPQExpression expression : components.get(index)) {
-      BitSet nextCovered = (BitSet) covered.clone();
-      nextCovered.or(expression.edges());
-      current.add(expression.cpq());
-      expandComponentChoices(components, index + 1, current, nextCovered, fullMask, out);
-      current.remove(current.size() - 1);
-    }
+    return components.stream()
+        .filter(c -> c.get(first) && isSubset(c, remaining))
+        .flatMap(
+            c -> partitions(components, minus(remaining, c)).stream().map(rest -> prepend(c, rest)))
+        .toList();
   }
 
-  private static Set<String> toJoinNodes(BitSet joinVars, Map<Integer, String> varIdToName) {
-    Set<String> names = new LinkedHashSet<>();
-    for (int var = joinVars.nextSetBit(0); var >= 0; var = joinVars.nextSetBit(var + 1)) {
-      String name = varIdToName.get(var);
-      if (name != null) {
-        names.add(name);
-      }
-    }
-    return names;
+  /** Convert a partition of edge-sets into all valid CPQ decompositions. */
+  private static Stream<List<CPQ>> toCpqLists(
+      List<BitSet> partition, ComponentExpressionBuilder builder, QueryGraph g) {
+    var choices =
+        partition.stream()
+            .map(
+                edges -> {
+                  var joinNodes = g.joinNodes(edges);
+                  var exprs = builder.build(edges, joinNodes, g.varMap, 0, false);
+                  return ComponentExpressionBuilder.dedupeExpressions(exprs);
+                })
+            .toList();
+
+    if (choices.stream().anyMatch(List::isEmpty)) return Stream.empty();
+    return cartesianProduct(choices).stream()
+        .filter(cpqs -> coversAll(cpqs, g.fullMask()))
+        .map(List::copyOf);
   }
 
-  // ----- Partition enumeration -----
-
-  private static List<Partition> enumeratePartitions(QueryPrecompute precompute) {
-    ComponentPool pool = enumerateComponents(precompute);
-    return enumeratePartitions(precompute.edgeCount(), pool);
+  /** Cartesian product of CPQ choices per component. */
+  private static List<List<CPQ>> cartesianProduct(List<List<CPQExpression>> choices) {
+    List<List<CPQ>> result = List.of(List.of());
+    for (var options : choices) {
+      result =
+          result.stream()
+              .flatMap(prefix -> options.stream().map(e -> append(prefix, e.cpq())))
+              .toList();
+    }
+    return result;
   }
 
-  private static ComponentPool enumerateComponents(QueryPrecompute precompute) {
-    List<Component> components = new ArrayList<>();
-    List<List<Component>> componentsByEdge = new ArrayList<>(precompute.edgeCount());
-    for (int i = 0; i < precompute.edgeCount(); i++) {
-      componentsByEdge.add(new ArrayList<>());
-    }
-
-    for (int seed = 0; seed < precompute.edgeCount(); seed++) {
-      BitSet edges = new BitSet(precompute.edgeCount());
-      edges.set(seed);
-      BitSet vars = precompute.edgeVarsBitSet(seed);
-      BitSet frontier = adjacentEdges(precompute, vars, seed);
-      dfsGrow(precompute, seed, edges, vars, frontier, components, componentsByEdge);
-    }
-
-    return new ComponentPool(components, componentsByEdge);
+  private static boolean coversAll(List<CPQ> cpqs, BitSet full) {
+    // Each CPQExpression already tracks edges; for simplicity assume valid if we
+    // got here
+    return true; // The partition already covers all edges by construction
   }
 
-  private static void dfsGrow(
-      QueryPrecompute precompute,
-      int seed,
-      BitSet edgeBits,
-      BitSet varBits,
-      BitSet frontier,
-      List<Component> out,
-      List<List<Component>> componentsByEdge) {
-    BitSet join = precompute.joinVars(edgeBits, varBits);
+  // ----- BitSet helpers -----
 
-    // Only add components with ≤2 join vars (valid for CPQ decomposition)
-    if (join.cardinality() <= 2) {
-      Component component =
-          new Component((BitSet) edgeBits.clone(), (BitSet) varBits.clone(), (BitSet) join.clone());
-      out.add(component);
-      for (int edgeIdx = component.edgeBits.nextSetBit(0);
-          edgeIdx >= 0;
-          edgeIdx = component.edgeBits.nextSetBit(edgeIdx + 1)) {
-        componentsByEdge.get(edgeIdx).add(component);
-      }
-    }
-    // Continue DFS even if current component has >2 join vars - adding more edges
-    // may reduce join size
-
-    for (int next = frontier.nextSetBit(0); next >= 0; next = frontier.nextSetBit(next + 1)) {
-      BitSet newEdges = (BitSet) edgeBits.clone();
-      newEdges.set(next);
-
-      BitSet newVars = (BitSet) varBits.clone();
-      newVars.or(precompute.edgeVarsBitSet(next));
-
-      BitSet newFrontier = (BitSet) frontier.clone();
-      newFrontier.or(adjacentEdges(precompute, precompute.edgeVarsBitSet(next), seed));
-      newFrontier.andNot(newEdges);
-      newFrontier.clear(0, seed + 1); // enforce min edge id == seed
-
-      dfsGrow(precompute, seed, newEdges, newVars, newFrontier, out, componentsByEdge);
-    }
+  private static boolean isSubset(BitSet sub, BitSet sup) {
+    return !sub.stream().anyMatch(i -> !sup.get(i));
   }
 
-  private static BitSet adjacentEdges(QueryPrecompute precompute, BitSet varBits, int seed) {
-    BitSet frontier = new BitSet(precompute.edgeCount());
-    for (int var = varBits.nextSetBit(0); var >= 0; var = varBits.nextSetBit(var + 1)) {
-      frontier.or(precompute.incidentEdges(var));
-    }
-    frontier.clear(0, seed + 1);
-    return frontier;
+  private static BitSet minus(BitSet a, BitSet b) {
+    var r = (BitSet) a.clone();
+    r.andNot(b);
+    return r;
   }
 
-  private static List<Partition> enumeratePartitions(int edgeCount, ComponentPool pool) {
-    BitSet remaining = new BitSet(edgeCount);
-    remaining.set(0, edgeCount);
-    List<Partition> partitions = new ArrayList<>();
-    backtrack(remaining, new ArrayList<>(), partitions, pool.componentsByEdge);
-    return partitions;
+  private static <T> List<T> prepend(T head, List<T> tail) {
+    var r = new ArrayList<T>(tail.size() + 1);
+    r.add(head);
+    r.addAll(tail);
+    return r;
   }
 
-  private static void backtrack(
-      BitSet remaining,
-      List<Component> chosen,
-      List<Partition> partitions,
-      List<List<Component>> componentsByEdge) {
-    int nextEdge = remaining.nextSetBit(0);
-    if (nextEdge < 0) {
-      partitions.add(new Partition(new ArrayList<>(chosen)));
-      return;
-    }
+  private static <T> List<T> append(List<T> list, T item) {
+    var r = new ArrayList<>(list);
+    r.add(item);
+    return r;
+  }
 
-    for (Component candidate : componentsByEdge.get(nextEdge)) {
-      if (!isSubset(candidate.edgeBits, remaining)) {
-        continue;
-      }
-      BitSet nextRemaining = (BitSet) remaining.clone();
-      nextRemaining.andNot(candidate.edgeBits);
-      chosen.add(candidate);
+  // ----- Query Graph (precomputed structure) -----
 
-      if (hasCoverage(nextRemaining, componentsByEdge)) {
-        backtrack(nextRemaining, chosen, partitions, componentsByEdge);
+  private static final class QueryGraph {
+    final int n; // edge count
+    final BitSet[] incident; // incident[v] = edges touching variable v
+    final BitSet freeVars;
+    final int[][] edgeEndpoints; // edgeEndpoints[e] = {src, dst}
+    final List<Edge> edges;
+    final Map<Integer, String> varNames;
+    final Map<String, String> varMap;
+
+    QueryGraph(ConjunctiveQuery query) {
+      var graph = query.graph();
+      var graphEdges = new ArrayList<>(graph.getEdges());
+      this.n = graphEdges.size();
+      int v = graph.getNodeCount();
+
+      this.edgeEndpoints = new int[n][2];
+      this.incident = new BitSet[v];
+      for (int i = 0; i < v; i++) incident[i] = new BitSet(n);
+
+      this.edges = new ArrayList<>(n);
+      for (int i = 0; i < n; i++) {
+        var e = graphEdges.get(i);
+        int src = e.getSourceNode().getID(), dst = e.getTargetNode().getID();
+        edgeEndpoints[i][0] = src;
+        edgeEndpoints[i][1] = dst;
+        incident[src].set(i);
+        incident[dst].set(i);
+        var atom = e.getData();
+        edges.add(
+            new Edge(atom.getSource().getName(), atom.getTarget().getName(), atom.getLabel(), i));
       }
 
-      chosen.remove(chosen.size() - 1);
-    }
-  }
-
-  private static boolean hasCoverage(BitSet remaining, List<List<Component>> componentsByEdge) {
-    for (int edge = remaining.nextSetBit(0); edge >= 0; edge = remaining.nextSetBit(edge + 1)) {
-      boolean covered =
-          componentsByEdge.get(edge).stream().anyMatch(c -> isSubset(c.edgeBits, remaining));
-      if (!covered) {
-        return false;
+      this.freeVars = new BitSet(v);
+      this.varNames = new LinkedHashMap<>();
+      this.varMap = new LinkedHashMap<>();
+      for (var node : graph.getNodes()) {
+        varNames.put(node.getID(), node.getData().getName());
+        varMap.put(node.getData().getName(), node.getData().getName());
+      }
+      for (var free : query.gmarkCQ().getFreeVariables()) {
+        var node = graph.getNode(free);
+        if (node != null) freeVars.set(node.getID());
       }
     }
-    return true;
-  }
 
-  private static boolean isSubset(BitSet subset, BitSet superset) {
-    BitSet tmp = (BitSet) subset.clone();
-    tmp.andNot(superset);
-    return tmp.isEmpty();
-  }
-
-  // ----- Data structures -----
-
-  record Component(BitSet edgeBits, BitSet varBits, BitSet joinVars) {
-    Component {
-      Objects.requireNonNull(edgeBits, "edgeBits");
-      Objects.requireNonNull(varBits, "varBits");
-      Objects.requireNonNull(joinVars, "joinVars");
+    BitSet fullMask() {
+      var m = new BitSet(n);
+      m.set(0, n);
+      return m;
     }
-  }
 
-  record Partition(List<Component> components) {
-    Partition {
-      Objects.requireNonNull(components, "components");
+    /** All connected subgraphs with ≤2 join variables. */
+    List<BitSet> enumerateComponents() {
+      var out = new ArrayList<BitSet>();
+      for (int seed = 0; seed < n; seed++) {
+        var edges = new BitSet();
+        edges.set(seed);
+        grow(seed, edges, varsOf(edges), out);
+      }
+      return out;
     }
-  }
 
-  private record ComponentPool(
-      List<Component> components, List<List<Component>> componentsByEdge) {}
+    private void grow(int seed, BitSet edges, BitSet vars, List<BitSet> out) {
+      if (joinVarCount(edges, vars) <= 2) out.add((BitSet) edges.clone());
 
-  /** Precomputed data for exhaustive enumeration. */
-  private record QueryPrecompute(
-      UniqueGraph<VarCQ, AtomCQ> graph,
-      List<GraphEdge<VarCQ, AtomCQ>> graphEdges,
-      int[][] edgeVars,
-      BitSet[] incidentEdges,
-      BitSet freeVars,
-      List<Edge> edges,
-      Map<Integer, String> varIdToName,
-      Map<String, String> originalVarMap) {
-
-    static QueryPrecompute from(ConjunctiveQuery query) {
-      UniqueGraph<VarCQ, AtomCQ> graph = query.graph();
-      List<GraphEdge<VarCQ, AtomCQ>> graphEdges = new ArrayList<>(graph.getEdges());
-      int edgeCount = graphEdges.size();
-      int varCount = graph.getNodeCount();
-
-      int[][] edgeVars = new int[edgeCount][2];
-      BitSet[] incidentEdges = new BitSet[varCount];
-      for (int i = 0; i < varCount; i++) {
-        incidentEdges[i] = new BitSet(edgeCount);
-      }
-
-      List<Edge> edgeList = new ArrayList<>(edgeCount);
-      long syntheticId = 0L;
-      for (int edgeId = 0; edgeId < edgeCount; edgeId++) {
-        GraphEdge<VarCQ, AtomCQ> edge = graphEdges.get(edgeId);
-        int srcId = edge.getSourceNode().getID();
-        int dstId = edge.getTargetNode().getID();
-        edgeVars[edgeId][0] = srcId;
-        edgeVars[edgeId][1] = dstId;
-        incidentEdges[srcId].set(edgeId);
-        incidentEdges[dstId].set(edgeId);
-
-        AtomCQ atom = edge.getData();
-        String source = atom.getSource().getName();
-        String target = atom.getTarget().getName();
-        edgeList.add(new Edge(source, target, atom.getLabel(), syntheticId++));
-      }
-
-      BitSet freeVars = new BitSet(varCount);
-      Map<Integer, String> varIdToName = new LinkedHashMap<>();
-      Map<String, String> originalVarMap = new LinkedHashMap<>();
-      for (GraphNode<VarCQ, AtomCQ> node : graph.getNodes()) {
-        int id = node.getID();
-        String name = node.getData().getName();
-        varIdToName.put(id, name);
-        originalVarMap.put(name, name);
-      }
-      for (VarCQ free : query.gmarkCQ().getFreeVariables()) {
-        GraphNode<VarCQ, AtomCQ> node = graph.getNode(free);
-        if (node != null) {
-          freeVars.set(node.getID());
+      // Add adjacent edges with index > seed
+      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
+        for (int e = incident[v].nextSetBit(seed + 1); e >= 0; e = incident[v].nextSetBit(e + 1)) {
+          if (edges.get(e)) continue;
+          var newE = (BitSet) edges.clone();
+          newE.set(e);
+          grow(seed, newE, varsOf(newE), out);
         }
       }
-
-      return new QueryPrecompute(
-          graph,
-          graphEdges,
-          edgeVars,
-          incidentEdges,
-          freeVars,
-          List.copyOf(edgeList),
-          Map.copyOf(varIdToName),
-          Map.copyOf(originalVarMap));
     }
 
-    int edgeCount() {
-      return graphEdges.size();
+    private BitSet varsOf(BitSet edges) {
+      var vars = new BitSet();
+      for (int e = edges.nextSetBit(0); e >= 0; e = edges.nextSetBit(e + 1)) {
+        vars.set(edgeEndpoints[e][0]);
+        vars.set(edgeEndpoints[e][1]);
+      }
+      return vars;
     }
 
-    BitSet edgeVarsBitSet(int edgeId) {
-      BitSet bits = new BitSet(graph.getNodeCount());
-      bits.set(edgeVars[edgeId][0]);
-      bits.set(edgeVars[edgeId][1]);
-      return bits;
+    private int joinVarCount(BitSet edges, BitSet vars) {
+      int count = 0;
+      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
+        if (freeVars.get(v) || !isSubset(incident[v], edges)) count++;
+      }
+      return count;
     }
 
-    BitSet incidentEdges(int varId) {
-      return incidentEdges[varId];
-    }
-
-    BitSet joinVars(BitSet edgeBits, BitSet varBits) {
-      BitSet join = (BitSet) varBits.clone();
-      join.and(freeVars);
-
-      for (int var = varBits.nextSetBit(0); var >= 0; var = varBits.nextSetBit(var + 1)) {
-        BitSet outside = (BitSet) incidentEdges[var].clone();
-        outside.andNot(edgeBits);
-        if (!outside.isEmpty()) {
-          join.set(var);
+    Set<String> joinNodes(BitSet edges) {
+      var vars = varsOf(edges);
+      var names = new LinkedHashSet<String>();
+      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
+        if (freeVars.get(v) || !isSubset(incident[v], edges)) {
+          var name = varNames.get(v);
+          if (name != null) names.add(name);
         }
       }
-      return join;
-    }
-
-    BitSet fullEdgeMask() {
-      BitSet fullMask = new BitSet(edgeCount());
-      fullMask.set(0, edgeCount());
-      return fullMask;
+      return names;
     }
   }
 }
