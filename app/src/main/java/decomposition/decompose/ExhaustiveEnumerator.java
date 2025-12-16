@@ -28,25 +28,24 @@ final class ExhaustiveEnumerator {
 
   /** Decompose a CQ into all valid CPQ decompositions. */
   static List<List<CPQ>> decompose(ConjunctiveQuery query) {
-    Work work = Work.from(query);
-    List<Partition> partitions = enumeratePartitions(work);
+    QueryPrecompute precompute = QueryPrecompute.from(query);
+    List<Partition> partitions = enumeratePartitions(precompute);
     if (partitions.isEmpty()) {
       return List.of();
     }
 
-    ComponentExpressionBuilder builder = new ComponentExpressionBuilder(work.edges());
-    BitSet fullMask = work.fullEdgeMask();
+    ComponentExpressionBuilder builder = new ComponentExpressionBuilder(precompute.edges());
+    BitSet fullMask = precompute.fullEdgeMask();
 
     List<List<CPQ>> decompositions = new ArrayList<>();
-    addWholeQueryCandidates(work, builder, fullMask, decompositions);
 
     for (Partition partition : partitions) {
       List<List<CPQExpression>> perComponent = new ArrayList<>();
       boolean valid = true;
       for (Component component : partition.components()) {
-        Set<String> joinNodes = toJoinNodes(component.joinVars(), work.varIdToName());
+        Set<String> joinNodes = toJoinNodes(component.joinVars(), precompute.varIdToName());
         List<CPQExpression> rules =
-            builder.build(component.edgeBits(), joinNodes, work.originalVarMap(), 0, false);
+            builder.build(component.edgeBits(), joinNodes, precompute.originalVarMap(), 0, false);
         List<CPQExpression> deduped = ComponentExpressionBuilder.dedupeExpressions(rules);
         if (deduped.isEmpty()) {
           valid = false;
@@ -59,27 +58,13 @@ final class ExhaustiveEnumerator {
             perComponent,
             0,
             new ArrayList<>(),
-            new BitSet(work.edgeCount()),
+            new BitSet(precompute.edgeCount()),
             fullMask,
             decompositions);
       }
     }
 
     return List.copyOf(decompositions);
-  }
-
-  private static void addWholeQueryCandidates(
-      Work work,
-      ComponentExpressionBuilder builder,
-      BitSet fullMask,
-      List<List<CPQ>> decompositions) {
-    BitSet fullJoinVars = work.joinVars(fullMask, work.fullVarBits());
-    Set<String> joinNodes = toJoinNodes(fullJoinVars, work.varIdToName());
-    List<CPQExpression> rules = builder.build(fullMask, joinNodes, work.originalVarMap(), 0, false);
-    List<CPQExpression> deduped = ComponentExpressionBuilder.dedupeExpressions(rules);
-    for (CPQExpression expression : deduped) {
-      decompositions.add(List.of(expression.cpq()));
-    }
   }
 
   private static void expandComponentChoices(
@@ -119,71 +104,73 @@ final class ExhaustiveEnumerator {
 
   // ----- Partition enumeration -----
 
-  private static List<Partition> enumeratePartitions(Work work) {
-    ComponentPool pool = enumerateComponents(work);
-    return enumeratePartitions(work.edgeCount(), pool);
+  private static List<Partition> enumeratePartitions(QueryPrecompute precompute) {
+    ComponentPool pool = enumerateComponents(precompute);
+    return enumeratePartitions(precompute.edgeCount(), pool);
   }
 
-  private static ComponentPool enumerateComponents(Work work) {
+  private static ComponentPool enumerateComponents(QueryPrecompute precompute) {
     List<Component> components = new ArrayList<>();
-    List<List<Component>> componentsByEdge = new ArrayList<>(work.edgeCount());
-    for (int i = 0; i < work.edgeCount(); i++) {
+    List<List<Component>> componentsByEdge = new ArrayList<>(precompute.edgeCount());
+    for (int i = 0; i < precompute.edgeCount(); i++) {
       componentsByEdge.add(new ArrayList<>());
     }
 
-    for (int seed = 0; seed < work.edgeCount(); seed++) {
-      BitSet edges = new BitSet(work.edgeCount());
+    for (int seed = 0; seed < precompute.edgeCount(); seed++) {
+      BitSet edges = new BitSet(precompute.edgeCount());
       edges.set(seed);
-      BitSet vars = work.edgeVarsBitSet(seed);
-      BitSet frontier = adjacentEdges(work, vars, seed);
-      dfsGrow(work, seed, edges, vars, frontier, components, componentsByEdge);
+      BitSet vars = precompute.edgeVarsBitSet(seed);
+      BitSet frontier = adjacentEdges(precompute, vars, seed);
+      dfsGrow(precompute, seed, edges, vars, frontier, components, componentsByEdge);
     }
 
     return new ComponentPool(components, componentsByEdge);
   }
 
   private static void dfsGrow(
-      Work work,
+      QueryPrecompute precompute,
       int seed,
       BitSet edgeBits,
       BitSet varBits,
       BitSet frontier,
       List<Component> out,
       List<List<Component>> componentsByEdge) {
-    BitSet join = work.joinVars(edgeBits, varBits);
-    if (join.cardinality() > 2) {
-      return; // prune: supersets only increase join size
-    }
+    BitSet join = precompute.joinVars(edgeBits, varBits);
 
-    Component component =
-        new Component((BitSet) edgeBits.clone(), (BitSet) varBits.clone(), (BitSet) join.clone());
-    out.add(component);
-    for (int edgeIdx = component.edgeBits.nextSetBit(0);
-        edgeIdx >= 0;
-        edgeIdx = component.edgeBits.nextSetBit(edgeIdx + 1)) {
-      componentsByEdge.get(edgeIdx).add(component);
+    // Only add components with ≤2 join vars (valid for CPQ decomposition)
+    if (join.cardinality() <= 2) {
+      Component component =
+          new Component((BitSet) edgeBits.clone(), (BitSet) varBits.clone(), (BitSet) join.clone());
+      out.add(component);
+      for (int edgeIdx = component.edgeBits.nextSetBit(0);
+          edgeIdx >= 0;
+          edgeIdx = component.edgeBits.nextSetBit(edgeIdx + 1)) {
+        componentsByEdge.get(edgeIdx).add(component);
+      }
     }
+    // Continue DFS even if current component has >2 join vars - adding more edges
+    // may reduce join size
 
     for (int next = frontier.nextSetBit(0); next >= 0; next = frontier.nextSetBit(next + 1)) {
       BitSet newEdges = (BitSet) edgeBits.clone();
       newEdges.set(next);
 
       BitSet newVars = (BitSet) varBits.clone();
-      newVars.or(work.edgeVarsBitSet(next));
+      newVars.or(precompute.edgeVarsBitSet(next));
 
       BitSet newFrontier = (BitSet) frontier.clone();
-      newFrontier.or(adjacentEdges(work, work.edgeVarsBitSet(next), seed));
+      newFrontier.or(adjacentEdges(precompute, precompute.edgeVarsBitSet(next), seed));
       newFrontier.andNot(newEdges);
       newFrontier.clear(0, seed + 1); // enforce min edge id == seed
 
-      dfsGrow(work, seed, newEdges, newVars, newFrontier, out, componentsByEdge);
+      dfsGrow(precompute, seed, newEdges, newVars, newFrontier, out, componentsByEdge);
     }
   }
 
-  private static BitSet adjacentEdges(Work work, BitSet varBits, int seed) {
-    BitSet frontier = new BitSet(work.edgeCount());
+  private static BitSet adjacentEdges(QueryPrecompute precompute, BitSet varBits, int seed) {
+    BitSet frontier = new BitSet(precompute.edgeCount());
     for (int var = varBits.nextSetBit(0); var >= 0; var = varBits.nextSetBit(var + 1)) {
-      frontier.or(work.incidentEdges(var));
+      frontier.or(precompute.incidentEdges(var));
     }
     frontier.clear(0, seed + 1);
     return frontier;
@@ -261,36 +248,17 @@ final class ExhaustiveEnumerator {
       List<Component> components, List<List<Component>> componentsByEdge) {}
 
   /** Precomputed data for exhaustive enumeration. */
-  static final class Work {
-    private final UniqueGraph<VarCQ, AtomCQ> graph;
-    private final List<GraphEdge<VarCQ, AtomCQ>> graphEdges;
-    private final int[][] edgeVars;
-    private final BitSet[] incidentEdges;
-    private final BitSet freeVars;
-    private final List<Edge> edges;
-    private final Map<Integer, String> varIdToName;
-    private final Map<String, String> originalVarMap;
+  private record QueryPrecompute(
+      UniqueGraph<VarCQ, AtomCQ> graph,
+      List<GraphEdge<VarCQ, AtomCQ>> graphEdges,
+      int[][] edgeVars,
+      BitSet[] incidentEdges,
+      BitSet freeVars,
+      List<Edge> edges,
+      Map<Integer, String> varIdToName,
+      Map<String, String> originalVarMap) {
 
-    private Work(
-        UniqueGraph<VarCQ, AtomCQ> graph,
-        List<GraphEdge<VarCQ, AtomCQ>> graphEdges,
-        int[][] edgeVars,
-        BitSet[] incidentEdges,
-        BitSet freeVars,
-        List<Edge> edges,
-        Map<Integer, String> varIdToName,
-        Map<String, String> originalVarMap) {
-      this.graph = graph;
-      this.graphEdges = graphEdges;
-      this.edgeVars = edgeVars;
-      this.incidentEdges = incidentEdges;
-      this.freeVars = freeVars;
-      this.edges = edges;
-      this.varIdToName = varIdToName;
-      this.originalVarMap = originalVarMap;
-    }
-
-    static Work from(ConjunctiveQuery query) {
+    static QueryPrecompute from(ConjunctiveQuery query) {
       UniqueGraph<VarCQ, AtomCQ> graph = query.graph();
       List<GraphEdge<VarCQ, AtomCQ>> graphEdges = new ArrayList<>(graph.getEdges());
       int edgeCount = graphEdges.size();
@@ -335,7 +303,7 @@ final class ExhaustiveEnumerator {
         }
       }
 
-      return new Work(
+      return new QueryPrecompute(
           graph,
           graphEdges,
           edgeVars,
@@ -348,18 +316,6 @@ final class ExhaustiveEnumerator {
 
     int edgeCount() {
       return graphEdges.size();
-    }
-
-    List<Edge> edges() {
-      return edges;
-    }
-
-    Map<Integer, String> varIdToName() {
-      return varIdToName;
-    }
-
-    Map<String, String> originalVarMap() {
-      return originalVarMap;
     }
 
     BitSet edgeVarsBitSet(int edgeId) {
@@ -391,14 +347,6 @@ final class ExhaustiveEnumerator {
       BitSet fullMask = new BitSet(edgeCount());
       fullMask.set(0, edgeCount());
       return fullMask;
-    }
-
-    BitSet fullVarBits() {
-      BitSet vars = new BitSet(graph.getNodeCount());
-      for (int edgeId = 0; edgeId < edgeCount(); edgeId++) {
-        vars.or(edgeVarsBitSet(edgeId));
-      }
-      return vars;
     }
   }
 }
