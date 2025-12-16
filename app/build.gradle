@@ -93,6 +93,17 @@ tasks.register('runPlot', JavaExec) {
     }
 }
 
+tasks.register('runDecomposerDemo', JavaExec) {
+    group = 'application'
+    description = 'Runs the DecomposerDemo helper (use -Pexample=<n> to pick an example)'
+    mainClass = 'decomposition.decompose.DecomposerDemo'
+    classpath = sourceSets.main.runtimeClasspath
+    args project.findProperty('example') ? [project.property('example').toString()] : []
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 tasks.register('verifyComponents', JavaExec) {
     group = 'verification'
     description = 'Verifies CPQ components against manual joins'
