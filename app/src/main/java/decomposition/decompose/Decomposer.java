@@ -9,9 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Performs CQ -> CPQ decompositions for gMark queries.
- */
+/** Performs CQ -> CPQ decompositions for gMark queries. */
 public final class Decomposer {
 
   /** High-level decomposition strategy selection. */
@@ -24,13 +22,25 @@ public final class Decomposer {
     List<CPQ> decompose(CQ cq);
   }
 
-  private Decomposer() {
-  }
+  private Decomposer() {}
 
   public static List<CPQ> decompose(CQ cq, DecompositionMethod method) {
     Objects.requireNonNull(cq, "cq");
     Objects.requireNonNull(method, "method");
     return strategyFor(method).decompose(cq);
+  }
+
+  static List<CPQ> decompose(ConjunctiveQuery query, DecompositionMethod method) {
+    Objects.requireNonNull(query, "query");
+    Objects.requireNonNull(method, "method");
+
+    return switch (method) {
+      case SINGLE_EDGE -> strategyFor(method).decompose(query.gmarkCQ());
+      case EXHAUSTIVE_ENUMERATION -> {
+        ExhaustiveEnumerator.enumeratePartitions(query);
+        yield List.of();
+      }
+    };
   }
 
   private static DecompositionStrategy strategyFor(DecompositionMethod method) {
@@ -44,8 +54,7 @@ public final class Decomposer {
   private static final class SingleEdge implements DecompositionStrategy {
     private static final SingleEdge INSTANCE = new SingleEdge();
 
-    private SingleEdge() {
-    }
+    private SingleEdge() {}
 
     @Override
     public List<CPQ> decompose(CQ cq) {
@@ -62,25 +71,23 @@ public final class Decomposer {
         cpqs.add(cpq);
       }
 
-      return List.copyOf(cpqs);
+      return cpqs;
     }
   }
 
   /**
    * Exhaustive enumeration decomposition.
-   *
-   * <p>
-   * Placeholder implementation for now.
    */
   private static final class ExhaustiveEnumeration implements DecompositionStrategy {
     private static final ExhaustiveEnumeration INSTANCE = new ExhaustiveEnumeration();
 
-    private ExhaustiveEnumeration() {
-    }
+    private ExhaustiveEnumeration() {}
 
     @Override
     public List<CPQ> decompose(CQ cq) {
-      throw new UnsupportedOperationException("EXHAUSTIVE_ENUMERATION not implemented yet.");
+      // Enumerate partitions; CPQ conversion will be layered on top in a later step.
+      ExhaustiveEnumerator.enumeratePartitions(cq);
+      return List.of();
     }
   }
 }
