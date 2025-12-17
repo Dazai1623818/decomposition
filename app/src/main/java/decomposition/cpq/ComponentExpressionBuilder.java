@@ -2,14 +2,12 @@ package decomposition.cpq;
 
 import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
-import decomposition.cpq.model.CacheStats.ComponentKey;
-import decomposition.cpq.model.CacheStats.RuleCacheKey;
 import decomposition.util.BitsetUtils;
 import decomposition.util.GraphUtils;
-import decomposition.util.JoinNodeUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,13 +23,33 @@ import java.util.function.Function;
  */
 public final class ComponentExpressionBuilder {
   private final List<Edge> edges;
-  private final LoopVariantGenerator loopVariantGenerator;
+  private final ComponentEdgeMatcher loopVariantValidator;
   private final Map<RuleCacheKey, List<CPQExpression>> ruleCache = new ConcurrentHashMap<>();
+
+  private record RuleCacheKey(
+      String signature,
+      Set<String> joinNodes,
+      int edgeCount,
+      int diameterCap,
+      boolean firstHit,
+      boolean enforceEndpointRoles) {
+    private RuleCacheKey {
+      Objects.requireNonNull(signature, "signature");
+      joinNodes = (joinNodes == null || joinNodes.isEmpty()) ? Set.of() : Set.copyOf(joinNodes);
+    }
+  }
+
+  private record ExpressionKey(BitSet edgeBits, String source, String target) {
+    private ExpressionKey {
+      Objects.requireNonNull(edgeBits, "edgeBits");
+      Objects.requireNonNull(source, "source");
+      Objects.requireNonNull(target, "target");
+    }
+  }
 
   public ComponentExpressionBuilder(List<Edge> edges) {
     this.edges = List.copyOf(Objects.requireNonNull(edges, "edges"));
-    ComponentEdgeMatcher matcher = new ComponentEdgeMatcher(this.edges);
-    this.loopVariantGenerator = new LoopVariantGenerator(matcher);
+    this.loopVariantValidator = new ComponentEdgeMatcher(this.edges);
   }
 
   public List<CPQExpression> build(Component component, int diameterCap, boolean firstHit) {
@@ -47,7 +65,6 @@ public final class ComponentExpressionBuilder {
 
     Set<String> localJoinNodes = component.joinNodes();
     BitSet edgeSubset = component.edgeBits();
-    Map<String, String> originalVarMap = component.varMap();
 
     RuleCacheKey key =
         new RuleCacheKey(
@@ -69,30 +86,25 @@ public final class ComponentExpressionBuilder {
       expressions.addAll(
           buildSingleEdgeExpressions(
               edges.get(edgeSubset.nextSetBit(0)),
-              edgeSubset,
-              originalVarMap,
+              component,
               diameterCap,
               firstHit));
     } else {
       if (localJoinNodes.size() <= 1) {
-        expressions.addAll(
-            buildLoopBacktrack(
-                edges, edgeSubset, localJoinNodes, originalVarMap, diameterCap, firstHit));
+        expressions.addAll(buildLoopBacktrack(component, edgeSubset, localJoinNodes, diameterCap, firstHit));
       }
       Function<BitSet, List<CPQExpression>> resolver =
           subset -> recurse(subComponent(component, subset), diameterCap, firstHit, false);
       expressions.addAll(
-          buildCompositeExpressions(edgeSubset, edges.size(), resolver, diameterCap, firstHit));
+          buildCompositeExpressions(component, edgeSubset, edges.size(), resolver, diameterCap, firstHit));
     }
 
-    List<CPQExpression> expanded = expandLoopVariants(expressions, originalVarMap, diameterCap);
+    List<CPQExpression> expanded = expandLoopVariants(expressions, diameterCap);
     List<CPQExpression> result = dedupeExpressions(expanded);
     if (enforceEndpointRoles) {
       result =
           result.stream()
-              .filter(
-                  rule ->
-                      JoinNodeUtils.endpointsRespectJoinNodeRoles(rule, component, localJoinNodes))
+              .filter(rule -> endpointsAllowed(component, rule.source(), rule.target()))
               .toList();
     }
     if (firstHit && !result.isEmpty()) {
@@ -104,36 +116,93 @@ public final class ComponentExpressionBuilder {
 
   private Component subComponent(Component parent, BitSet edgeBits) {
     Set<String> vertices = GraphUtils.vertices(edgeBits, edges);
-    Set<String> joinNodes = JoinNodeUtils.localJoinNodes(edgeBits, edges, parent.joinNodes());
+    Set<String> joinNodes = localJoinNodes(vertices, parent.joinNodes());
     return new Component(edgeBits, vertices, joinNodes, parent.varMap());
   }
 
+  private static Set<String> localJoinNodes(Set<String> vertices, Set<String> joinNodes) {
+    if (joinNodes == null || joinNodes.isEmpty() || vertices == null || vertices.isEmpty()) {
+      return Set.of();
+    }
+    Set<String> local = new HashSet<>();
+    for (String vertex : vertices) {
+      if (joinNodes.contains(vertex)) {
+        local.add(vertex);
+      }
+    }
+    return local;
+  }
+
   private List<CPQExpression> expandLoopVariants(
-      List<CPQExpression> expressions, Map<String, String> originalVarMap, int diameterCap) {
+      List<CPQExpression> expressions, int diameterCap) {
     List<CPQExpression> expanded = new ArrayList<>();
     for (CPQExpression expression : expressions) {
       if (diameterCap > 0 && expression.cpq().getDiameter() > diameterCap) {
         continue;
       }
-      expanded.addAll(loopVariantGenerator.generate(expression, originalVarMap));
+      expanded.addAll(generateLoopVariants(expression));
     }
     return expanded;
+  }
+
+  private List<CPQExpression> generateLoopVariants(CPQExpression rule) {
+    CPQExpression candidate = rule;
+    if (rule.source().equals(rule.target())) {
+      try {
+        if (!rule.cpq().toQueryGraph().isLoop()) {
+          CPQ anchoredCpq = CPQ.intersect(rule.cpq(), CPQ.IDENTITY);
+          candidate =
+              new CPQExpression(
+                  anchoredCpq,
+                  rule.component(),
+                  rule.source(),
+                  rule.target(),
+                  rule.derivation() + " + anchored with id");
+        }
+      } catch (RuntimeException ignored) {
+        // Keep original if graph extraction fails
+      }
+    }
+
+    return loopVariantValidator.isValid(candidate) ? List.of(candidate) : List.of();
+  }
+
+  private static boolean endpointsAllowed(Component component, String source, String target) {
+    Set<String> vertices = component.vertices();
+    if (vertices.size() == 1) {
+      String v = vertices.iterator().next();
+      return v.equals(source) && v.equals(target);
+    }
+
+    Set<String> joinNodes = component.joinNodes();
+    return switch (joinNodes.size()) {
+      case 0 -> true;
+      case 1 -> {
+        String join = joinNodes.iterator().next();
+        yield (component.edgeCount() == 1)
+            ? (join.equals(source) || join.equals(target))
+            : (join.equals(source) && join.equals(target));
+      }
+      case 2 -> joinNodes.contains(source) && joinNodes.contains(target) && !source.equals(target);
+      default -> false;
+    };
   }
 
   public static List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
     if (expressions == null || expressions.isEmpty()) {
       return List.of();
     }
-    Map<ComponentKey, CPQExpression> unique = new LinkedHashMap<>();
+    Map<ExpressionKey, CPQExpression> unique = new LinkedHashMap<>();
     for (CPQExpression expression : expressions) {
       unique.putIfAbsent(keyOf(expression), expression);
     }
     return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
   }
 
-  private static ComponentKey keyOf(CPQExpression expression) {
+  private static ExpressionKey keyOf(CPQExpression expression) {
     Objects.requireNonNull(expression, "expression");
-    return new ComponentKey(expression.edges(), expression.source(), expression.target());
+    return new ExpressionKey(
+        expression.component().edgeBits(), expression.source(), expression.target());
   }
 
   // ===== Inlined from SingleEdgeExpressionFactory =====
@@ -141,18 +210,17 @@ public final class ComponentExpressionBuilder {
   /** Generates the CPQ expressions that arise from a single CQ edge. */
   private List<CPQExpression> buildSingleEdgeExpressions(
       Edge edge,
-      BitSet edgeBits,
-      Map<String, String> varToNodeMap,
+      Component component,
       int diameterCap,
       boolean firstHit) {
     List<CPQExpression> expressions = new ArrayList<>();
 
-    addForwardExpression(edge, edgeBits, varToNodeMap, expressions, diameterCap, firstHit);
+    addForwardExpression(edge, component, expressions, diameterCap, firstHit);
     if (!firstHit || expressions.isEmpty()) {
-      addInverseExpression(edge, edgeBits, varToNodeMap, expressions, diameterCap, firstHit);
+      addInverseExpression(edge, component, expressions, diameterCap, firstHit);
     }
     if (!firstHit || expressions.isEmpty()) {
-      addBacktrackExpressions(edge, edgeBits, varToNodeMap, expressions, diameterCap, firstHit);
+      addBacktrackExpressions(edge, component, expressions, diameterCap, firstHit);
     }
 
     return expressions;
@@ -160,8 +228,7 @@ public final class ComponentExpressionBuilder {
 
   private void addForwardExpression(
       Edge edge,
-      BitSet bits,
-      Map<String, String> varToNodeMap,
+      Component component,
       List<CPQExpression> out,
       int diameterCap,
       boolean firstHit) {
@@ -172,7 +239,7 @@ public final class ComponentExpressionBuilder {
     out.add(
         new CPQExpression(
             forward,
-            bits,
+            component,
             edge.source(),
             edge.target(),
             "Forward atom on label '"
@@ -181,14 +248,12 @@ public final class ComponentExpressionBuilder {
                 + edge.source()
                 + "→"
                 + edge.target()
-                + ")",
-            varToNodeMap));
+                + ")"));
   }
 
   private void addInverseExpression(
       Edge edge,
-      BitSet bits,
-      Map<String, String> varToNodeMap,
+      Component component,
       List<CPQExpression> out,
       int diameterCap,
       boolean firstHit) {
@@ -202,7 +267,7 @@ public final class ComponentExpressionBuilder {
     out.add(
         new CPQExpression(
             inverse,
-            bits,
+            component,
             edge.target(),
             edge.source(),
             "Inverse atom on label '"
@@ -211,14 +276,12 @@ public final class ComponentExpressionBuilder {
                 + edge.target()
                 + "→"
                 + edge.source()
-                + ")",
-            varToNodeMap));
+                + ")"));
   }
 
   private void addBacktrackExpressions(
       Edge edge,
-      BitSet bits,
-      Map<String, String> varToNodeMap,
+      Component component,
       List<CPQExpression> out,
       int diameterCap,
       boolean firstHit) {
@@ -242,10 +305,9 @@ public final class ComponentExpressionBuilder {
       addLoopExpression(
           out,
           sourceLoop,
-          bits,
+          component,
           edge.source(),
-          "Backtrack loop via '" + edge.label() + "' at " + edge.source(),
-          varToNodeMap);
+          "Backtrack loop via '" + edge.label() + "' at " + edge.source());
     }
     if (firstHit && !out.isEmpty()) {
       return;
@@ -256,21 +318,19 @@ public final class ComponentExpressionBuilder {
       addLoopExpression(
           out,
           targetLoop,
-          bits,
+          component,
           edge.target(),
-          "Backtrack loop via '" + edge.label() + "' at " + edge.target(),
-          varToNodeMap);
+          "Backtrack loop via '" + edge.label() + "' at " + edge.target());
     }
   }
 
   private void addLoopExpression(
       List<CPQExpression> out,
       CPQ cpq,
-      BitSet bits,
+      Component component,
       String anchor,
-      String derivation,
-      Map<String, String> varToNodeMap) {
-    out.add(new CPQExpression(cpq, bits, anchor, anchor, derivation, varToNodeMap));
+      String derivation) {
+    out.add(new CPQExpression(cpq, component, anchor, anchor, derivation));
   }
 
   // ===== Inlined from CompositeExpressionFactory =====
@@ -279,6 +339,7 @@ public final class ComponentExpressionBuilder {
    * Generates composite CPQ expressions by joining subcomponents via concatenation or intersection.
    */
   private List<CPQExpression> buildCompositeExpressions(
+      Component component,
       BitSet edgeBits,
       int totalEdgeCount,
       Function<BitSet, List<CPQExpression>> constructionRuleLookup,
@@ -296,11 +357,11 @@ public final class ComponentExpressionBuilder {
           }
           for (CPQExpression lhs : left) {
             for (CPQExpression rhs : right) {
-              tryConcat(edgeBits, lhs, rhs, results, diameterCap);
+              tryConcat(component, lhs, rhs, results, diameterCap);
               if (firstHit && !results.isEmpty()) {
                 return;
               }
-              tryIntersect(edgeBits, lhs, rhs, results, diameterCap);
+              tryIntersect(component, lhs, rhs, results, diameterCap);
               if (firstHit && !results.isEmpty()) {
                 return;
               }
@@ -333,7 +394,7 @@ public final class ComponentExpressionBuilder {
   }
 
   private void tryConcat(
-      BitSet edgeBits,
+      Component component,
       CPQExpression left,
       CPQExpression right,
       List<CPQExpression> sink,
@@ -356,18 +417,17 @@ public final class ComponentExpressionBuilder {
             + "] via "
             + left.target();
     emitCompositeExpression(
-        edgeBits,
+        component,
         concatenated,
         left.source(),
         right.target(),
         derivation,
-        left.varToNodeMap(),
         sink,
         diameterCap);
   }
 
   private void tryIntersect(
-      BitSet edgeBits,
+      Component component,
       CPQExpression left,
       CPQExpression right,
       List<CPQExpression> sink,
@@ -392,42 +452,39 @@ public final class ComponentExpressionBuilder {
             + "→"
             + left.target();
     emitCompositeExpression(
-        edgeBits,
+        component,
         intersection,
         left.source(),
         left.target(),
         derivation,
-        left.varToNodeMap(),
         sink,
         diameterCap);
   }
 
   private void emitCompositeExpression(
-      BitSet edgeBits,
+      Component component,
       CPQ cpq,
       String source,
       String target,
       String derivation,
-      Map<String, String> varToNodeMap,
       List<CPQExpression> sink,
       int diameterCap) {
     if (diameterCap > 0 && cpq.getDiameter() > diameterCap) {
       return;
     }
-    sink.add(new CPQExpression(cpq, edgeBits, source, target, derivation, varToNodeMap));
+    sink.add(new CPQExpression(cpq, component, source, target, derivation));
   }
 
   // ===== Inlined from LoopBacktrackBuilder =====
 
   /** Synthesizes loop-shaped CPQs that cover every edge in a component via backtracking. */
   private List<CPQExpression> buildLoopBacktrack(
-      List<Edge> edges,
+      Component component,
       BitSet edgeBits,
       Set<String> allowedAnchors,
-      Map<String, String> varToNodeMap,
       int diameterCap,
       boolean firstHit) {
-    Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edges, edgeBits);
+    Map<String, List<AdjacencyEdge>> adjacency = buildAdjacency(edgeBits);
     if (adjacency.isEmpty()) {
       return List.of();
     }
@@ -445,11 +502,10 @@ public final class ComponentExpressionBuilder {
       results.add(
           new CPQExpression(
               loopCpq,
-              edgeBits,
+              component,
               anchor,
               anchor,
-              "Loop via backtracking anchored at '" + anchor + "'",
-              varToNodeMap));
+              "Loop via backtracking anchored at '" + anchor + "'"));
       if (firstHit && !results.isEmpty()) {
         break;
       }
@@ -461,7 +517,7 @@ public final class ComponentExpressionBuilder {
     return allowedAnchors == null || allowedAnchors.isEmpty() || allowedAnchors.contains(anchor);
   }
 
-  private Map<String, List<AdjacencyEdge>> buildAdjacency(List<Edge> edges, BitSet bits) {
+  private Map<String, List<AdjacencyEdge>> buildAdjacency(BitSet bits) {
     Map<String, List<AdjacencyEdge>> adjacency = new LinkedHashMap<>();
     for (int idx = bits.nextSetBit(0); idx >= 0; idx = bits.nextSetBit(idx + 1)) {
       Edge edge = edges.get(idx);
