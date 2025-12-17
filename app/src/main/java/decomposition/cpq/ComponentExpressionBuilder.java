@@ -2,12 +2,9 @@ package decomposition.cpq;
 
 import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
-import decomposition.util.BitsetUtils;
-import decomposition.util.GraphUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +36,9 @@ public final class ComponentExpressionBuilder {
     }
   }
 
-  private record ExpressionKey(BitSet edgeBits, String source, String target) {
+  private record ExpressionKey(String signature, String source, String target) {
     private ExpressionKey {
-      Objects.requireNonNull(edgeBits, "edgeBits");
+      Objects.requireNonNull(signature, "signature");
       Objects.requireNonNull(source, "source");
       Objects.requireNonNull(target, "target");
     }
@@ -68,7 +65,7 @@ public final class ComponentExpressionBuilder {
 
     RuleCacheKey key =
         new RuleCacheKey(
-            BitsetUtils.signature(edgeSubset, edges.size()),
+            edgeSignature(edgeSubset),
             localJoinNodes,
             edgeSubset.cardinality(),
             diameterCap,
@@ -92,7 +89,7 @@ public final class ComponentExpressionBuilder {
             buildLoopBacktrack(component, edgeSubset, localJoinNodes, diameterCap, firstHit));
       }
       Function<BitSet, List<CPQExpression>> resolver =
-          subset -> recurse(subComponent(component, subset), diameterCap, firstHit, false);
+          subset -> recurse(component.restrictTo(subset, edges), diameterCap, firstHit, false);
       expressions.addAll(
           buildCompositeExpressions(
               component, edgeSubset, edges.size(), resolver, diameterCap, firstHit));
@@ -103,7 +100,7 @@ public final class ComponentExpressionBuilder {
     if (enforceEndpointRoles) {
       result =
           result.stream()
-              .filter(rule -> endpointsAllowed(component, rule.source(), rule.target()))
+              .filter(rule -> component.endpointsAllowed(rule.source(), rule.target()))
               .toList();
     }
     if (firstHit && !result.isEmpty()) {
@@ -111,25 +108,6 @@ public final class ComponentExpressionBuilder {
     }
     ruleCache.put(key, result);
     return result;
-  }
-
-  private Component subComponent(Component parent, BitSet edgeBits) {
-    Set<String> vertices = GraphUtils.vertices(edgeBits, edges);
-    Set<String> joinNodes = localJoinNodes(vertices, parent.joinNodes());
-    return new Component(edgeBits, vertices, joinNodes, parent.varMap());
-  }
-
-  private static Set<String> localJoinNodes(Set<String> vertices, Set<String> joinNodes) {
-    if (joinNodes == null || joinNodes.isEmpty() || vertices == null || vertices.isEmpty()) {
-      return Set.of();
-    }
-    Set<String> local = new HashSet<>();
-    for (String vertex : vertices) {
-      if (joinNodes.contains(vertex)) {
-        local.add(vertex);
-      }
-    }
-    return local;
   }
 
   private List<CPQExpression> expandLoopVariants(List<CPQExpression> expressions, int diameterCap) {
@@ -165,25 +143,19 @@ public final class ComponentExpressionBuilder {
     return loopVariantValidator.isValid(candidate) ? List.of(candidate) : List.of();
   }
 
-  private static boolean endpointsAllowed(Component component, String source, String target) {
-    Set<String> vertices = component.vertices();
-    if (vertices.size() == 1) {
-      String v = vertices.iterator().next();
-      return v.equals(source) && v.equals(target);
-    }
-
-    Set<String> joinNodes = component.joinNodes();
-    return switch (joinNodes.size()) {
-      case 0 -> true;
-      case 1 -> {
-        String join = joinNodes.iterator().next();
-        yield (component.edgeCount() == 1)
-            ? (join.equals(source) || join.equals(target))
-            : (join.equals(source) && join.equals(target));
+  private static String edgeSignature(BitSet bitSet) {
+    Objects.requireNonNull(bitSet, "bitSet");
+    StringBuilder builder = new StringBuilder();
+    builder.append('[');
+    boolean first = true;
+    for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
+      if (!first) {
+        builder.append(',');
       }
-      case 2 -> joinNodes.contains(source) && joinNodes.contains(target) && !source.equals(target);
-      default -> false;
-    };
+      builder.append(i);
+      first = false;
+    }
+    return builder.append(']').toString();
   }
 
   public static List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
@@ -200,7 +172,7 @@ public final class ComponentExpressionBuilder {
   private static ExpressionKey keyOf(CPQExpression expression) {
     Objects.requireNonNull(expression, "expression");
     return new ExpressionKey(
-        expression.component().edgeBits(), expression.source(), expression.target());
+        edgeSignature(expression.edges()), expression.source(), expression.target());
   }
 
   // ===== Inlined from SingleEdgeExpressionFactory =====
@@ -356,7 +328,7 @@ public final class ComponentExpressionBuilder {
    */
   private void forEachSplit(
       BitSet edgeBits, int totalEdgeCount, BiConsumer<BitSet, BitSet> visitor) {
-    List<Integer> indices = BitsetUtils.toIndexList(edgeBits);
+    List<Integer> indices = toIndexList(edgeBits);
     int combos = 1 << indices.size();
     for (int mask = 1; mask < combos - 1; mask++) {
       BitSet subsetA = new BitSet(totalEdgeCount);
@@ -370,6 +342,15 @@ public final class ComponentExpressionBuilder {
       subsetB.andNot(subsetA);
       visitor.accept(subsetA, subsetB);
     }
+  }
+
+  private static List<Integer> toIndexList(BitSet bitSet) {
+    Objects.requireNonNull(bitSet, "bitSet");
+    List<Integer> indices = new ArrayList<>();
+    for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
+      indices.add(i);
+    }
+    return indices;
   }
 
   private void tryConcat(

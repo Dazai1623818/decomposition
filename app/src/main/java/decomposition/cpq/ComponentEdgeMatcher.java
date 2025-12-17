@@ -1,8 +1,6 @@
 package decomposition.cpq;
 
 import decomposition.core.model.Edge;
-import decomposition.util.BitsetUtils;
-import decomposition.util.GraphUtils;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
@@ -33,11 +31,19 @@ final class ComponentEdgeMatcher {
   boolean isValid(CPQExpression rule) {
     BitSet edgeBits = rule.edges();
     List<Edge> componentEdges = new ArrayList<>(edgeBits.cardinality());
-    BitsetUtils.stream(edgeBits).forEach(idx -> componentEdges.add(edges.get(idx)));
-    if (componentEdges.isEmpty()) return false;
-
-    Set<String> vertices = GraphUtils.vertices(edgeBits, edges);
-    if (!vertices.contains(rule.source()) || !vertices.contains(rule.target())) return false;
+    Set<String> vertices = new HashSet<>();
+    for (int idx = edgeBits.nextSetBit(0); idx >= 0; idx = edgeBits.nextSetBit(idx + 1)) {
+      Edge edge = edges.get(idx);
+      componentEdges.add(edge);
+      vertices.add(edge.source());
+      vertices.add(edge.target());
+    }
+    if (componentEdges.isEmpty()) {
+      return false;
+    }
+    if (!vertices.contains(rule.source()) || !vertices.contains(rule.target())) {
+      return false;
+    }
 
     List<GraphEdge<VarCQ, AtomCQ>> cpqEdges;
     QueryGraphCPQ cpqGraph;
