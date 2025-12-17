@@ -32,6 +32,11 @@ public record Component(
     return edgeBits.cardinality();
   }
 
+  @Override
+  public BitSet edgeBits() {
+    return (BitSet) edgeBits.clone();
+  }
+
   public boolean containsEdge(int index) {
     return edgeBits.get(index);
   }

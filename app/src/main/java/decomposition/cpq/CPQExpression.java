@@ -1,16 +1,14 @@
 package decomposition.cpq;
 
-import decomposition.cpq.model.CacheStats.ComponentKey;
+import decomposition.core.model.Component;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Represents a recognized component together with its CPQ AST. The CPQ object is the authoritative
- * representation; toString() is only for display.
+ * Represents a CPQ AST together with its owning {@link Component}. The CPQ object is the
+ * authoritative representation; {@link #cpqRule()} is only for display.
  *
  * <p>Design invariants:
  *
@@ -20,63 +18,20 @@ import java.util.Objects;
  *   <li>Reverse edges are represented via inverse labels (r⁻) when required for intersections or
  *       joins.
  *   <li>Each instance records a derivation description for explainability/debugging.
- *   <li>Structural comparisons use only edge coverage + oriented endpoints; CPQ syntax is
- *       informational.
  * </ul>
  */
-public final class CPQExpression {
-  private final CPQ cpq;
-  private final BitSet edges;
-  private final String source;
-  private final String target;
-  private final String derivation;
-  private final Map<String, String> varToNodeMap;
-  private final Map<String, String> nodeToVarMap;
+public record CPQExpression(CPQ cpq, Component component, String source, String target, String derivation) {
 
-  public CPQExpression(
-      CPQ cpq,
-      BitSet edges,
-      String source,
-      String target,
-      String derivation,
-      Map<String, String> varToNodeMap) {
-    this.cpq = Objects.requireNonNull(cpq, "cpq");
-    this.edges = (BitSet) Objects.requireNonNull(edges, "edges").clone();
-    this.source = Objects.requireNonNull(source, "source");
-    this.target = Objects.requireNonNull(target, "target");
-    this.derivation = Objects.requireNonNull(derivation, "derivation");
-    this.varToNodeMap =
-        Collections.unmodifiableMap(
-            new LinkedHashMap<>(Objects.requireNonNull(varToNodeMap, "varToNodeMap")));
-    this.nodeToVarMap = Collections.unmodifiableMap(invertMapping(this.varToNodeMap));
-  }
-
-  private static Map<String, String> invertMapping(Map<String, String> mapping) {
-    Map<String, String> inverse = new LinkedHashMap<>();
-    for (Map.Entry<String, String> entry : mapping.entrySet()) {
-      inverse.put(entry.getValue(), entry.getKey());
-    }
-    return inverse;
-  }
-
-  public CPQ cpq() {
-    return cpq;
+  public CPQExpression {
+    Objects.requireNonNull(cpq, "cpq");
+    Objects.requireNonNull(component, "component");
+    Objects.requireNonNull(source, "source");
+    Objects.requireNonNull(target, "target");
+    Objects.requireNonNull(derivation, "derivation");
   }
 
   public BitSet edges() {
-    return (BitSet) edges.clone();
-  }
-
-  public String source() {
-    return source;
-  }
-
-  public String target() {
-    return target;
-  }
-
-  public String derivation() {
-    return derivation;
+    return component.edgeBits();
   }
 
   /**
@@ -84,17 +39,25 @@ public final class CPQExpression {
    * component.
    */
   public Map<String, String> varToNodeMap() {
-    return varToNodeMap;
+    return component.varMap();
   }
 
   /** Looks up the graph node assigned to a CQ variable, if any. */
   public String getNodeForVar(String varName) {
-    return varToNodeMap.get(varName);
+    return component.varMap().get(varName);
   }
 
   /** Looks up the original CQ variable assigned to a graph node, if any. */
   public String getVarForNode(String node) {
-    return nodeToVarMap.get(node);
+    if (node == null) {
+      return null;
+    }
+    for (Map.Entry<String, String> entry : component.varMap().entrySet()) {
+      if (Objects.equals(node, entry.getValue())) {
+        return entry.getKey();
+      }
+    }
+    return null;
   }
 
   /**
@@ -103,52 +66,5 @@ public final class CPQExpression {
    */
   public String cpqRule() {
     return cpq.toString();
-  }
-
-  /** Creates a component key for memoization based on edges and endpoints. */
-  public ComponentKey toKey(int totalEdges) {
-    return new ComponentKey(edges, source, target);
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (!(o instanceof CPQExpression that)) {
-      return false;
-    }
-    return cpq.equals(that.cpq)
-        && edges.equals(that.edges)
-        && source.equals(that.source)
-        && target.equals(that.target)
-        && derivation.equals(that.derivation)
-        && varToNodeMap.equals(that.varToNodeMap);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(cpq, edges, source, target, derivation, varToNodeMap);
-  }
-
-  @Override
-  public String toString() {
-    return "CPQExpression{"
-        + "cpq="
-        + cpq
-        + ", edges="
-        + edges
-        + ", source='"
-        + source
-        + '\''
-        + ", target='"
-        + target
-        + '\''
-        + ", derivation='"
-        + derivation
-        + '\''
-        + ", varToNodeMap="
-        + varToNodeMap
-        + '}';
   }
 }

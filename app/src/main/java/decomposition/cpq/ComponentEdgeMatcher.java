@@ -31,11 +31,12 @@ final class ComponentEdgeMatcher {
   }
 
   boolean isValid(CPQExpression rule) {
-    List<Edge> componentEdges = new ArrayList<>(rule.edges().cardinality());
-    BitsetUtils.stream(rule.edges()).forEach(idx -> componentEdges.add(edges.get(idx)));
+    BitSet edgeBits = rule.edges();
+    List<Edge> componentEdges = new ArrayList<>(edgeBits.cardinality());
+    BitsetUtils.stream(edgeBits).forEach(idx -> componentEdges.add(edges.get(idx)));
     if (componentEdges.isEmpty()) return false;
 
-    Set<String> vertices = GraphUtils.vertices(rule.edges(), edges);
+    Set<String> vertices = GraphUtils.vertices(edgeBits, edges);
     if (!vertices.contains(rule.source()) || !vertices.contains(rule.target())) return false;
 
     List<GraphEdge<VarCQ, AtomCQ>> cpqEdges;
