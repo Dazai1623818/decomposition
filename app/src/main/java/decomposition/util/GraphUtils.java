@@ -62,7 +62,7 @@ public final class GraphUtils {
   }
 
   public static Component buildComponent(BitSet edgeBits, List<Edge> edges) {
-    return new Component(edgeBits, vertices(edgeBits, edges));
+    return new Component(edgeBits, vertices(edgeBits, edges), Set.of(), Map.of());
   }
 
   public static Map<String, Set<String>> buildAdjacency(BitSet edgeBits, List<Edge> edges) {

@@ -1,5 +1,6 @@
 package decomposition.decompose;
 
+import decomposition.core.model.Component;
 import decomposition.core.model.Edge;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
@@ -24,38 +25,42 @@ final class ExhaustiveEnumerator {
     var builder = new ComponentExpressionBuilder(g.edges);
 
     return partitions(components, g.fullMask()).stream()
-        .flatMap(partition -> toCpqLists(partition, builder, g))
+        .flatMap(partition -> toCpqLists(partition, builder, g.fullMask()))
         .toList();
   }
 
   /** All ways to partition fullMask using components. */
-  private static List<List<BitSet>> partitions(List<BitSet> components, BitSet remaining) {
+  private static List<List<Component>> partitions(List<Component> components, BitSet remaining) {
     if (remaining.isEmpty()) return List.of(List.of());
     int first = remaining.nextSetBit(0);
 
     return components.stream()
-        .filter(c -> c.get(first) && isSubset(c, remaining))
         .flatMap(
-            c -> partitions(components, minus(remaining, c)).stream().map(rest -> prepend(c, rest)))
+            component -> {
+              var edgeBits = component.edgeBits();
+              if (!edgeBits.get(first) || !isSubset(edgeBits, remaining)) {
+                return Stream.<List<Component>>empty();
+              }
+              return partitions(components, minus(remaining, edgeBits)).stream()
+                  .map(rest -> prepend(component, rest));
+            })
         .toList();
   }
 
   /** Convert a partition of edge-sets into all valid CPQ decompositions. */
   private static Stream<List<CPQ>> toCpqLists(
-      List<BitSet> partition, ComponentExpressionBuilder builder, QueryGraph g) {
+      List<Component> partition, ComponentExpressionBuilder builder, BitSet fullMask) {
     var choices =
         partition.stream()
             .map(
-                edges -> {
-                  var joinNodes = g.joinNodes(edges);
-                  var exprs = builder.build(edges, joinNodes, g.varMap, 0, false);
-                  return ComponentExpressionBuilder.dedupeExpressions(exprs);
-                })
+                component ->
+                    ComponentExpressionBuilder.dedupeExpressions(
+                        builder.build(component, 0, false)))
             .toList();
 
     if (choices.stream().anyMatch(List::isEmpty)) return Stream.empty();
     return cartesianProduct(choices).stream()
-        .filter(cpqs -> coversAll(cpqs, g.fullMask()))
+        .filter(cpqs -> coversAll(cpqs, fullMask))
         .map(List::copyOf);
   }
 
@@ -156,8 +161,8 @@ final class ExhaustiveEnumerator {
     }
 
     /** All connected subgraphs with ≤2 join variables. */
-    List<BitSet> enumerateComponents() {
-      var out = new ArrayList<BitSet>();
+    List<Component> enumerateComponents() {
+      var out = new ArrayList<Component>();
       for (int seed = 0; seed < n; seed++) {
         var edges = new BitSet();
         edges.set(seed);
@@ -166,8 +171,10 @@ final class ExhaustiveEnumerator {
       return out;
     }
 
-    private void grow(int seed, BitSet edges, BitSet vars, List<BitSet> out) {
-      if (joinVarCount(edges, vars) <= 2) out.add((BitSet) edges.clone());
+    private void grow(int seed, BitSet edges, BitSet vars, List<Component> out) {
+      if (joinVarCount(edges, vars) <= 2) {
+        out.add(new Component(edges, vertexNames(vars), joinNodes(edges), varMap));
+      }
 
       // Add adjacent edges with index > seed
       for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
@@ -205,6 +212,15 @@ final class ExhaustiveEnumerator {
           var name = varNames.get(v);
           if (name != null) names.add(name);
         }
+      }
+      return names;
+    }
+
+    private Set<String> vertexNames(BitSet vars) {
+      var names = new LinkedHashSet<String>();
+      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
+        var name = varNames.get(v);
+        if (name != null) names.add(name);
       }
       return names;
     }

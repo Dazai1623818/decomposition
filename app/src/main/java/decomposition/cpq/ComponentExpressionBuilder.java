@@ -34,38 +34,20 @@ public final class ComponentExpressionBuilder {
     this.loopVariantGenerator = new LoopVariantGenerator(matcher);
   }
 
-  public List<CPQExpression> build(BitSet edgeSubset, Map<String, String> originalVarMap) {
-    return build(edgeSubset, Set.of(), originalVarMap, 0, false);
-  }
-
-  public List<CPQExpression> build(
-      BitSet edgeSubset,
-      Set<String> requestedJoinNodes,
-      Map<String, String> originalVarMap,
-      int diameterCap,
-      boolean firstHit) {
-    Objects.requireNonNull(edgeSubset, "edgeSubset");
-    Objects.requireNonNull(originalVarMap, "originalVarMap");
-    if (edgeSubset.isEmpty()) {
+  public List<CPQExpression> build(Component component, int diameterCap, boolean firstHit) {
+    Objects.requireNonNull(component, "component");
+    if (component.edgeBits().isEmpty()) {
       return List.of();
     }
-    Set<String> normalizedJoinNodes =
-        (requestedJoinNodes == null || requestedJoinNodes.isEmpty())
-            ? Set.of()
-            : Set.copyOf(requestedJoinNodes);
-    return recurse(edgeSubset, normalizedJoinNodes, originalVarMap, diameterCap, firstHit, true);
+    return recurse(component, diameterCap, firstHit, true);
   }
 
   private List<CPQExpression> recurse(
-      BitSet edgeSubset,
-      Set<String> requestedJoinNodes,
-      Map<String, String> originalVarMap,
-      int diameterCap,
-      boolean firstHit,
-      boolean enforceEndpointRoles) {
+      Component component, int diameterCap, boolean firstHit, boolean enforceEndpointRoles) {
 
-    Set<String> localJoinNodes =
-        JoinNodeUtils.localJoinNodes(edgeSubset, edges, requestedJoinNodes);
+    Set<String> localJoinNodes = component.joinNodes();
+    BitSet edgeSubset = component.edgeBits();
+    Map<String, String> originalVarMap = component.varMap();
 
     RuleCacheKey key =
         new RuleCacheKey(
@@ -76,31 +58,36 @@ public final class ComponentExpressionBuilder {
             firstHit,
             enforceEndpointRoles);
 
-    List<CPQExpression> cached = resolveCached(key);
+    List<CPQExpression> cached = ruleCache.get(key);
     if (cached != null) {
       return cached;
     }
 
-    int edgeCount = edgeSubset.cardinality();
+    int edgeCount = component.edgeCount();
     List<CPQExpression> expressions = new ArrayList<>();
-    expressions.addAll(
-        generateBaseExpressions(
-            edgeSubset, edgeCount, localJoinNodes, originalVarMap, diameterCap, firstHit));
-    if (edgeCount > 1) {
+    if (edgeCount == 1) {
       expressions.addAll(
-          generateCompositeExpressions(
+          buildSingleEdgeExpressions(
+              edges.get(edgeSubset.nextSetBit(0)),
               edgeSubset,
-              requestedJoinNodes,
               originalVarMap,
               diameterCap,
-              firstHit,
-              enforceEndpointRoles));
+              firstHit));
+    } else {
+      if (localJoinNodes.size() <= 1) {
+        expressions.addAll(
+            buildLoopBacktrack(
+                edges, edgeSubset, localJoinNodes, originalVarMap, diameterCap, firstHit));
+      }
+      Function<BitSet, List<CPQExpression>> resolver =
+          subset -> recurse(subComponent(component, subset), diameterCap, firstHit, false);
+      expressions.addAll(
+          buildCompositeExpressions(edgeSubset, edges.size(), resolver, diameterCap, firstHit));
     }
 
     List<CPQExpression> expanded = expandLoopVariants(expressions, originalVarMap, diameterCap);
     List<CPQExpression> result = dedupeExpressions(expanded);
     if (enforceEndpointRoles) {
-      Component component = GraphUtils.buildComponent(edgeSubset, edges);
       result =
           result.stream()
               .filter(
@@ -115,40 +102,10 @@ public final class ComponentExpressionBuilder {
     return result;
   }
 
-  private List<CPQExpression> resolveCached(RuleCacheKey key) {
-    return ruleCache.get(key);
-  }
-
-  private List<CPQExpression> generateBaseExpressions(
-      BitSet edgeSubset,
-      int edgeCount,
-      Set<String> localJoinNodes,
-      Map<String, String> originalVarMap,
-      int diameterCap,
-      boolean firstHit) {
-    if (edgeCount == 1) {
-      return buildSingleEdgeExpressions(
-          edges.get(edgeSubset.nextSetBit(0)), edgeSubset, originalVarMap, diameterCap, firstHit);
-    }
-    List<CPQExpression> base = new ArrayList<>();
-    if (localJoinNodes.size() <= 1) {
-      base.addAll(
-          buildLoopBacktrack(
-              edges, edgeSubset, localJoinNodes, originalVarMap, diameterCap, firstHit));
-    }
-    return base;
-  }
-
-  private List<CPQExpression> generateCompositeExpressions(
-      BitSet edgeSubset,
-      Set<String> requestedJoinNodes,
-      Map<String, String> originalVarMap,
-      int diameterCap,
-      boolean firstHit,
-      boolean enforceEndpointRoles) {
-    Function<BitSet, List<CPQExpression>> resolver =
-        subset -> recurse(subset, requestedJoinNodes, originalVarMap, diameterCap, firstHit, false);
-    return buildCompositeExpressions(edgeSubset, edges.size(), resolver, diameterCap, firstHit);
+  private Component subComponent(Component parent, BitSet edgeBits) {
+    Set<String> vertices = GraphUtils.vertices(edgeBits, edges);
+    Set<String> joinNodes = JoinNodeUtils.localJoinNodes(edgeBits, edges, parent.joinNodes());
+    return new Component(edgeBits, vertices, joinNodes, parent.varMap());
   }
 
   private List<CPQExpression> expandLoopVariants(
