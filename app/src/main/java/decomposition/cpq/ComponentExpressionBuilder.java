@@ -85,18 +85,17 @@ public final class ComponentExpressionBuilder {
     if (edgeCount == 1) {
       expressions.addAll(
           buildSingleEdgeExpressions(
-              edges.get(edgeSubset.nextSetBit(0)),
-              component,
-              diameterCap,
-              firstHit));
+              edges.get(edgeSubset.nextSetBit(0)), component, diameterCap, firstHit));
     } else {
       if (localJoinNodes.size() <= 1) {
-        expressions.addAll(buildLoopBacktrack(component, edgeSubset, localJoinNodes, diameterCap, firstHit));
+        expressions.addAll(
+            buildLoopBacktrack(component, edgeSubset, localJoinNodes, diameterCap, firstHit));
       }
       Function<BitSet, List<CPQExpression>> resolver =
           subset -> recurse(subComponent(component, subset), diameterCap, firstHit, false);
       expressions.addAll(
-          buildCompositeExpressions(component, edgeSubset, edges.size(), resolver, diameterCap, firstHit));
+          buildCompositeExpressions(
+              component, edgeSubset, edges.size(), resolver, diameterCap, firstHit));
     }
 
     List<CPQExpression> expanded = expandLoopVariants(expressions, diameterCap);
@@ -133,8 +132,7 @@ public final class ComponentExpressionBuilder {
     return local;
   }
 
-  private List<CPQExpression> expandLoopVariants(
-      List<CPQExpression> expressions, int diameterCap) {
+  private List<CPQExpression> expandLoopVariants(List<CPQExpression> expressions, int diameterCap) {
     List<CPQExpression> expanded = new ArrayList<>();
     for (CPQExpression expression : expressions) {
       if (diameterCap > 0 && expression.cpq().getDiameter() > diameterCap) {
@@ -209,10 +207,7 @@ public final class ComponentExpressionBuilder {
 
   /** Generates the CPQ expressions that arise from a single CQ edge. */
   private List<CPQExpression> buildSingleEdgeExpressions(
-      Edge edge,
-      Component component,
-      int diameterCap,
-      boolean firstHit) {
+      Edge edge, Component component, int diameterCap, boolean firstHit) {
     List<CPQExpression> expressions = new ArrayList<>();
 
     addForwardExpression(edge, component, expressions, diameterCap, firstHit);
@@ -227,11 +222,7 @@ public final class ComponentExpressionBuilder {
   }
 
   private void addForwardExpression(
-      Edge edge,
-      Component component,
-      List<CPQExpression> out,
-      int diameterCap,
-      boolean firstHit) {
+      Edge edge, Component component, List<CPQExpression> out, int diameterCap, boolean firstHit) {
     CPQ forward = CPQ.label(edge.predicate());
     if (diameterCap > 0 && forward.getDiameter() > diameterCap) {
       return;
@@ -252,11 +243,7 @@ public final class ComponentExpressionBuilder {
   }
 
   private void addInverseExpression(
-      Edge edge,
-      Component component,
-      List<CPQExpression> out,
-      int diameterCap,
-      boolean firstHit) {
+      Edge edge, Component component, List<CPQExpression> out, int diameterCap, boolean firstHit) {
     if (edge.source().equals(edge.target())) {
       return;
     }
@@ -280,11 +267,7 @@ public final class ComponentExpressionBuilder {
   }
 
   private void addBacktrackExpressions(
-      Edge edge,
-      Component component,
-      List<CPQExpression> out,
-      int diameterCap,
-      boolean firstHit) {
+      Edge edge, Component component, List<CPQExpression> out, int diameterCap, boolean firstHit) {
     if (edge.source().equals(edge.target())) {
       // CQ already a true self-loop (single vertex, src==target); no extra
       // backtracking variants
@@ -325,11 +308,7 @@ public final class ComponentExpressionBuilder {
   }
 
   private void addLoopExpression(
-      List<CPQExpression> out,
-      CPQ cpq,
-      Component component,
-      String anchor,
-      String derivation) {
+      List<CPQExpression> out, CPQ cpq, Component component, String anchor, String derivation) {
     out.add(new CPQExpression(cpq, component, anchor, anchor, derivation));
   }
 
@@ -417,13 +396,7 @@ public final class ComponentExpressionBuilder {
             + "] via "
             + left.target();
     emitCompositeExpression(
-        component,
-        concatenated,
-        left.source(),
-        right.target(),
-        derivation,
-        sink,
-        diameterCap);
+        component, concatenated, left.source(), right.target(), derivation, sink, diameterCap);
   }
 
   private void tryIntersect(
@@ -452,13 +425,7 @@ public final class ComponentExpressionBuilder {
             + "→"
             + left.target();
     emitCompositeExpression(
-        component,
-        intersection,
-        left.source(),
-        left.target(),
-        derivation,
-        sink,
-        diameterCap);
+        component, intersection, left.source(), left.target(), derivation, sink, diameterCap);
   }
 
   private void emitCompositeExpression(

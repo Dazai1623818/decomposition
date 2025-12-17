@@ -20,7 +20,8 @@ import java.util.Objects;
  *   <li>Each instance records a derivation description for explainability/debugging.
  * </ul>
  */
-public record CPQExpression(CPQ cpq, Component component, String source, String target, String derivation) {
+public record CPQExpression(
+    CPQ cpq, Component component, String source, String target, String derivation) {
 
   public CPQExpression {
     Objects.requireNonNull(cpq, "cpq");
