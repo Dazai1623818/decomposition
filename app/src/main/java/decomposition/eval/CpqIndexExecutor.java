@@ -118,11 +118,11 @@ public final class CpqIndexExecutor {
 
   public static Component fromExpression(CPQExpression expression) {
     Objects.requireNonNull(expression, "expression");
-    String left = variableName(expression.getVarForNode(expression.source()));
+    String left = variableName(expression.component().getVarForNode(expression.source()));
     if (left == null) {
       left = variableName(expression.source());
     }
-    String right = variableName(expression.getVarForNode(expression.target()));
+    String right = variableName(expression.component().getVarForNode(expression.target()));
     if (right == null) {
       right = variableName(expression.target());
     }

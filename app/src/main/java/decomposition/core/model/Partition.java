@@ -1,6 +1,5 @@
 package decomposition.core.model;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -18,9 +17,5 @@ public record Partition(List<Component> components) {
 
   public Component component(int index) {
     return components.get(index);
-  }
-
-  public List<Component> components() {
-    return Collections.unmodifiableList(components);
   }
 }
