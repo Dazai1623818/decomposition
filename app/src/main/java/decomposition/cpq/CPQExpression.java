@@ -1,6 +1,6 @@
 package decomposition.cpq;
 
-import decomposition.core.model.Component;
+import decomposition.core.Component;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.Objects;
 

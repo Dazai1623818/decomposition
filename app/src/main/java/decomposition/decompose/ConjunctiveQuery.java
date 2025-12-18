@@ -1,6 +1,6 @@
 package decomposition.decompose;
 
-import dev.roanh.gmark.lang.cpq.CPQ;
+import decomposition.cpq.CPQExpression;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -31,11 +31,11 @@ public final class ConjunctiveQuery {
   }
 
   /** Decomposes this CQ using {@link Decomposer.DecompositionMethod#SINGLE_EDGE}. */
-  public List<List<CPQ>> decompose() {
+  public List<List<CPQExpression>> decompose() {
     return decompose(Decomposer.DecompositionMethod.SINGLE_EDGE);
   }
 
-  public List<List<CPQ>> decompose(Decomposer.DecompositionMethod method) {
+  public List<List<CPQExpression>> decompose(Decomposer.DecompositionMethod method) {
     Objects.requireNonNull(method, "method");
     return Decomposer.decompose(this, method);
   }

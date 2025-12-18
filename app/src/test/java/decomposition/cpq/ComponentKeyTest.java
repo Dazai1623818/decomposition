@@ -2,7 +2,7 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import decomposition.core.model.Component;
+import decomposition.core.Component;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.BitSet;
 import java.util.List;

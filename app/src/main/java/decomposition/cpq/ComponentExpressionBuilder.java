@@ -1,7 +1,7 @@
 package decomposition.cpq;
 
-import decomposition.core.model.Component;
-import decomposition.core.model.Edge;
+import decomposition.core.Component;
+import decomposition.core.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cpq.QueryGraphCPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
@@ -80,7 +80,8 @@ public final class ComponentExpressionBuilder {
     if (component.edgeBits().isEmpty()) return List.of();
     Map<CacheKey, List<CPQExpression>> cache = new HashMap<>();
     List<CPQExpression> result = recurse(component, new Options(diameterCap), cache);
-    result = result.stream().filter(e -> component.endpointsAllowed(e.source(), e.target())).toList();
+    result =
+        result.stream().filter(e -> component.endpointsAllowed(e.source(), e.target())).toList();
     if (firstHit && !result.isEmpty()) {
       result = List.of(result.get(0));
     }
@@ -224,39 +225,39 @@ public final class ComponentExpressionBuilder {
               // Concatenation: lhs.target == rhs.source
               if (lhs.target().equals(rhs.source())) {
                 CPQ cpq = CPQ.concat(List.of(lhs.cpq(), rhs.cpq()));
-	                emit(
-	                    out,
-	                    cpq,
-	                    owner,
-	                    lhs.source(),
-	                    rhs.target(),
-	                    "Concatenation: ["
-	                        + lhs.cpq()
-	                        + "] then ["
-	                        + rhs.cpq()
-	                        + "] via "
-	                        + lhs.target(),
-	                    o);
+                emit(
+                    out,
+                    cpq,
+                    owner,
+                    lhs.source(),
+                    rhs.target(),
+                    "Concatenation: ["
+                        + lhs.cpq()
+                        + "] then ["
+                        + rhs.cpq()
+                        + "] via "
+                        + lhs.target(),
+                    o);
               }
 
               // Intersection: same endpoints
               if (lhs.source().equals(rhs.source()) && lhs.target().equals(rhs.target())) {
                 CPQ cpq = CPQ.intersect(List.of(lhs.cpq(), rhs.cpq()));
-	                emit(
-	                    out,
-	                    cpq,
-	                    owner,
-	                    lhs.source(),
-	                    lhs.target(),
-	                    "Intersection: ["
-	                        + lhs.cpq()
-	                        + "] ∩ ["
-	                        + rhs.cpq()
-	                        + "] at "
-	                        + lhs.source()
-	                        + "→"
-	                        + lhs.target(),
-	                    o);
+                emit(
+                    out,
+                    cpq,
+                    owner,
+                    lhs.source(),
+                    lhs.target(),
+                    "Intersection: ["
+                        + lhs.cpq()
+                        + "] ∩ ["
+                        + rhs.cpq()
+                        + "] at "
+                        + lhs.source()
+                        + "→"
+                        + lhs.target(),
+                    o);
               }
             }
           }
@@ -330,7 +331,6 @@ public final class ComponentExpressionBuilder {
           anchor,
           "Loop via backtracking anchored at '" + anchor + "'",
           o);
-
     }
     return out;
   }
@@ -416,16 +416,16 @@ public final class ComponentExpressionBuilder {
    * Public deduper (kept for compatibility). Uses (edge-set signature, source, target) as the key.
    * Within one component, the signature is constant, so this reduces to endpoint dedupe.
    */
-	  public static List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
-	    if (expressions == null || expressions.isEmpty()) return List.of();
+  public static List<CPQExpression> dedupeExpressions(List<CPQExpression> expressions) {
+    if (expressions == null || expressions.isEmpty()) return List.of();
 
-	    Map<String, CPQExpression> unique = new LinkedHashMap<>();
-	    for (CPQExpression e : expressions) {
-	      String k = signature(e.component().edgeBits()) + "|" + e.source() + "|" + e.target();
-	      unique.putIfAbsent(k, e);
-	    }
-	    return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
-	  }
+    Map<String, CPQExpression> unique = new LinkedHashMap<>();
+    for (CPQExpression e : expressions) {
+      String k = signature(e.component().edgeBits()) + "|" + e.source() + "|" + e.target();
+      unique.putIfAbsent(k, e);
+    }
+    return unique.isEmpty() ? List.of() : List.copyOf(unique.values());
+  }
 
   // --------------------------------------------------------------------------
   // Signature (stable for an edge subset)
@@ -460,8 +460,8 @@ public final class ComponentExpressionBuilder {
       this.allEdges = List.copyOf(Objects.requireNonNull(allEdges, "allEdges"));
     }
 
-	    boolean isValid(CPQExpression rule) {
-	      BitSet edgeBits = rule.component().edgeBits();
+    boolean isValid(CPQExpression rule) {
+      BitSet edgeBits = rule.component().edgeBits();
 
       List<Edge> componentEdges = new ArrayList<>(edgeBits.cardinality());
       Set<String> vertices = new LinkedHashSet<>();

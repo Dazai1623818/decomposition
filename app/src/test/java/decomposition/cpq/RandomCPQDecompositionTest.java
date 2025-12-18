@@ -55,7 +55,7 @@ final class RandomCPQDecompositionTest {
     CPQ loop = CPQ.parse("(0 ◦ 0⁻ ∩ id)");
     CQ cq = loop.toCQ();
 
-    List<List<CPQ>> decompositions =
+    List<List<CPQExpression>> decompositions =
         Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
     assertTrue(!decompositions.isEmpty(), "Loop CPQ should produce decompositions");
   }
@@ -65,18 +65,19 @@ final class RandomCPQDecompositionTest {
     CPQ intersection = CPQ.parse("(0 ∩ 1)");
     CQ cq = intersection.toCQ();
 
-    List<List<CPQ>> decompositions =
+    List<List<CPQExpression>> decompositions =
         Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
     assertTrue(!decompositions.isEmpty(), "Intersection CPQ should execute successfully");
   }
 
   private static ReconstructionResult analyseReconstruction(
       CPQ original, CQ cq, List<Predicate> alphabet) {
-    List<List<CPQ>> decompositions =
+    List<List<CPQExpression>> decompositions =
         Decomposer.decompose(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
 
     boolean hasSingleComponent = decompositions.stream().anyMatch(decomp -> decomp.size() == 1);
-    List<CPQ> candidates = decompositions.stream().flatMap(List::stream).toList();
+    List<CPQ> candidates =
+        decompositions.stream().flatMap(List::stream).map(CPQExpression::cpq).toList();
 
     Optional<CPQ> matchingCandidate =
         candidates.stream()
