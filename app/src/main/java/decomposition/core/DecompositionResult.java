@@ -1,6 +1,5 @@
 package decomposition.core;
 
-import decomposition.core.diagnostics.PartitionDiagnostic;
 import decomposition.core.model.Edge;
 import decomposition.core.model.Partition;
 import decomposition.cpq.CPQExpression;
@@ -23,7 +22,6 @@ public record DecompositionResult(
     CPQExpression finalExpression,
     List<CPQExpression> globalCatalogue,
     List<PartitionEvaluation> partitionEvaluations,
-    List<PartitionDiagnostic> diagnostics,
     long elapsedMillis,
     String terminationReason) {
 
@@ -35,7 +33,6 @@ public record DecompositionResult(
     Objects.requireNonNull(cpqPartitions, "cpqPartitions");
     Objects.requireNonNull(recognizedCatalogue, "recognizedCatalogue");
     Objects.requireNonNull(globalCatalogue, "globalCatalogue");
-    Objects.requireNonNull(diagnostics, "diagnostics");
     Objects.requireNonNull(partitionEvaluations, "partitionEvaluations");
     edges = List.copyOf(edges);
     freeVariables = Set.copyOf(freeVariables);
@@ -45,7 +42,6 @@ public record DecompositionResult(
     recognizedCatalogue = List.copyOf(recognizedCatalogue);
     globalCatalogue = List.copyOf(globalCatalogue);
     partitionEvaluations = List.copyOf(partitionEvaluations);
-    diagnostics = List.copyOf(diagnostics);
   }
 
   public boolean hasFinalExpression() {
