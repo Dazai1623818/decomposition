@@ -1,4 +1,4 @@
-package decomposition.core.model;
+package decomposition.core;
 
 import java.util.BitSet;
 import java.util.HashSet;
@@ -17,14 +17,8 @@ public record Component(
 
     edgeBits = (BitSet) edgeBits.clone();
     vertices = Set.copyOf(vertices);
-    joinNodes =
-        joinNodes == null || joinNodes.isEmpty()
-            ? Set.of()
-            : Set.copyOf(joinNodes);
-    varMap =
-        varMap == null || varMap.isEmpty()
-            ? Map.of()
-            : Map.copyOf(varMap);
+    joinNodes = joinNodes == null || joinNodes.isEmpty() ? Set.of() : Set.copyOf(joinNodes);
+    varMap = varMap == null || varMap.isEmpty() ? Map.of() : Map.copyOf(varMap);
   }
 
   public int edgeCount() {

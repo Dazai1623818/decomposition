@@ -1,4 +1,4 @@
-package decomposition.core.model;
+package decomposition.core;
 
 import dev.roanh.gmark.type.schema.Predicate;
 import java.util.Objects;
