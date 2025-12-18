@@ -1,8 +1,6 @@
 package decomposition.core.model;
 
 import java.util.BitSet;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,15 +16,15 @@ public record Component(
     Objects.requireNonNull(vertices, "vertices");
 
     edgeBits = (BitSet) edgeBits.clone();
-    vertices = Collections.unmodifiableSet(new HashSet<>(vertices));
+    vertices = Set.copyOf(vertices);
     joinNodes =
         joinNodes == null || joinNodes.isEmpty()
             ? Set.of()
-            : Collections.unmodifiableSet(new HashSet<>(joinNodes));
+            : Set.copyOf(joinNodes);
     varMap =
         varMap == null || varMap.isEmpty()
             ? Map.of()
-            : Collections.unmodifiableMap(new HashMap<>(varMap));
+            : Map.copyOf(varMap);
   }
 
   public int edgeCount() {
@@ -53,14 +51,28 @@ public record Component(
       subVertices.add(edge.target());
     }
 
-    Set<String> subJoinNodes = new HashSet<>();
-    for (String joinNode : joinNodes()) {
-      if (subVertices.contains(joinNode)) {
-        subJoinNodes.add(joinNode);
-      }
-    }
+    Set<String> subJoinNodes = new HashSet<>(joinNodes());
+    subJoinNodes.retainAll(subVertices);
 
     return new Component(subEdgeBits, subVertices, subJoinNodes, varMap());
+  }
+
+  /** Looks up the graph node assigned to a CQ variable, if any. */
+  public String getNodeForVar(String varName) {
+    return varMap().get(varName);
+  }
+
+  /** Looks up the original CQ variable assigned to a graph node, if any. */
+  public String getVarForNode(String node) {
+    if (node == null) {
+      return null;
+    }
+    for (Map.Entry<String, String> entry : varMap().entrySet()) {
+      if (Objects.equals(node, entry.getValue())) {
+        return entry.getKey();
+      }
+    }
+    return null;
   }
 
   public boolean endpointsAllowed(String source, String target) {
