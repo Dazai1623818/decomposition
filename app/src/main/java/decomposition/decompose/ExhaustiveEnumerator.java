@@ -7,6 +7,7 @@ import decomposition.cpq.ComponentExpressionBuilder;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,9 +24,10 @@ final class ExhaustiveEnumerator {
     var g = new QueryGraph(query);
     var components = g.enumerateComponents();
     var builder = new ComponentExpressionBuilder(g.edges);
+    Map<Component, List<CPQExpression>> expressionCache = new HashMap<>();
 
     return partitions(components, g.fullMask()).stream()
-        .flatMap(partition -> toCpqLists(partition, builder, g.fullMask()))
+        .flatMap(partition -> toCpqLists(partition, builder, expressionCache))
         .toList();
   }
 
@@ -49,19 +51,18 @@ final class ExhaustiveEnumerator {
 
   /** Convert a partition of edge-sets into all valid CPQ decompositions. */
   private static Stream<List<CPQ>> toCpqLists(
-      List<Component> partition, ComponentExpressionBuilder builder, BitSet fullMask) {
+      List<Component> partition,
+      ComponentExpressionBuilder builder,
+      Map<Component, List<CPQExpression>> expressionCache) {
     var choices =
         partition.stream()
             .map(
                 component ->
-                    ComponentExpressionBuilder.dedupeExpressions(
-                        builder.build(component, 0, false)))
+                    expressionCache.computeIfAbsent(component, c -> builder.build(c, 0, false)))
             .toList();
 
     if (choices.stream().anyMatch(List::isEmpty)) return Stream.empty();
-    return cartesianProduct(choices).stream()
-        .filter(cpqs -> coversAll(cpqs, fullMask))
-        .map(List::copyOf);
+    return cartesianProduct(choices).stream().map(List::copyOf);
   }
 
   /** Cartesian product of CPQ choices per component. */
@@ -76,16 +77,12 @@ final class ExhaustiveEnumerator {
     return result;
   }
 
-  private static boolean coversAll(List<CPQ> cpqs, BitSet full) {
-    // Each CPQExpression already tracks edges; for simplicity assume valid if we
-    // got here
-    return true; // The partition already covers all edges by construction
-  }
-
   // ----- BitSet helpers -----
 
   private static boolean isSubset(BitSet sub, BitSet sup) {
-    return !sub.stream().anyMatch(i -> !sup.get(i));
+    var diff = (BitSet) sub.clone();
+    diff.andNot(sup);
+    return diff.isEmpty();
   }
 
   private static BitSet minus(BitSet a, BitSet b) {
@@ -172,8 +169,9 @@ final class ExhaustiveEnumerator {
     }
 
     private void grow(int seed, BitSet edges, BitSet vars, List<Component> out) {
-      if (joinVarCount(edges, vars) <= 2) {
-        out.add(new Component(edges, vertexNames(vars), joinNodes(edges), varMap));
+      Set<String> joinNodes = joinNodes(edges, vars);
+      if (joinNodes.size() <= 2) {
+        out.add(new Component(edges, vertexNames(vars), joinNodes, varMap));
       }
 
       // Add adjacent edges with index > seed
@@ -196,16 +194,7 @@ final class ExhaustiveEnumerator {
       return vars;
     }
 
-    private int joinVarCount(BitSet edges, BitSet vars) {
-      int count = 0;
-      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
-        if (freeVars.get(v) || !isSubset(incident[v], edges)) count++;
-      }
-      return count;
-    }
-
-    Set<String> joinNodes(BitSet edges) {
-      var vars = varsOf(edges);
+    private Set<String> joinNodes(BitSet edges, BitSet vars) {
       var names = new LinkedHashSet<String>();
       for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
         if (freeVars.get(v) || !isSubset(incident[v], edges)) {
