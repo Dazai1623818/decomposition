@@ -95,8 +95,8 @@ tasks.register('runPlot', JavaExec) {
 
 tasks.register('runDecomposerDemo', JavaExec) {
     group = 'application'
-    description = 'Runs the DecomposerDemo helper (use -Pexample=<n> to pick an example)'
-    mainClass = 'decomposition.decompose.DecomposerDemo'
+    description = 'Runs the decomposition demo (use -Pexample=<n> to pick an example)'
+    mainClass = 'decomposition.cli.Main'
     classpath = sourceSets.main.runtimeClasspath
     args project.findProperty('example') ? [project.property('example').toString()] : []
     javaLauncher = javaToolchains.launcherFor {

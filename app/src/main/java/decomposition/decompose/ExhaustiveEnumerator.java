@@ -1,13 +1,13 @@
 package decomposition.decompose;
 
-import decomposition.core.model.Component;
-import decomposition.core.model.Edge;
+import decomposition.core.Component;
+import decomposition.core.Edge;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
-import dev.roanh.gmark.lang.cpq.CPQ;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,15 +20,20 @@ final class ExhaustiveEnumerator {
 
   private ExhaustiveEnumerator() {}
 
-  static List<List<CPQ>> decompose(ConjunctiveQuery query) {
+  static List<List<CPQExpression>> decompose(ConjunctiveQuery query) {
     var g = new QueryGraph(query);
     var components = g.enumerateComponents();
     var builder = new ComponentExpressionBuilder(g.edges);
-    Map<Component, List<CPQExpression>> expressionCache = new HashMap<>();
+    Map<Component, CPQExpression> expressionCache = new HashMap<>();
 
-    return partitions(components, g.fullMask()).stream()
-        .flatMap(partition -> toCpqLists(partition, builder, expressionCache))
-        .toList();
+    Map<String, List<CPQExpression>> unique = new LinkedHashMap<>();
+    for (List<Component> partition : partitions(components, g.fullMask())) {
+      List<CPQExpression> tuple = toCpqList(partition, builder, expressionCache);
+      if (tuple != null) {
+        unique.putIfAbsent(tupleKey(tuple), tuple);
+      }
+    }
+    return List.copyOf(unique.values());
   }
 
   /** All ways to partition fullMask using components. */
@@ -50,31 +55,61 @@ final class ExhaustiveEnumerator {
   }
 
   /** Convert a partition of edge-sets into all valid CPQ decompositions. */
-  private static Stream<List<CPQ>> toCpqLists(
+  private static List<CPQExpression> toCpqList(
       List<Component> partition,
       ComponentExpressionBuilder builder,
-      Map<Component, List<CPQExpression>> expressionCache) {
-    var choices =
-        partition.stream()
-            .map(
-                component ->
-                    expressionCache.computeIfAbsent(component, c -> builder.build(c, 0, false)))
-            .toList();
-
-    if (choices.stream().anyMatch(List::isEmpty)) return Stream.empty();
-    return cartesianProduct(choices).stream().map(List::copyOf);
+      Map<Component, CPQExpression> expressionCache) {
+    List<CPQExpression> tuple = new ArrayList<>(partition.size());
+    for (Component component : partition) {
+      CPQExpression chosen =
+          expressionCache.computeIfAbsent(component, c -> chooseOne(builder.build(c, 0, true)));
+      if (chosen == null) {
+        return null;
+      }
+      tuple.add(chosen);
+    }
+    return List.copyOf(tuple);
   }
 
-  /** Cartesian product of CPQ choices per component. */
-  private static List<List<CPQ>> cartesianProduct(List<List<CPQExpression>> choices) {
-    List<List<CPQ>> result = List.of(List.of());
-    for (var options : choices) {
-      result =
-          result.stream()
-              .flatMap(prefix -> options.stream().map(e -> append(prefix, e.cpq())))
-              .toList();
+  /**
+   * Picks a single representative expression for a component.
+   *
+   * <p>Heuristic: prefer smaller diameter, then shorter normalized string, then lexicographic.
+   */
+  private static CPQExpression chooseOne(List<CPQExpression> options) {
+    if (options == null || options.isEmpty()) {
+      return null;
     }
-    return result;
+    CPQExpression best = null;
+    for (CPQExpression candidate : options) {
+      if (candidate == null) {
+        continue;
+      }
+      if (best == null) {
+        best = candidate;
+        continue;
+      }
+      int cd = candidate.cpq().getDiameter();
+      int bd = best.cpq().getDiameter();
+      if (cd != bd) {
+        if (cd < bd) {
+          best = candidate;
+        }
+        continue;
+      }
+      String cs = sanitize(candidate.cpq().toString());
+      String bs = sanitize(best.cpq().toString());
+      if (cs.length() != bs.length()) {
+        if (cs.length() < bs.length()) {
+          best = candidate;
+        }
+        continue;
+      }
+      if (cs.compareTo(bs) < 0) {
+        best = candidate;
+      }
+    }
+    return best;
   }
 
   // ----- BitSet helpers -----
@@ -98,10 +133,33 @@ final class ExhaustiveEnumerator {
     return r;
   }
 
-  private static <T> List<T> append(List<T> list, T item) {
-    var r = new ArrayList<>(list);
-    r.add(item);
-    return r;
+  private static String tupleKey(List<CPQExpression> tuple) {
+    List<String> keys = new ArrayList<>(tuple.size());
+    for (CPQExpression e : tuple) {
+      keys.add(expressionKey(e));
+    }
+    keys.sort(String::compareTo);
+    return String.join("|", keys);
+  }
+
+  private static String expressionKey(CPQExpression e) {
+    String cpq = sanitize(e.cpq().toString());
+    String source = e.source();
+    String target = e.target();
+    String edgeSig = e.component() == null ? "" : bitsetSignature(e.component().edgeBits());
+    return edgeSig + ":" + source + ">" + target + ":" + cpq;
+  }
+
+  private static String sanitize(String s) {
+    return s.replace(" ", "");
+  }
+
+  private static String bitsetSignature(BitSet bits) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
+      sb.append(i).append(',');
+    }
+    return sb.toString();
   }
 
   // ----- Query Graph (precomputed structure) -----
@@ -160,18 +218,23 @@ final class ExhaustiveEnumerator {
     /** All connected subgraphs with ≤2 join variables. */
     List<Component> enumerateComponents() {
       var out = new ArrayList<Component>();
+      Set<String> seenEdgeSets = new HashSet<>();
       for (int seed = 0; seed < n; seed++) {
         var edges = new BitSet();
         edges.set(seed);
-        grow(seed, edges, varsOf(edges), out);
+        grow(seed, edges, varsOf(edges), out, seenEdgeSets);
       }
       return out;
     }
 
-    private void grow(int seed, BitSet edges, BitSet vars, List<Component> out) {
+    private void grow(
+        int seed, BitSet edges, BitSet vars, List<Component> out, Set<String> seenEdgeSets) {
       Set<String> joinNodes = joinNodes(edges, vars);
       if (joinNodes.size() <= 2) {
-        out.add(new Component(edges, vertexNames(vars), joinNodes, varMap));
+        String signature = bitsetSignature(edges);
+        if (seenEdgeSets.add(signature)) {
+          out.add(new Component(edges, vertexNames(vars), joinNodes, varMap));
+        }
       }
 
       // Add adjacent edges with index > seed
@@ -180,7 +243,7 @@ final class ExhaustiveEnumerator {
           if (edges.get(e)) continue;
           var newE = (BitSet) edges.clone();
           newE.set(e);
-          grow(seed, newE, varsOf(newE), out);
+          grow(seed, newE, varsOf(newE), out, seenEdgeSets);
         }
       }
     }
