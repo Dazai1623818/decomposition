@@ -53,8 +53,6 @@ public final class ComponentExpressionBuilder {
     if (component.edgeBits().isEmpty()) return List.of();
     Map<CacheKey, List<CPQExpression>> cache = new HashMap<>();
     List<CPQExpression> result = recurse(component, new Options(diameterCap), cache, firstHit);
-    result =
-        result.stream().filter(e -> component.endpointsAllowed(e.source(), e.target())).toList();
     // Optimized: return immediately if we only need one result and found it.
     // We also pass firstHit down into recurse() to stop generation early.
     if (firstHit && !result.isEmpty()) {
@@ -80,6 +78,7 @@ public final class ComponentExpressionBuilder {
         expressions.addAll(
             BacktrackingLoops.findAll(
                 edges, component, bits, component.joinNodes(), o.diameterCap()));
+        expressions.removeIf(e -> !component.endpointsAllowed(e.source(), e.target()));
       }
 
       // Optimization: if we found a simple loop/backtrack solution and only need one,
@@ -176,6 +175,7 @@ public final class ComponentExpressionBuilder {
       String derivation,
       Options o) {
     if (o.diameterCap() > 0 && cpq.getDiameter() > o.diameterCap()) return;
+    if (!component.endpointsAllowed(source, target)) return;
     CPQExpression candidate = new CPQExpression(cpq, component, source, target, derivation);
     CPQExpression looped = makeLoop(candidate, o);
     if (looped == null) {
