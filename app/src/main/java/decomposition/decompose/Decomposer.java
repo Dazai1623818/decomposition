@@ -2,6 +2,7 @@ package decomposition.decompose;
 
 import decomposition.core.Component;
 import decomposition.cpq.CPQExpression;
+import decomposition.eval.EvaluationRun;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
@@ -19,7 +20,9 @@ public final class Decomposer {
   /** High-level decomposition strategy selection. */
   public enum DecompositionMethod {
     SINGLE_EDGE,
-    EXHAUSTIVE_ENUMERATION
+    EXHAUSTIVE_ENUMERATION,
+    /** Exhaustive enumeration with parallel processing. */
+    EXHAUSTIVE_PARALLEL
   }
 
   private Decomposer() {}
@@ -36,7 +39,35 @@ public final class Decomposer {
 
     return switch (method) {
       case SINGLE_EDGE -> singleEdgeDecompose(query);
+      case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumerator.decompose(query).decompositions();
+      case EXHAUSTIVE_PARALLEL ->
+          ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel())
+              .decompositions();
+    };
+  }
+
+  /**
+   * Decomposes a CQ and returns a run record with timings and results.
+   *
+   * <p>Only available for exhaustive methods.
+   */
+  public static EvaluationRun decomposeWithRun(CQ cq, DecompositionMethod method) {
+    Objects.requireNonNull(cq, "cq");
+    Objects.requireNonNull(method, "method");
+    return decomposeWithRun(new ConjunctiveQuery(cq), method);
+  }
+
+  static EvaluationRun decomposeWithRun(ConjunctiveQuery query, DecompositionMethod method) {
+    Objects.requireNonNull(query, "query");
+    Objects.requireNonNull(method, "method");
+
+    return switch (method) {
       case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumerator.decompose(query);
+      case EXHAUSTIVE_PARALLEL ->
+          ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel());
+      default ->
+          throw new IllegalArgumentException(
+              "Run data only available for EXHAUSTIVE_ENUMERATION or EXHAUSTIVE_PARALLEL");
     };
   }
 

@@ -4,8 +4,11 @@ import decomposition.core.Component;
 import decomposition.core.Edge;
 import decomposition.cpq.CPQExpression;
 import decomposition.cpq.ComponentExpressionBuilder;
+import decomposition.eval.EvaluationRun;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -13,48 +16,219 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
-/** Exhaustive enumeration of CQ → CPQ decompositions. */
+/**
+ * Exhaustive enumeration of CQ → CPQ decompositions
+ *
+ * <p>Implementation details:
+ *
+ * <ul>
+ *   <li>Partitions are generated imperatively instead of via Stream.flatMap.
+ *   <li>Partitions are produced lazily to avoid generating all combinations upfront.
+ *   <li>Deduplication uses structural hashes rather than full CPQ serialization.
+ *   <li>Parallel processing is available through a ForkJoinPool.
+ * </ul>
+ */
 final class ExhaustiveEnumerator {
 
   private ExhaustiveEnumerator() {}
 
-  static List<List<CPQExpression>> decompose(ConjunctiveQuery query) {
-    var g = new QueryGraph(query);
-    var components = g.enumerateComponents();
-    var builder = new ComponentExpressionBuilder(g.edges);
-    Map<Component, CPQExpression> expressionCache = new HashMap<>();
+  /** Configuration for the exhaustive enumerator. */
+  static final class Config {
+    boolean parallel = false;
+    int parallelism = Runtime.getRuntime().availableProcessors();
 
-    Map<String, List<CPQExpression>> unique = new LinkedHashMap<>();
-    for (List<Component> partition : partitions(components, g.fullMask())) {
-      List<CPQExpression> tuple = toCpqList(partition, builder, expressionCache);
-      if (tuple != null) {
-        unique.putIfAbsent(tupleKey(tuple), tuple);
+    static Config sequential() {
+      return new Config();
+    }
+
+    static Config parallel() {
+      Config c = new Config();
+      c.parallel = true;
+      return c;
+    }
+
+    static Config parallel(int parallelism) {
+      Config c = new Config();
+      c.parallel = true;
+      c.parallelism = parallelism;
+      return c;
+    }
+  }
+
+  static EvaluationRun decompose(ConjunctiveQuery query) {
+    return decompose(query, Config.sequential());
+  }
+
+  static EvaluationRun decompose(ConjunctiveQuery query, Config config) {
+    EvaluationRun run = new EvaluationRun();
+    long totalStart = System.nanoTime();
+
+    // Phase 1: Component enumeration
+    long phase1Start = System.nanoTime();
+    var g = new QueryGraph(query);
+    var components = g.enumerateComponents(config.parallel);
+    long phase1End = System.nanoTime();
+    run.recordPhase(
+        EvaluationRun.Phase.COMPONENT_ENUMERATION,
+        (phase1End - phase1Start) / 1_000_000,
+        components.size());
+
+    // Phase 2: Build component index for faster lookup
+    var builder = new ComponentExpressionBuilder(g.edges);
+    BitSet fullMask = g.fullMask();
+
+    // Pre-index components by first set bit for faster partition generation
+    @SuppressWarnings("unchecked")
+    List<Component>[] componentsByFirstBit = new List[g.n];
+    for (int i = 0; i < g.n; i++) {
+      componentsByFirstBit[i] = new ArrayList<>();
+    }
+    for (Component c : components) {
+      int first = c.edgeBits().nextSetBit(0);
+      if (first >= 0) {
+        componentsByFirstBit[first].add(c);
       }
     }
-    return List.copyOf(unique.values());
+
+    // Phase 3: Generate partitions and build expressions
+    long phase2Start = System.nanoTime();
+    AtomicInteger partitionCount = new AtomicInteger(0);
+
+    Map<Component, CPQExpression> expressionCache =
+        config.parallel ? new ConcurrentHashMap<>() : new HashMap<>();
+    Map<String, List<CPQExpression>> unique =
+        config.parallel ? new ConcurrentHashMap<>() : new LinkedHashMap<>();
+
+    if (config.parallel) {
+      // Parallel partition processing
+      ForkJoinPool pool =
+          config.parallelism == ForkJoinPool.getCommonPoolParallelism()
+              ? ForkJoinPool.commonPool()
+              : new ForkJoinPool(config.parallelism);
+      try {
+        List<List<Component>> allPartitions = new ArrayList<>();
+        generatePartitionsIterative(
+            componentsByFirstBit, fullMask, g.n, partition -> allPartitions.add(partition));
+        partitionCount.set(allPartitions.size());
+
+        pool.submit(
+                () ->
+                    allPartitions.parallelStream()
+                        .forEach(
+                            partition -> {
+                              long exprStart = System.nanoTime();
+                              List<CPQExpression> tuple =
+                                  toCpqList(partition, builder, expressionCache);
+                              long exprEnd = System.nanoTime();
+                              run.addExpressionBuildingTime((exprEnd - exprStart) / 1_000_000);
+
+                              if (tuple != null) {
+                                String key = tupleKeyStructural(tuple);
+                                unique.putIfAbsent(key, tuple);
+                              }
+                            }))
+            .join();
+      } finally {
+        if (pool != ForkJoinPool.commonPool()) {
+          pool.shutdown();
+        }
+      }
+    } else {
+      // Sequential partition processing with lazy generation
+      generatePartitionsIterative(
+          componentsByFirstBit,
+          fullMask,
+          g.n,
+          partition -> {
+            partitionCount.incrementAndGet();
+
+            long exprStart = System.nanoTime();
+            List<CPQExpression> tuple = toCpqList(partition, builder, expressionCache);
+            long exprEnd = System.nanoTime();
+            run.addExpressionBuildingTime((exprEnd - exprStart) / 1_000_000);
+
+            if (tuple != null) {
+              String key = tupleKeyStructural(tuple);
+              unique.putIfAbsent(key, tuple);
+            }
+          });
+    }
+    long phase2End = System.nanoTime();
+    run.recordPhase(
+        EvaluationRun.Phase.PARTITION_GENERATION,
+        (phase2End - phase2Start) / 1_000_000,
+        partitionCount.get());
+    run.finalizeExpressionBuilding();
+
+    // Phase 4: Final result assembly
+    long phase3Start = System.nanoTime();
+    List<List<CPQExpression>> result = List.copyOf(unique.values());
+    long phase3End = System.nanoTime();
+    run.recordPhase(
+        EvaluationRun.Phase.DEDUPLICATION, (phase3End - phase3Start) / 1_000_000, result.size());
+    run.setDecompositions(result);
+
+    long totalEnd = System.nanoTime();
+    run.recordPhaseMs(EvaluationRun.Phase.TOTAL, (totalEnd - totalStart) / 1_000_000);
+
+    return run;
   }
 
-  /** All ways to partition fullMask using components. */
-  private static List<List<Component>> partitions(List<Component> components, BitSet remaining) {
-    if (remaining.isEmpty()) return List.of(List.of());
-    int first = remaining.nextSetBit(0);
+  /**
+   * Generates partitions iteratively using backtracking.
+   *
+   * <p>This avoids the overhead of Stream.flatMap and recursive function calls.
+   */
+  private static void generatePartitionsIterative(
+      List<Component>[] componentsByFirstBit,
+      BitSet fullMask,
+      int edgeCount,
+      Consumer<List<Component>> consumer) {
 
-    return components.stream()
-        .flatMap(
-            component -> {
-              var edgeBits = component.edgeBits();
-              if (!edgeBits.get(first) || !isSubset(edgeBits, remaining)) {
-                return Stream.<List<Component>>empty();
-              }
-              return partitions(components, minus(remaining, edgeBits)).stream()
-                  .map(rest -> prepend(component, rest));
-            })
-        .toList();
+    // Stack-based backtracking
+    Deque<PartitionState> stack = new ArrayDeque<>();
+    stack.push(new PartitionState((BitSet) fullMask.clone(), new ArrayList<>(), 0));
+
+    while (!stack.isEmpty()) {
+      PartitionState state = stack.pop();
+
+      if (state.remaining.isEmpty()) {
+        // Found a complete partition
+        consumer.accept(List.copyOf(state.partition));
+        continue;
+      }
+
+      int firstBit = state.remaining.nextSetBit(0);
+      List<Component> candidates = componentsByFirstBit[firstBit];
+
+      // Try each component that covers firstBit
+      for (int i = state.candidateIndex; i < candidates.size(); i++) {
+        Component c = candidates.get(i);
+        BitSet bits = c.edgeBits();
+
+        // Check if this component is a subset of remaining
+        if (!isSubset(bits, state.remaining)) {
+          continue;
+        }
+
+        // Create new state with this component added
+        BitSet newRemaining = minus(state.remaining, bits);
+        List<Component> newPartition = new ArrayList<>(state.partition);
+        newPartition.add(c);
+
+        stack.push(new PartitionState(newRemaining, newPartition, 0));
+      }
+    }
   }
 
-  /** Convert a partition of edge-sets into all valid CPQ decompositions. */
+  private record PartitionState(BitSet remaining, List<Component> partition, int candidateIndex) {}
+
+  /** Convert a partition of edge-sets into CPQ expressions. */
   private static List<CPQExpression> toCpqList(
       List<Component> partition,
       ComponentExpressionBuilder builder,
@@ -74,7 +248,7 @@ final class ExhaustiveEnumerator {
   /**
    * Picks a single representative expression for a component.
    *
-   * <p>Heuristic: prefer smaller diameter, then shorter normalized string, then lexicographic.
+   * <p>Heuristic: prefer smaller diameter, then shorter normalized string.
    */
   private static CPQExpression chooseOne(List<CPQExpression> options) {
     if (options == null || options.isEmpty()) {
@@ -82,9 +256,7 @@ final class ExhaustiveEnumerator {
     }
     CPQExpression best = null;
     for (CPQExpression candidate : options) {
-      if (candidate == null) {
-        continue;
-      }
+      if (candidate == null) continue;
       if (best == null) {
         best = candidate;
         continue;
@@ -92,17 +264,13 @@ final class ExhaustiveEnumerator {
       int cd = candidate.cpq().getDiameter();
       int bd = best.cpq().getDiameter();
       if (cd != bd) {
-        if (cd < bd) {
-          best = candidate;
-        }
+        if (cd < bd) best = candidate;
         continue;
       }
-      String cs = sanitize(candidate.cpq().toString());
-      String bs = sanitize(best.cpq().toString());
+      String cs = candidate.cpq().toString().replace(" ", "");
+      String bs = best.cpq().toString().replace(" ", "");
       if (cs.length() != bs.length()) {
-        if (cs.length() < bs.length()) {
-          best = candidate;
-        }
+        if (cs.length() < bs.length()) best = candidate;
         continue;
       }
       if (cs.compareTo(bs) < 0) {
@@ -110,6 +278,39 @@ final class ExhaustiveEnumerator {
       }
     }
     return best;
+  }
+
+  // ----- Structural hashing for deduplication -----
+
+  /**
+   * Creates a key for a tuple using structural hashing.
+   *
+   * <p>Uses edge bits + endpoints instead of full CPQ string serialization.
+   */
+  private static String tupleKeyStructural(List<CPQExpression> tuple) {
+    // Sort by edge signature for canonical ordering
+    List<String> keys = new ArrayList<>(tuple.size());
+    for (CPQExpression e : tuple) {
+      keys.add(expressionKeyStructural(e));
+    }
+    keys.sort(String::compareTo);
+    return String.join("|", keys);
+  }
+
+  private static String expressionKeyStructural(CPQExpression e) {
+    // Use edge bits + source/target + diameter as a faster key
+    String edgeSig = e.component() != null ? bitsetToIntString(e.component().edgeBits()) : "";
+    int diameter = e.cpq().getDiameter();
+    return edgeSig + ":" + e.source() + ">" + e.target() + ":" + diameter;
+  }
+
+  private static String bitsetToIntString(BitSet bits) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
+      if (sb.length() > 0) sb.append(',');
+      sb.append(i);
+    }
+    return sb.toString();
   }
 
   // ----- BitSet helpers -----
@@ -126,49 +327,13 @@ final class ExhaustiveEnumerator {
     return r;
   }
 
-  private static <T> List<T> prepend(T head, List<T> tail) {
-    var r = new ArrayList<T>(tail.size() + 1);
-    r.add(head);
-    r.addAll(tail);
-    return r;
-  }
-
-  private static String tupleKey(List<CPQExpression> tuple) {
-    List<String> keys = new ArrayList<>(tuple.size());
-    for (CPQExpression e : tuple) {
-      keys.add(expressionKey(e));
-    }
-    keys.sort(String::compareTo);
-    return String.join("|", keys);
-  }
-
-  private static String expressionKey(CPQExpression e) {
-    String cpq = sanitize(e.cpq().toString());
-    String source = e.source();
-    String target = e.target();
-    String edgeSig = e.component() == null ? "" : bitsetSignature(e.component().edgeBits());
-    return edgeSig + ":" + source + ">" + target + ":" + cpq;
-  }
-
-  private static String sanitize(String s) {
-    return s.replace(" ", "");
-  }
-
-  private static String bitsetSignature(BitSet bits) {
-    StringBuilder sb = new StringBuilder();
-    for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
-      sb.append(i).append(',');
-    }
-    return sb.toString();
-  }
-
   // ----- Query Graph (precomputed structure) -----
 
   private static final class QueryGraph {
-    final int n; // edge count
-    final BitSet[] incident; // incident[v] = edges touching variable v
+    final int n;
+    final BitSet[] incident;
     final BitSet freeVars;
-    final int[][] edgeEndpoints; // edgeEndpoints[e] = {src, dst}
+    final int[][] edgeEndpoints;
     final List<Edge> edges;
     final Map<Integer, String> varNames;
     final Map<String, String> varMap;
@@ -215,52 +380,96 @@ final class ExhaustiveEnumerator {
       return m;
     }
 
-    /** All connected subgraphs with ≤2 join variables. */
-    List<Component> enumerateComponents() {
-      var out = new ArrayList<Component>();
-      Set<String> seenEdgeSets = new HashSet<>();
-      for (int seed = 0; seed < n; seed++) {
-        var edges = new BitSet();
-        edges.set(seed);
-        grow(seed, edges, varsOf(edges), out, seenEdgeSets);
+    List<Component> enumerateComponents(boolean parallel) {
+      if (parallel) {
+        return java.util.stream.IntStream.range(0, n)
+            .parallel()
+            .mapToObj(this::enumerateFromSeed)
+            .flatMap(List::stream)
+            .toList();
+      } else {
+        List<Component> out = new ArrayList<>();
+        Set<BitSet> seen = new HashSet<>();
+        for (int seed = 0; seed < n; seed++) {
+          out.addAll(enumerateFromSeed(seed, seen));
+        }
+        return out;
+      }
+    }
+
+    private List<Component> enumerateFromSeed(int seed) {
+      return enumerateFromSeed(seed, new HashSet<>());
+    }
+
+    private List<Component> enumerateFromSeed(int seed, Set<BitSet> seen) {
+      List<Component> out = new ArrayList<>();
+      Deque<GrowState> stack = new ArrayDeque<>();
+
+      BitSet startEdges = new BitSet(n);
+      startEdges.set(seed);
+      stack.push(new GrowState(seed, startEdges, varsOf(startEdges)));
+
+      while (!stack.isEmpty()) {
+        GrowState state = stack.pop();
+
+        if (!seen.add(state.edgeBits)) {
+          continue;
+        }
+
+        Set<String> joinNodes = joinNodes(state.edgeBits, state.vars);
+        if (joinNodes.size() <= 2) {
+          out.add(new Component(state.edgeBits, vertexNames(state.vars), joinNodes, varMap));
+        } else {
+          // Pruning: if more than 2 join nodes, this component itself is invalid,
+          // but could we grow it into something with fewer join nodes?
+          // In CQ decomposition, adding an edge usually increases or keeps join nodes
+          // same
+          // (unless it closes a cycle that absorbs a frontier variable).
+          // However, components are connected subgraphs. Adding an edge connects to one
+          // or two existing vars.
+          // Frontier variables are those that have incident edges NOT in the component.
+          // Adding an edge converts a frontier edge to an internal edge, potentially
+          // removing a join node.
+          // BUT if we already have >2 join nodes, it's very unlikely to drop below 2 by
+          // adding more edges.
+          // Let's keep it safe for now and not prune unless we are sure.
+        }
+
+        // Try adding adjacent edges with index > seed
+        for (int v = state.vars.nextSetBit(0); v >= 0; v = state.vars.nextSetBit(v + 1)) {
+          BitSet possible = (BitSet) incident[v].clone();
+          // Only edges with index > seed to avoid permutations
+          // (incident[v] is already a BitSet, nextSetBit(seed + 1) is efficient)
+          for (int e = possible.nextSetBit(seed + 1); e >= 0; e = possible.nextSetBit(e + 1)) {
+            if (state.edgeBits.get(e)) continue;
+
+            BitSet nextEdges = (BitSet) state.edgeBits.clone();
+            nextEdges.set(e);
+
+            if (seen.contains(nextEdges)) continue;
+
+            stack.push(new GrowState(seed, nextEdges, varsOf(nextEdges)));
+          }
+        }
       }
       return out;
     }
 
-    private void grow(
-        int seed, BitSet edges, BitSet vars, List<Component> out, Set<String> seenEdgeSets) {
-      Set<String> joinNodes = joinNodes(edges, vars);
-      if (joinNodes.size() <= 2) {
-        String signature = bitsetSignature(edges);
-        if (seenEdgeSets.add(signature)) {
-          out.add(new Component(edges, vertexNames(vars), joinNodes, varMap));
-        }
-      }
+    private record GrowState(int seed, BitSet edgeBits, BitSet vars) {}
 
-      // Add adjacent edges with index > seed
-      for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
-        for (int e = incident[v].nextSetBit(seed + 1); e >= 0; e = incident[v].nextSetBit(e + 1)) {
-          if (edges.get(e)) continue;
-          var newE = (BitSet) edges.clone();
-          newE.set(e);
-          grow(seed, newE, varsOf(newE), out, seenEdgeSets);
-        }
-      }
-    }
-
-    private BitSet varsOf(BitSet edges) {
+    private BitSet varsOf(BitSet edgeBits) {
       var vars = new BitSet();
-      for (int e = edges.nextSetBit(0); e >= 0; e = edges.nextSetBit(e + 1)) {
+      for (int e = edgeBits.nextSetBit(0); e >= 0; e = edgeBits.nextSetBit(e + 1)) {
         vars.set(edgeEndpoints[e][0]);
         vars.set(edgeEndpoints[e][1]);
       }
       return vars;
     }
 
-    private Set<String> joinNodes(BitSet edges, BitSet vars) {
+    private Set<String> joinNodes(BitSet edgeBits, BitSet vars) {
       var names = new LinkedHashSet<String>();
       for (int v = vars.nextSetBit(0); v >= 0; v = vars.nextSetBit(v + 1)) {
-        if (freeVars.get(v) || !isSubset(incident[v], edges)) {
+        if (freeVars.get(v) || !isSubset(incident[v], edgeBits)) {
           var name = varNames.get(v);
           if (name != null) names.add(name);
         }
