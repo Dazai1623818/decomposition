@@ -9,7 +9,8 @@ import java.util.Objects;
 /**
  * Tracks a single end-to-end run for decomposition (and optional evaluation).
  *
- * <p>Stores the decompositions plus timing/count data for each phase.
+ * <p>
+ * Stores the decompositions plus timing/count data for each phase.
  */
 public final class EvaluationRun {
 
@@ -34,7 +35,8 @@ public final class EvaluationRun {
   private List<Map<String, Integer>> evaluationResults = List.of();
   private final List<String> events = new ArrayList<>();
 
-  public EvaluationRun() {}
+  public EvaluationRun() {
+  }
 
   // ----- Recording -----
 
@@ -64,8 +66,7 @@ public final class EvaluationRun {
   }
 
   public void setEvaluationResults(List<Map<String, Integer>> evaluationResults) {
-    this.evaluationResults =
-        List.copyOf(Objects.requireNonNull(evaluationResults, "evaluationResults"));
+    this.evaluationResults = List.copyOf(Objects.requireNonNull(evaluationResults, "evaluationResults"));
   }
 
   public void logEvent(String message) {
@@ -99,6 +100,8 @@ public final class EvaluationRun {
 
   // ----- Convenience metrics -----
 
+  // ----- Convenience metrics -----
+
   public long componentEnumerationMs() {
     return phaseMs(Phase.COMPONENT_ENUMERATION);
   }
@@ -127,17 +130,42 @@ public final class EvaluationRun {
     return phaseCount(Phase.DEDUPLICATION);
   }
 
+  public long indexLoadMs() {
+    return phaseMs(Phase.INDEX_LOAD);
+  }
+
+  public long indexBuildMs() {
+    return phaseMs(Phase.INDEX_BUILD);
+  }
+
+  public long cpqEvaluationMs() {
+    return phaseMs(Phase.CPQ_EVALUATION);
+  }
+
+  public long joinMs() {
+    return phaseMs(Phase.JOIN);
+  }
+
   public long totalMs() {
     return phaseMs(Phase.TOTAL);
   }
 
-  /** Computed overhead (time not accounted for in decomposition phases). */
+  /**
+   * Computed overhead (time not accounted for in specific phases).
+   *
+   * <p>
+   * This is {@code totalMs - sum(all_phases)}.
+   */
   public long overheadMs() {
-    return totalMs()
-        - componentEnumerationMs()
-        - partitionGenerationMs()
-        - expressionBuildingMs()
-        - deduplicationMs();
+    long sum = componentEnumerationMs()
+        + partitionGenerationMs()
+        + expressionBuildingMs()
+        + deduplicationMs()
+        + indexLoadMs()
+        + indexBuildMs()
+        + cpqEvaluationMs()
+        + joinMs();
+    return Math.max(0, totalMs() - sum);
   }
 
   /** Returns a percentage breakdown string. */
@@ -147,16 +175,24 @@ public final class EvaluationRun {
     }
     return String.format(
         """
-                        Phase breakdown (%%):
-                          Component enumeration: %.1f%%
-                          Partition generation:  %.1f%%
-                          Expression building:   %.1f%%
-                          Deduplication:         %.1f%%
-                          Overhead:              %.1f%%""",
+            Phase breakdown (%%):
+              Component enumeration: %.1f%%
+              Partition generation:  %.1f%%
+              Expression building:   %.1f%%
+              Deduplication:         %.1f%%
+              Index load:            %.1f%%
+              Index build:           %.1f%%
+              CPQ evaluation:        %.1f%%
+              Join:                  %.1f%%
+              Overhead:              %.1f%%""",
         100.0 * componentEnumerationMs() / totalMs(),
         100.0 * partitionGenerationMs() / totalMs(),
         100.0 * expressionBuildingMs() / totalMs(),
         100.0 * deduplicationMs() / totalMs(),
+        100.0 * indexLoadMs() / totalMs(),
+        100.0 * indexBuildMs() / totalMs(),
+        100.0 * cpqEvaluationMs() / totalMs(),
+        100.0 * joinMs() / totalMs(),
         100.0 * overheadMs() / totalMs());
   }
 
@@ -164,14 +200,18 @@ public final class EvaluationRun {
   public String toString() {
     return String.format(
         """
-                        === Run Metrics ===
-                        Component enumeration: %d ms (%d components)
-                        Partition generation:  %d ms (%d partitions)
-                        Expression building:   %d ms
-                        Deduplication:         %d ms (%d unique)
-                        Overhead:              %d ms
-                        ---------------------------
-                        TOTAL:                 %d ms""",
+            === Run Metrics ===
+            Component enumeration: %d ms (%d components)
+            Partition generation:  %d ms (%d partitions)
+            Expression building:   %d ms
+            Deduplication:         %d ms (%d unique)
+            Index load:            %d ms
+            Index build:           %d ms
+            CPQ evaluation:        %d ms
+            Join:                  %d ms
+            Overhead:              %d ms
+            ---------------------------
+            TOTAL:                 %d ms""",
         componentEnumerationMs(),
         componentCount(),
         partitionGenerationMs(),
@@ -179,8 +219,38 @@ public final class EvaluationRun {
         expressionBuildingMs(),
         deduplicationMs(),
         uniqueDecompositions(),
+        indexLoadMs(),
+        indexBuildMs(),
+        cpqEvaluationMs(),
+        joinMs(),
         overheadMs(),
         totalMs());
+  }
+
+  // ----- Timer -----
+
+  /** Starts a timer for the given phase. */
+  public Timer startTimer(Phase phase) {
+    return new Timer(this, phase);
+  }
+
+  /** A simple auto-closeable timer that records duration to a specific phase. */
+  public static final class Timer implements AutoCloseable {
+    private final EvaluationRun run;
+    private final Phase phase;
+    private final long startNs;
+
+    private Timer(EvaluationRun run, Phase phase) {
+      this.run = run;
+      this.phase = phase;
+      this.startNs = System.nanoTime();
+    }
+
+    @Override
+    public void close() {
+      long durationMs = (System.nanoTime() - startNs) / 1_000_000;
+      run.recordPhase(phase, run.phaseMs(phase) + durationMs, run.phaseCount(phase));
+    }
   }
 
   private long phaseMs(Phase phase) {
