@@ -58,9 +58,13 @@ public final class Decomposer {
 
     return switch (method) {
       case SINGLE_EDGE -> singleEdgeDecompose(query);
-      case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumerator.decompose(query).decompositions();
+      case EXHAUSTIVE_ENUMERATION ->
+          ExhaustiveEnumerator.decompose(
+                  query, ExhaustiveEnumerator.Config.sequential().withDiameterCap(k))
+              .decompositions();
       case EXHAUSTIVE_PARALLEL ->
-          ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel())
+          ExhaustiveEnumerator.decompose(
+                  query, ExhaustiveEnumerator.Config.parallel().withDiameterCap(k))
               .decompositions();
       case CPQ_K_ENUMERATION -> CpqkEnumerator.decompose(query, k, limit).decompositions();
     };
@@ -92,9 +96,12 @@ public final class Decomposer {
     Objects.requireNonNull(method, "method");
 
     return switch (method) {
-      case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumerator.decompose(query);
+      case EXHAUSTIVE_ENUMERATION ->
+          ExhaustiveEnumerator.decompose(
+              query, ExhaustiveEnumerator.Config.sequential().withDiameterCap(k));
       case EXHAUSTIVE_PARALLEL ->
-          ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel());
+          ExhaustiveEnumerator.decompose(
+              query, ExhaustiveEnumerator.Config.parallel().withDiameterCap(k));
       case CPQ_K_ENUMERATION -> CpqkEnumerator.decompose(query, k, limit);
       default ->
           throw new IllegalArgumentException(

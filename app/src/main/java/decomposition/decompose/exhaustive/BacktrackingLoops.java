@@ -36,7 +36,7 @@ final class BacktrackingLoops {
       if (visited.cardinality() != edgeBits.cardinality()) continue;
 
       CPQ loop = CPQ.intersect(List.of(body, CPQ.id()));
-      if (diameterCap > 0 && loop.getDiameter() > diameterCap) continue;
+      if (diameterCap >= 0 && loop.getDiameter() > diameterCap) continue;
 
       out.add(
           new CPQExpression(
@@ -86,7 +86,7 @@ final class BacktrackingLoops {
         segment = CPQ.intersect(List.of(concat, CPQ.id()));
       }
 
-      if (diameterCap > 0 && segment.getDiameter() > diameterCap) {
+      if (diameterCap >= 0 && segment.getDiameter() > diameterCap) {
         visited.clear(e.index());
         continue;
       }

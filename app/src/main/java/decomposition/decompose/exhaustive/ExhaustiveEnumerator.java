@@ -41,6 +41,7 @@ public final class ExhaustiveEnumerator {
   public static final class Config {
     boolean parallel = false;
     int parallelism = Runtime.getRuntime().availableProcessors();
+    int diameterCap = -1;
 
     public static Config sequential() {
       return new Config();
@@ -58,6 +59,19 @@ public final class ExhaustiveEnumerator {
       c.parallelism = parallelism;
       return c;
     }
+
+    public Config withDiameterCap(int diameterCap) {
+      if (diameterCap < 0 || diameterCap == Integer.MAX_VALUE) {
+        this.diameterCap = -1;
+      } else {
+        this.diameterCap = diameterCap;
+      }
+      return this;
+    }
+
+    int diameterCap() {
+      return diameterCap;
+    }
   }
 
   public static EvaluationRun decompose(ConjunctiveQuery query) {
@@ -68,10 +82,24 @@ public final class ExhaustiveEnumerator {
     EvaluationRun run = new EvaluationRun();
     long totalStart = System.nanoTime();
 
-    // Phase 1: Component enumeration
+    // Phase 1: Component enumeration (+ optional diameter-cap filtering)
     long phase1Start = System.nanoTime();
     var g = new QueryGraph(query);
     var components = g.enumerateComponents(config.parallel);
+    var builder = new ComponentExpressionBuilder(g.edges);
+    Map<Component, CPQExpression> expressionCache =
+        config.parallel ? new ConcurrentHashMap<>() : new HashMap<>();
+    if (config.diameterCap() >= 0) {
+      List<Component> filtered = new ArrayList<>();
+      for (Component c : components) {
+        CPQExpression candidate = chooseOne(builder.build(c, config.diameterCap(), true));
+        if (candidate != null) {
+          expressionCache.put(c, candidate);
+          filtered.add(c);
+        }
+      }
+      components = filtered;
+    }
     long phase1End = System.nanoTime();
     run.recordPhase(
         EvaluationRun.Phase.COMPONENT_ENUMERATION,
@@ -79,7 +107,6 @@ public final class ExhaustiveEnumerator {
         components.size());
 
     // Phase 2: Build component index for faster lookup
-    var builder = new ComponentExpressionBuilder(g.edges);
     BitSet fullMask = g.fullMask();
 
     // Pre-index components by first set bit for faster partition generation
@@ -99,8 +126,6 @@ public final class ExhaustiveEnumerator {
     long phase2Start = System.nanoTime();
     AtomicInteger partitionCount = new AtomicInteger(0);
 
-    Map<Component, CPQExpression> expressionCache =
-        config.parallel ? new ConcurrentHashMap<>() : new HashMap<>();
     Map<String, List<CPQExpression>> unique =
         config.parallel ? new ConcurrentHashMap<>() : new LinkedHashMap<>();
 
@@ -123,7 +148,8 @@ public final class ExhaustiveEnumerator {
                             partition -> {
                               long exprStart = System.nanoTime();
                               List<CPQExpression> tuple =
-                                  toCpqList(partition, builder, expressionCache);
+                                  toCpqList(
+                                      partition, builder, expressionCache, config.diameterCap());
                               long exprEnd = System.nanoTime();
                               run.addExpressionBuildingTime((exprEnd - exprStart) / 1_000_000);
 
@@ -148,7 +174,8 @@ public final class ExhaustiveEnumerator {
             partitionCount.incrementAndGet();
 
             long exprStart = System.nanoTime();
-            List<CPQExpression> tuple = toCpqList(partition, builder, expressionCache);
+            List<CPQExpression> tuple =
+                toCpqList(partition, builder, expressionCache, config.diameterCap());
             long exprEnd = System.nanoTime();
             run.addExpressionBuildingTime((exprEnd - exprStart) / 1_000_000);
 
@@ -232,11 +259,13 @@ public final class ExhaustiveEnumerator {
   private static List<CPQExpression> toCpqList(
       List<Component> partition,
       ComponentExpressionBuilder builder,
-      Map<Component, CPQExpression> expressionCache) {
+      Map<Component, CPQExpression> expressionCache,
+      int diameterCap) {
     List<CPQExpression> tuple = new ArrayList<>(partition.size());
     for (Component component : partition) {
       CPQExpression chosen =
-          expressionCache.computeIfAbsent(component, c -> chooseOne(builder.build(c, 0, true)));
+          expressionCache.computeIfAbsent(
+              component, c -> chooseOne(builder.build(c, diameterCap, true)));
       if (chosen == null) {
         return null;
       }

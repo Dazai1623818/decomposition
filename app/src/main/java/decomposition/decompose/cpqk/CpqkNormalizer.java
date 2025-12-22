@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 final class CpqkNormalizer {
   record Normalized(CPQ cpq, String canonical) {}
@@ -60,14 +59,19 @@ final class CpqkNormalizer {
       return parts.get(0);
     }
 
-    CPQ normalized = CPQ.concat(parts.stream().map(Normalized::cpq).toList());
-    String canonical =
-        "("
-            + parts.stream()
-                .map(Normalized::canonical)
-                .collect(Collectors.joining(String.valueOf(QueryLanguageSyntax.CHAR_JOIN)))
-            + ")";
-    return new Normalized(normalized, canonical);
+    List<CPQ> cpqs = new ArrayList<>(parts.size());
+    StringBuilder canonical = new StringBuilder();
+    canonical.append("(");
+    for (int i = 0; i < parts.size(); i++) {
+      cpqs.add(parts.get(i).cpq());
+      if (i > 0) {
+        canonical.append(QueryLanguageSyntax.CHAR_JOIN);
+      }
+      canonical.append(parts.get(i).canonical());
+    }
+    canonical.append(")");
+
+    return new Normalized(CPQ.concat(cpqs), canonical.toString());
   }
 
   private static void collectIntersection(QueryTree node, List<Normalized> out) {
@@ -94,13 +98,18 @@ final class CpqkNormalizer {
       return ordered.get(0);
     }
 
-    CPQ normalized = CPQ.intersect(ordered.stream().map(Normalized::cpq).toList());
-    String canonical =
-        "("
-            + ordered.stream()
-                .map(Normalized::canonical)
-                .collect(Collectors.joining(String.valueOf(QueryLanguageSyntax.CHAR_INTERSECTION)))
-            + ")";
-    return new Normalized(normalized, canonical);
+    List<CPQ> cpqs = new ArrayList<>(ordered.size());
+    StringBuilder canonical = new StringBuilder();
+    canonical.append("(");
+    for (int i = 0; i < ordered.size(); i++) {
+      cpqs.add(ordered.get(i).cpq());
+      if (i > 0) {
+        canonical.append(QueryLanguageSyntax.CHAR_INTERSECTION);
+      }
+      canonical.append(ordered.get(i).canonical());
+    }
+    canonical.append(")");
+
+    return new Normalized(CPQ.intersect(cpqs), canonical.toString());
   }
 }

@@ -175,7 +175,7 @@ public final class ComponentExpressionBuilder {
       String target,
       String derivation,
       Options o) {
-    if (o.diameterCap() > 0 && cpq.getDiameter() > o.diameterCap()) return;
+    if (o.diameterCap() >= 0 && cpq.getDiameter() > o.diameterCap()) return;
     if (!component.endpointsAllowed(source, target)) return;
     CPQExpression candidate = new CPQExpression(cpq, component, source, target, derivation);
     CPQExpression looped = makeLoop(candidate, o);
@@ -284,7 +284,7 @@ public final class ComponentExpressionBuilder {
       if (e.cpq().toQueryGraph().isLoop()) return e;
 
       CPQ anchored = CPQ.intersect(e.cpq(), CPQ.IDENTITY);
-      if (o.diameterCap() > 0 && anchored.getDiameter() > o.diameterCap()) return null;
+      if (o.diameterCap() >= 0 && anchored.getDiameter() > o.diameterCap()) return null;
 
       return new CPQExpression(
           anchored, e.component(), e.source(), e.target(), e.derivation() + " + anchored with id");

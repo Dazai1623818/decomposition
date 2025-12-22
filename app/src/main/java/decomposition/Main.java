@@ -39,7 +39,10 @@ public final class Main {
     // 3. Exhaustive (parallel)
     runExhaustiveParallel(cq);
 
-    // 4. Summary comparison
+    // 4. CPQ-k Enumeration
+    runCpqk(cq);
+
+    // 5. Summary comparison
     printSummary(cq);
   }
 
@@ -75,6 +78,18 @@ public final class Main {
 
     EvaluationRun run =
         Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL);
+
+    System.out.printf("  Result: %d decomposition(s)%n", run.size());
+    printDecompositions(run.decompositions());
+    printMetrics(run);
+  }
+
+  private static void runCpqk(CQ cq) {
+    System.out.println("\n[4] CPQ_K ENUMERATION");
+    System.out.println("-".repeat(40));
+
+    EvaluationRun run =
+        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.CPQ_K_ENUMERATION);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
     printDecompositions(run.decompositions());
@@ -143,6 +158,10 @@ public final class Main {
         Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL);
     long parTime = parRun.totalMs();
 
+    EvaluationRun cpqkRun =
+        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.CPQ_K_ENUMERATION);
+    long cpqkTime = cpqkRun.totalMs();
+
     System.out.printf("%-25s %8s %14s%n", "Method", "Time (ms)", "vs Sequential");
     System.out.println("-".repeat(45));
     System.out.printf("%-25s %8d %10s%n", "Single-edge", singleTime, "-");
@@ -150,6 +169,9 @@ public final class Main {
     System.out.printf(
         "%-25s %8d %14.2fx%n",
         "Exhaustive Parallel", parTime, seqTime > 0 ? (double) seqTime / parTime : 0);
+    System.out.printf(
+        "%-25s %8d %14.2fx%n",
+        "CPQ-k Enumeration", cpqkTime, seqTime > 0 ? (double) seqTime / cpqkTime : 0);
   }
 
   private static CQ pickExample(int id) {
