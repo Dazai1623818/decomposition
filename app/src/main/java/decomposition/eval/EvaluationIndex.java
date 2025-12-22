@@ -1,6 +1,6 @@
 package decomposition.eval;
 
-import decomposition.cpq.CPQExpression;
+import decomposition.core.CPQExpression;
 import decomposition.eval.leapfrogjoiner.IntAccumulator;
 import decomposition.eval.leapfrogjoiner.LeapfrogJoiner;
 import decomposition.eval.leapfrogjoiner.RelationBinding;
@@ -44,10 +44,12 @@ public final class EvaluationIndex {
   private static final String INDEX_DIRNAME = ".cpqindex";
 
   private final Index index;
+  private final int k;
   private final LeapfrogJoiner joiner = new LeapfrogJoiner();
 
-  private EvaluationIndex(Index index) {
+  private EvaluationIndex(Index index, int k) {
     this.index = Objects.requireNonNull(index, "index");
+    this.k = k;
   }
 
   public static EvaluationIndex loadOrBuild(Path graphPath, int k) throws IOException {
@@ -71,7 +73,11 @@ public final class EvaluationIndex {
       }
     }
     idx.sort();
-    return new EvaluationIndex(idx);
+    return new EvaluationIndex(idx, k);
+  }
+
+  public int k() {
+    return k;
   }
 
   public List<Map<String, Integer>> evaluateDecomposition(List<CPQExpression> tuple) {

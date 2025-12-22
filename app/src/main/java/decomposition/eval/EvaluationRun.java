@@ -1,6 +1,6 @@
 package decomposition.eval;
 
-import decomposition.cpq.CPQExpression;
+import decomposition.core.CPQExpression;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -9,8 +9,7 @@ import java.util.Objects;
 /**
  * Tracks a single end-to-end run for decomposition (and optional evaluation).
  *
- * <p>
- * Stores the decompositions plus timing/count data for each phase.
+ * <p>Stores the decompositions plus timing/count data for each phase.
  */
 public final class EvaluationRun {
 
@@ -35,8 +34,7 @@ public final class EvaluationRun {
   private List<Map<String, Integer>> evaluationResults = List.of();
   private final List<String> events = new ArrayList<>();
 
-  public EvaluationRun() {
-  }
+  public EvaluationRun() {}
 
   // ----- Recording -----
 
@@ -66,7 +64,8 @@ public final class EvaluationRun {
   }
 
   public void setEvaluationResults(List<Map<String, Integer>> evaluationResults) {
-    this.evaluationResults = List.copyOf(Objects.requireNonNull(evaluationResults, "evaluationResults"));
+    this.evaluationResults =
+        List.copyOf(Objects.requireNonNull(evaluationResults, "evaluationResults"));
   }
 
   public void logEvent(String message) {
@@ -153,18 +152,18 @@ public final class EvaluationRun {
   /**
    * Computed overhead (time not accounted for in specific phases).
    *
-   * <p>
-   * This is {@code totalMs - sum(all_phases)}.
+   * <p>This is {@code totalMs - sum(all_phases)}.
    */
   public long overheadMs() {
-    long sum = componentEnumerationMs()
-        + partitionGenerationMs()
-        + expressionBuildingMs()
-        + deduplicationMs()
-        + indexLoadMs()
-        + indexBuildMs()
-        + cpqEvaluationMs()
-        + joinMs();
+    long sum =
+        componentEnumerationMs()
+            + partitionGenerationMs()
+            + expressionBuildingMs()
+            + deduplicationMs()
+            + indexLoadMs()
+            + indexBuildMs()
+            + cpqEvaluationMs()
+            + joinMs();
     return Math.max(0, totalMs() - sum);
   }
 

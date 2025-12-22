@@ -10,7 +10,7 @@ repositories {
 }
 
 application {
-    mainClass = 'decomposition.cli.Main'
+    mainClass = 'decomposition.Main'
 }
 
 distributions {
@@ -96,7 +96,7 @@ tasks.register('runPlot', JavaExec) {
 tasks.register('runDecomposerDemo', JavaExec) {
     group = 'application'
     description = 'Runs the decomposition demo (use -Pexample=<n> to pick an example)'
-    mainClass = 'decomposition.cli.Main'
+    mainClass = 'decomposition.Main'
     classpath = sourceSets.main.runtimeClasspath
     args project.findProperty('example') ? [project.property('example').toString()] : []
     javaLauncher = javaToolchains.launcherFor {

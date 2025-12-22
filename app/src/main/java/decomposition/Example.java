@@ -1,4 +1,4 @@
-package decomposition.examples;
+package decomposition;
 
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;

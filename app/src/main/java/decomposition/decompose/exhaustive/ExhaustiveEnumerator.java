@@ -1,9 +1,9 @@
-package decomposition.decompose;
+package decomposition.decompose.exhaustive;
 
+import decomposition.core.CPQExpression;
 import decomposition.core.Component;
+import decomposition.core.ConjunctiveQuery;
 import decomposition.core.Edge;
-import decomposition.cpq.CPQExpression;
-import decomposition.cpq.ComponentExpressionBuilder;
 import decomposition.eval.EvaluationRun;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,26 +33,26 @@ import java.util.function.Consumer;
  *   <li>Parallel processing is available through a ForkJoinPool.
  * </ul>
  */
-final class ExhaustiveEnumerator {
+public final class ExhaustiveEnumerator {
 
   private ExhaustiveEnumerator() {}
 
   /** Configuration for the exhaustive enumerator. */
-  static final class Config {
+  public static final class Config {
     boolean parallel = false;
     int parallelism = Runtime.getRuntime().availableProcessors();
 
-    static Config sequential() {
+    public static Config sequential() {
       return new Config();
     }
 
-    static Config parallel() {
+    public static Config parallel() {
       Config c = new Config();
       c.parallel = true;
       return c;
     }
 
-    static Config parallel(int parallelism) {
+    public static Config parallel(int parallelism) {
       Config c = new Config();
       c.parallel = true;
       c.parallelism = parallelism;
@@ -60,11 +60,11 @@ final class ExhaustiveEnumerator {
     }
   }
 
-  static EvaluationRun decompose(ConjunctiveQuery query) {
+  public static EvaluationRun decompose(ConjunctiveQuery query) {
     return decompose(query, Config.sequential());
   }
 
-  static EvaluationRun decompose(ConjunctiveQuery query, Config config) {
+  public static EvaluationRun decompose(ConjunctiveQuery query, Config config) {
     EvaluationRun run = new EvaluationRun();
     long totalStart = System.nanoTime();
 

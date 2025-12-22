@@ -2,6 +2,7 @@ package decomposition.cpq;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import decomposition.core.CPQExpression;
 import decomposition.decompose.Decomposer;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.CQ;

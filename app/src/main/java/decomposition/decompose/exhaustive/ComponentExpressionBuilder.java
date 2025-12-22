@@ -1,5 +1,6 @@
-package decomposition.cpq;
+package decomposition.decompose.exhaustive;
 
+import decomposition.core.CPQExpression;
 import decomposition.core.Component;
 import decomposition.core.Edge;
 import dev.roanh.gmark.lang.cpq.CPQ;

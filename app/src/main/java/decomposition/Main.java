@@ -1,9 +1,8 @@
-package decomposition.cli;
+package decomposition;
 
-import decomposition.cpq.CPQExpression;
+import decomposition.core.CPQExpression;
 import decomposition.decompose.Decomposer;
 import decomposition.eval.EvaluationRun;
-import decomposition.examples.Example;
 import dev.roanh.gmark.lang.cq.CQ;
 import java.util.List;
 
@@ -54,6 +53,7 @@ public final class Main {
     long end = System.nanoTime();
 
     System.out.printf("  Result: %d decomposition(s)%n", single.size());
+    printDecompositions(single);
     System.out.printf("  Time:   %.2f ms%n", (end - start) / 1_000_000.0);
   }
 
@@ -65,6 +65,7 @@ public final class Main {
         Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
+    printDecompositions(run.decompositions());
     printMetrics(run);
   }
 
@@ -76,6 +77,7 @@ public final class Main {
         Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
+    printDecompositions(run.decompositions());
     printMetrics(run);
   }
 
@@ -91,6 +93,36 @@ public final class Main {
     System.out.printf("  TOTAL:       %.2f ms%n", (double) run.totalMs());
     System.out.println();
     System.out.println(run.percentageBreakdown());
+  }
+
+  private static void printDecompositions(List<List<CPQExpression>> decompositions) {
+    if (decompositions.isEmpty()) {
+      System.out.println("  Decompositions: (none)");
+      return;
+    }
+
+    System.out.println("  Decompositions:");
+    for (int i = 0; i < decompositions.size(); i++) {
+      List<CPQExpression> tuple = decompositions.get(i);
+      System.out.printf("    #%d %s%n", i + 1, formatTuple(tuple));
+    }
+  }
+
+  private static String formatTuple(List<CPQExpression> tuple) {
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < tuple.size(); i++) {
+      CPQExpression expr = tuple.get(i);
+      if (i > 0) {
+        sb.append(" | ");
+      }
+      sb.append(expr.cpq())
+          .append(" [")
+          .append(expr.source())
+          .append(" -> ")
+          .append(expr.target())
+          .append("]");
+    }
+    return sb.toString();
   }
 
   private static void printSummary(CQ cq) {

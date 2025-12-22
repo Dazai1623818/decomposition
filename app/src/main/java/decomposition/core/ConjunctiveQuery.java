@@ -1,6 +1,6 @@
-package decomposition.decompose;
+package decomposition.core;
 
-import decomposition.cpq.CPQExpression;
+import decomposition.decompose.Decomposer;
 import dev.roanh.gmark.lang.cq.AtomCQ;
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -26,7 +26,7 @@ public final class ConjunctiveQuery {
   }
 
   /** Returns the underlying gmark CQ (intended for internal use). */
-  CQ gmarkCQ() {
+  public CQ gmarkCQ() {
     return gmarkCQ;
   }
 
@@ -40,9 +40,15 @@ public final class ConjunctiveQuery {
     return Decomposer.decompose(this, method);
   }
 
+  public List<List<CPQExpression>> decompose(
+      Decomposer.DecompositionMethod method, int k, int limit) {
+    Objects.requireNonNull(method, "method");
+    return Decomposer.decompose(this, method, k, limit);
+  }
+
   // ----- Internal graph access -----
 
-  UniqueGraph<VarCQ, AtomCQ> graph() {
+  public UniqueGraph<VarCQ, AtomCQ> graph() {
     if (graph == null) {
       graph = gmarkCQ.toQueryGraph().toUniqueGraph();
     }

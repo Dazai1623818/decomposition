@@ -1,7 +1,10 @@
 package decomposition.decompose;
 
+import decomposition.core.CPQExpression;
 import decomposition.core.Component;
-import decomposition.cpq.CPQExpression;
+import decomposition.core.ConjunctiveQuery;
+import decomposition.decompose.cpqk.CpqkEnumerator;
+import decomposition.decompose.exhaustive.ExhaustiveEnumerator;
 import decomposition.eval.EvaluationRun;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.lang.cq.AtomCQ;
@@ -22,18 +25,34 @@ public final class Decomposer {
     SINGLE_EDGE,
     EXHAUSTIVE_ENUMERATION,
     /** Exhaustive enumeration with parallel processing. */
-    EXHAUSTIVE_PARALLEL
+    EXHAUSTIVE_PARALLEL,
+    /** CPQ-k enumeration (no tuple-level dedup). */
+    CPQ_K_ENUMERATION
   }
+
+  private static final int UNBOUNDED_K = Integer.MAX_VALUE;
+  private static final int UNBOUNDED_LIMIT = 0;
 
   private Decomposer() {}
 
   public static List<List<CPQExpression>> decompose(CQ cq, DecompositionMethod method) {
-    Objects.requireNonNull(cq, "cq");
-    Objects.requireNonNull(method, "method");
-    return decompose(new ConjunctiveQuery(cq), method);
+    return decompose(cq, method, UNBOUNDED_K, UNBOUNDED_LIMIT);
   }
 
-  static List<List<CPQExpression>> decompose(ConjunctiveQuery query, DecompositionMethod method) {
+  public static List<List<CPQExpression>> decompose(
+      CQ cq, DecompositionMethod method, int k, int limit) {
+    Objects.requireNonNull(cq, "cq");
+    Objects.requireNonNull(method, "method");
+    return decompose(new ConjunctiveQuery(cq), method, k, limit);
+  }
+
+  public static List<List<CPQExpression>> decompose(
+      ConjunctiveQuery query, DecompositionMethod method) {
+    return decompose(query, method, UNBOUNDED_K, UNBOUNDED_LIMIT);
+  }
+
+  public static List<List<CPQExpression>> decompose(
+      ConjunctiveQuery query, DecompositionMethod method, int k, int limit) {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(method, "method");
 
@@ -43,21 +62,32 @@ public final class Decomposer {
       case EXHAUSTIVE_PARALLEL ->
           ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel())
               .decompositions();
+      case CPQ_K_ENUMERATION -> CpqkEnumerator.decompose(query, k, limit).decompositions();
     };
   }
 
   /**
    * Decomposes a CQ and returns a run record with timings and results.
    *
-   * <p>Only available for exhaustive methods.
+   * <p>Only available for exhaustive methods and CPQ-k enumeration.
    */
   public static EvaluationRun decomposeWithRun(CQ cq, DecompositionMethod method) {
-    Objects.requireNonNull(cq, "cq");
-    Objects.requireNonNull(method, "method");
-    return decomposeWithRun(new ConjunctiveQuery(cq), method);
+    return decomposeWithRun(cq, method, UNBOUNDED_K, UNBOUNDED_LIMIT);
   }
 
-  static EvaluationRun decomposeWithRun(ConjunctiveQuery query, DecompositionMethod method) {
+  public static EvaluationRun decomposeWithRun(
+      CQ cq, DecompositionMethod method, int k, int limit) {
+    Objects.requireNonNull(cq, "cq");
+    Objects.requireNonNull(method, "method");
+    return decomposeWithRun(new ConjunctiveQuery(cq), method, k, limit);
+  }
+
+  public static EvaluationRun decomposeWithRun(ConjunctiveQuery query, DecompositionMethod method) {
+    return decomposeWithRun(query, method, UNBOUNDED_K, UNBOUNDED_LIMIT);
+  }
+
+  public static EvaluationRun decomposeWithRun(
+      ConjunctiveQuery query, DecompositionMethod method, int k, int limit) {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(method, "method");
 
@@ -65,9 +95,11 @@ public final class Decomposer {
       case EXHAUSTIVE_ENUMERATION -> ExhaustiveEnumerator.decompose(query);
       case EXHAUSTIVE_PARALLEL ->
           ExhaustiveEnumerator.decompose(query, ExhaustiveEnumerator.Config.parallel());
+      case CPQ_K_ENUMERATION -> CpqkEnumerator.decompose(query, k, limit);
       default ->
           throw new IllegalArgumentException(
-              "Run data only available for EXHAUSTIVE_ENUMERATION or EXHAUSTIVE_PARALLEL");
+              "Run data only available for EXHAUSTIVE_ENUMERATION, EXHAUSTIVE_PARALLEL, or"
+                  + " CPQ_K_ENUMERATION");
     };
   }
 
