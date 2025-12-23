@@ -25,7 +25,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** CPQ-k enumeration based decomposition (no tuple-level dedup). */
+/** CPQ-k enumeration based decomposition. */
 public final class CpqkEnumerator {
 
   private CpqkEnumerator() {}
@@ -51,19 +51,30 @@ public final class CpqkEnumerator {
         components.size());
 
     long decompStart = System.nanoTime();
-    List<List<CPQExpression>> out = new ArrayList<>();
+    Map<String, List<CPQExpression>> unique = new LinkedHashMap<>();
     ComponentCache cache = new ComponentCache(instance);
+    int[] rawCount = {0};
     enumerateExactDecompositions(
         instance,
         components,
         limit,
-        decomposition -> out.add(toExpressionTuple(decomposition, cache)));
+        decomposition -> {
+          rawCount[0]++;
+          String key = tupleKeyStructural(decomposition);
+          unique.computeIfAbsent(key, ignored -> toExpressionTuple(decomposition, cache));
+        });
     long decompEnd = System.nanoTime();
     run.recordPhase(
         EvaluationRun.Phase.PARTITION_GENERATION,
         (decompEnd - decompStart) / 1_000_000,
-        out.size());
-    run.setDecompositions(out);
+        rawCount[0]);
+
+    long dedupStart = System.nanoTime();
+    List<List<CPQExpression>> result = List.copyOf(unique.values());
+    long dedupEnd = System.nanoTime();
+    run.recordPhase(
+        EvaluationRun.Phase.DEDUPLICATION, (dedupEnd - dedupStart) / 1_000_000, result.size());
+    run.setDecompositions(result);
 
     run.recordPhaseMs(EvaluationRun.Phase.TOTAL, (System.nanoTime() - totalStart) / 1_000_000);
     return run;
@@ -238,11 +249,23 @@ public final class CpqkEnumerator {
       }
     }
 
-    // Note: We intentionally do not deduplicate full tuples here. Equivalent CPQ
-    // tuples can be
-    // emitted multiple times, which means counts and evaluation work reflect raw
-    // enumeration cost.
     new Dfs().run(new BitSet(edgeCount), new HashSet<>(), new ArrayList<>());
+  }
+
+  private static String tupleKeyStructural(List<CpqkComponent> tuple) {
+    List<String> keys = new ArrayList<>(tuple.size());
+    for (CpqkComponent component : tuple) {
+      keys.add(componentKey(component));
+    }
+    keys.sort(String::compareTo);
+    return String.join("|", keys);
+  }
+
+  private static String componentKey(CpqkComponent component) {
+    String mask = bitsetKey(component.mask());
+    String source = component.s().getName();
+    String target = component.t().getName();
+    return mask + ":" + source + ">" + target + ":" + component.canonical();
   }
 
   private static List<CPQExpression> toExpressionTuple(

@@ -7,10 +7,11 @@ import decomposition.eval.leapfrogjoiner.RelationBinding;
 import decomposition.eval.leapfrogjoiner.RelationBinding.RelationProjection;
 import dev.roanh.cpqindex.Index;
 import dev.roanh.cpqindex.IndexUtil;
-import dev.roanh.cpqindex.Main;
+// import dev.roanh.cpqindex.OneTimeProgressListener; // Remove
 import dev.roanh.cpqindex.Pair;
 import dev.roanh.cpqindex.ProgressListener;
 import dev.roanh.gmark.lang.cpq.CPQ;
+// import dev.roanh.gmark.util.core.IntAccumulator; // Remove
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -20,87 +21,130 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Minimal facade around the native CPQ index.
- *
- * <p>Responsibilities:
- *
- * <ul>
- *   <li>load/build the native {@link Index}
- *   <li>evaluate a full decomposition tuple via native queries + {@link LeapfrogJoiner}
- * </ul>
- *
- * <p>Intentionally holds no query-to-query cache.
- */
-public final class EvaluationIndex {
-  private static final AtomicBoolean NATIVES_LOADED = new AtomicBoolean();
+public class EvaluationIndex implements AutoCloseable {
+
+  private static final String INDEX_DIRNAME = "indices";
+  private static final AtomicBoolean NATIVES_LOADED = new AtomicBoolean(false);
   private static final int[] EMPTY_INT_ARRAY = new int[0];
-  private static final String INDEX_DIRNAME = ".cpqindex";
 
   private final Index index;
+  private final LeapfrogJoiner joiner;
   private final int k;
-  private final LeapfrogJoiner joiner = new LeapfrogJoiner();
 
-  private EvaluationIndex(Index index, int k) {
-    this.index = Objects.requireNonNull(index, "index");
+  public EvaluationIndex(Path graphPath, int k) throws IOException {
+    ensureNativesLoaded();
     this.k = k;
+
+    Path indexPath = findExistingIndexPath(graphPath, k);
+    if (indexPath == null) {
+      indexPath = resolveIndexPath(graphPath, k);
+      System.out.println("Building CPQ index (k=" + k + ") for " + graphPath + "...");
+      long start = System.currentTimeMillis();
+      this.index = build(graphPath, k);
+      long end = System.currentTimeMillis();
+      System.out.println("Index built in " + (end - start) + " ms.");
+      System.out.println("Saving index to " + indexPath + "...");
+      save(index, indexPath);
+    } else {
+      System.out.println("Loading existing CPQ index from " + indexPath + "...");
+      long start = System.currentTimeMillis();
+      this.index = load(indexPath);
+      long end = System.currentTimeMillis();
+      System.out.println("Index loaded in " + (end - start) + " ms.");
+    }
+    this.joiner = new LeapfrogJoiner();
   }
 
-  public static EvaluationIndex loadOrBuild(Path graphPath, int k) throws IOException {
-    Objects.requireNonNull(graphPath, "graphPath");
-    if (k <= 0) {
-      throw new IllegalArgumentException("k must be > 0");
+  @Override
+  public void close() throws Exception {
+    if (index != null) {
+      // index.close(); // Index likely doesn't support close
     }
-    ensureNativesLoaded();
-
-    Path preferredIndexPath = resolveIndexPath(graphPath, k);
-    Path existingIndexPath = findExistingIndexPath(graphPath, k);
-    Index idx;
-    if (existingIndexPath != null) {
-      idx = load(existingIndexPath);
-    } else {
-      idx = build(graphPath, k);
-      try {
-        save(idx, preferredIndexPath);
-      } catch (IOException ignored) {
-        // Best-effort persistence only.
-      }
-    }
-    idx.sort();
-    return new EvaluationIndex(idx, k);
   }
 
   public int k() {
     return k;
   }
 
-  public List<Map<String, Integer>> evaluateDecomposition(List<CPQExpression> tuple) {
+  public EvaluationRun evaluate(
+      dev.roanh.gmark.lang.cq.CQ cq,
+      decomposition.decompose.Decomposer.DecompositionMethod method) {
+    long start = System.currentTimeMillis();
+
+    // 1. Decompose (this returns a run with decomposition phases already timed)
+    EvaluationRun run =
+        decomposition.decompose.Decomposer.decomposeWithRun(
+            new decomposition.core.ConjunctiveQuery(cq), method, k(), 0);
+
+    // 2. Evaluate each decomposition
+    List<List<CPQExpression>> decompositions = run.decompositions();
+    List<Map<String, Integer>> results = new ArrayList<>(decompositions.size());
+
+    // Evaluate all decompositions for performance benchmarking
+    for (List<CPQExpression> tuple : decompositions) {
+      List<Map<String, Integer>> tupleResult = evaluateDecomposition(tuple, run);
+      if (!tupleResult.isEmpty()) {
+        results.addAll(tupleResult);
+      }
+    }
+    List<String> freeVars = normalizedFreeVars(cq);
+    run.setEvaluationResults(projectResults(results, freeVars));
+
+    // Update total time to include evaluation
+    long end = System.currentTimeMillis();
+    run.recordPhaseMs(EvaluationRun.Phase.TOTAL, end - start);
+
+    return run;
+  }
+
+  public List<Map<String, Integer>> evaluateDecomposition(
+      List<CPQExpression> tuple, EvaluationRun run) {
     Objects.requireNonNull(tuple, "tuple");
     if (tuple.isEmpty()) {
       return List.of();
     }
 
     List<RelationBinding> relations = new ArrayList<>(tuple.size());
-    for (CPQExpression expression : tuple) {
-      if (expression == null) {
-        continue;
+    try (var timer = run.startTimer(EvaluationRun.Phase.CPQ_EVALUATION)) {
+      for (CPQExpression expression : tuple) {
+        if (expression == null) {
+          continue;
+        }
+        RelationBinding binding = evaluateExpression(expression);
+        if (binding == null) {
+          return List.of();
+        }
+        relations.add(binding);
       }
-      RelationBinding binding = evaluateExpression(expression);
-      if (binding == null) {
-        return List.of();
-      }
-      relations.add(binding);
     }
     if (relations.isEmpty()) {
       return List.of();
     }
-    return joiner.join(relations);
+
+    try (var timer = run.startTimer(EvaluationRun.Phase.JOIN)) {
+      return joiner.join(relations);
+    }
+  }
+
+  /** Legacy method for backward compatibility if needed, delegates with dummy run or throws. */
+  public List<Map<String, Integer>> evaluateDecomposition(List<CPQExpression> tuple) {
+    // For now, create a dummy run just to satisfy the method signature if called
+    // directly
+    return evaluateDecomposition(tuple, new EvaluationRun());
+  }
+
+  public List<Map<String, Integer>> evaluateDecompositionInternal(List<CPQExpression> tuple) {
+    Objects.requireNonNull(tuple, "tuple");
+    // ... logic moved to evaluateDecomposition(tuple, run) ...
+    return evaluateDecomposition(tuple);
   }
 
   private RelationBinding evaluateExpression(CPQExpression expression) {
@@ -193,16 +237,66 @@ public final class EvaluationIndex {
     return result;
   }
 
+  private static List<String> normalizedFreeVars(dev.roanh.gmark.lang.cq.CQ cq) {
+    return cq.getFreeVariables().stream().map(var -> normalizeVar(var.getName())).toList();
+  }
+
+  private static List<Map<String, Integer>> projectResults(
+      List<Map<String, Integer>> rows, List<String> freeVars) {
+    if (rows.isEmpty()) {
+      return List.of();
+    }
+    if (freeVars.isEmpty()) {
+      return List.of(Map.of());
+    }
+    Set<Map<String, Integer>> deduped = new LinkedHashSet<>();
+    for (Map<String, Integer> row : rows) {
+      Map<String, Integer> projected = projectRow(row, freeVars);
+      if (projected != null) {
+        deduped.add(projected);
+      }
+    }
+    return List.copyOf(deduped);
+  }
+
+  private static Map<String, Integer> projectRow(Map<String, Integer> row, List<String> freeVars) {
+    LinkedHashMap<String, Integer> projected = new LinkedHashMap<>();
+    for (String var : freeVars) {
+      Integer value = row.get(var);
+      if (value == null) {
+        return null;
+      }
+      projected.put(var, value);
+    }
+    return Map.copyOf(projected);
+  }
+
   private static void ensureNativesLoaded() throws IOException {
     if (!NATIVES_LOADED.compareAndSet(false, true)) {
       return;
     }
+    String mappedName = System.mapLibraryName("nauty");
+    Path[] candidates = {
+      Path.of("lib", mappedName),
+      Path.of(mappedName),
+      Path.of("libnauty.so"),
+      Path.of("libnauty.dll")
+    };
+
+    for (Path candidate : candidates) {
+      Path absolute = candidate.toAbsolutePath();
+      if (Files.exists(absolute)) {
+        System.out.println("Loading nauty native library from: " + absolute);
+        System.load(absolute.toString());
+        return;
+      }
+    }
+
     try {
-      Main.loadNatives();
+      System.loadLibrary("nauty");
     } catch (UnsatisfiedLinkError e) {
-      NATIVES_LOADED.set(false);
       throw new IOException(
-          "Failed to load native nauty bindings required by CPQ index: " + e.getMessage(), e);
+          "Failed to load nauty native library. Searched " + Arrays.toString(candidates), e);
     }
   }
 
@@ -257,7 +351,8 @@ public final class EvaluationIndex {
       return preferred;
     }
 
-    // Backwards-compatible fallback: older builds stored index files alongside the graph.
+    // Backwards-compatible fallback: older builds stored index files alongside the
+    // graph.
     Path legacyKSpecific = graphPath.resolveSibling(stem + ".k" + k + ".idx");
     if (Files.exists(legacyKSpecific)) {
       return legacyKSpecific;

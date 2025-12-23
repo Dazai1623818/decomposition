@@ -2,9 +2,16 @@ package decomposition;
 
 import decomposition.core.CPQExpression;
 import decomposition.decompose.Decomposer;
+import decomposition.eval.EvaluationIndex;
 import decomposition.eval.EvaluationRun;
 import dev.roanh.gmark.lang.cq.CQ;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Minimal entrypoint for the project.
@@ -15,85 +22,139 @@ import java.util.List;
  * <p>Usage:
  *
  * <ul>
- *   <li>{@code Main} — uses example1
- *   <li>{@code Main 3} — uses example3
+ *   <li>{@code Main} — runs all examples (1..8)
+ *   <li>{@code Main all} — runs all examples (1..8)
+ *   <li>{@code Main 3} — runs example3 only
  * </ul>
  */
 public final class Main {
 
+  private static final int[] ALL_EXAMPLES = {1, 2, 3, 4, 5, 6, 7, 8};
+
+  private record DecompositionTiming(
+      int index, long evaluationMs, int answerCount, boolean matchesBaseline) {}
+
+  private record EvaluationComparison(
+      int decompositionCount,
+      Set<Map<String, Integer>> baselineResults,
+      Set<Map<String, Integer>> unionResults,
+      boolean allAgree,
+      int mismatches,
+      long evaluationMs,
+      List<DecompositionTiming> timings) {}
+
+  private record SummaryEntry(EvaluationRun run, EvaluationComparison evaluation) {}
+
   private Main() {}
 
   public static void main(String[] args) {
-    int exampleId = args != null && args.length > 0 ? parseExampleId(args[0]) : 1;
-    CQ cq = pickExample(exampleId);
+    // Initialize EvaluationIndex
+    // We expect the graph file to be at graphs/example1_mini.edge relative to
+    // working dir
+    Path graphPath = Path.of("graphs/example1_mini.edge");
+    int k = 2;
 
-    System.out.println("Running decomposition on example" + exampleId);
-    System.out.println("=".repeat(60));
+    try (EvaluationIndex index = new EvaluationIndex(graphPath, k)) {
+      int[] exampleIds = resolveExampleIds(args);
+      for (int exampleId : exampleIds) {
+        CQ cq = pickExample(exampleId);
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("Running decomposition on example " + exampleId);
+        System.out.println("=".repeat(60));
 
-    // 1. Single-edge baseline
-    runSingleEdge(cq);
+        // 1. Single-edge baseline
+        SummaryEntry single = runSingleEdge(cq, index);
 
-    // 2. Exhaustive (sequential)
-    runExhaustiveSequential(cq);
+        // 2. Exhaustive (sequential)
+        SummaryEntry seq = runExhaustiveSequential(cq, index);
 
-    // 3. Exhaustive (parallel)
-    runExhaustiveParallel(cq);
+        // 3. Exhaustive (parallel)
+        SummaryEntry par = runExhaustiveParallel(cq, index);
 
-    // 4. CPQ-k Enumeration
-    runCpqk(cq);
+        // 4. CPQ-k Enumeration
+        SummaryEntry cpqk = runCpqk(cq, index);
 
-    // 5. Summary comparison
-    printSummary(cq);
+        // 5. Summary comparison
+        printSummary(exampleId, single, seq, par, cpqk);
+      }
+    } catch (Exception e) {
+      System.err.println("Error during execution:");
+      e.printStackTrace();
+    }
   }
 
-  private static void runSingleEdge(CQ cq) {
+  private static SummaryEntry runSingleEdge(CQ cq, EvaluationIndex index) {
     System.out.println("\n[1] SINGLE-EDGE DECOMPOSITION");
     System.out.println("-".repeat(40));
 
-    long start = System.nanoTime();
+    long startDecomp = System.nanoTime();
     List<List<CPQExpression>> single =
         Decomposer.decompose(cq, Decomposer.DecompositionMethod.SINGLE_EDGE);
-    long end = System.nanoTime();
+    long endDecomp = System.nanoTime();
+    long decompMs = (endDecomp - startDecomp) / 1_000_000;
+    EvaluationRun run = new EvaluationRun();
+    run.setDecompositions(single);
+    run.recordPhaseMs(EvaluationRun.Phase.TOTAL, decompMs);
+    EvaluationComparison evaluation = evaluateAllDecompositions(cq, single, index, run);
 
     System.out.printf("  Result: %d decomposition(s)%n", single.size());
     printDecompositions(single);
-    System.out.printf("  Time:   %.2f ms%n", (end - start) / 1_000_000.0);
+    System.out.printf("  Decomp Time: %.2f ms%n", (double) decompMs);
+    System.out.printf("  Eval Time:   %.2f ms%n", (double) evaluation.evaluationMs());
+    System.out.printf("  Total Time:  %.2f ms%n", (double) (decompMs + evaluation.evaluationMs()));
+    printEvaluationSummary(evaluation);
+    return new SummaryEntry(run, evaluation);
   }
 
-  private static void runExhaustiveSequential(CQ cq) {
+  private static SummaryEntry runExhaustiveSequential(CQ cq, EvaluationIndex index) {
     System.out.println("\n[2] EXHAUSTIVE (Sequential)");
     System.out.println("-".repeat(40));
 
     EvaluationRun run =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
+        Decomposer.decomposeWithRun(
+            cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION, index.k(), 0);
+    EvaluationComparison evaluation =
+        evaluateAllDecompositions(cq, run.decompositions(), index, run);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
     printDecompositions(run.decompositions());
     printMetrics(run);
+    printEvaluationSummary(evaluation);
+    return new SummaryEntry(run, evaluation);
   }
 
-  private static void runExhaustiveParallel(CQ cq) {
+  private static SummaryEntry runExhaustiveParallel(CQ cq, EvaluationIndex index) {
     System.out.println("\n[3] EXHAUSTIVE (Parallel)");
     System.out.println("-".repeat(40));
 
     EvaluationRun run =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL);
+        Decomposer.decomposeWithRun(
+            cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL, index.k(), 0);
+    EvaluationComparison evaluation =
+        evaluateAllDecompositions(cq, run.decompositions(), index, run);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
     printDecompositions(run.decompositions());
     printMetrics(run);
+    printEvaluationSummary(evaluation);
+    return new SummaryEntry(run, evaluation);
   }
 
-  private static void runCpqk(CQ cq) {
+  private static SummaryEntry runCpqk(CQ cq, EvaluationIndex index) {
     System.out.println("\n[4] CPQ_K ENUMERATION");
     System.out.println("-".repeat(40));
 
     EvaluationRun run =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.CPQ_K_ENUMERATION);
+        Decomposer.decomposeWithRun(
+            cq, Decomposer.DecompositionMethod.CPQ_K_ENUMERATION, index.k(), 0);
+    EvaluationComparison evaluation =
+        evaluateAllDecompositions(cq, run.decompositions(), index, run);
 
     System.out.printf("  Result: %d decomposition(s)%n", run.size());
     printDecompositions(run.decompositions());
     printMetrics(run);
+    printEvaluationSummary(evaluation);
+    return new SummaryEntry(run, evaluation);
   }
 
   private static void printMetrics(EvaluationRun run) {
@@ -105,6 +166,8 @@ public final class Main {
         run.partitionsExplored(), (double) run.partitionGenerationMs());
     System.out.printf("  Expression:  %.2f ms%n", (double) run.expressionBuildingMs());
     System.out.printf("  Dedup:       %.2f ms%n", (double) run.deduplicationMs());
+    System.out.printf("  CPQ Eval:    %.2f ms%n", (double) run.cpqEvaluationMs());
+    System.out.printf("  Join:        %.2f ms%n", (double) run.joinMs());
     System.out.printf("  TOTAL:       %.2f ms%n", (double) run.totalMs());
     System.out.println();
     System.out.println(run.percentageBreakdown());
@@ -140,27 +203,20 @@ public final class Main {
     return sb.toString();
   }
 
-  private static void printSummary(CQ cq) {
+  private static void printSummary(
+      int exampleId,
+      SummaryEntry singleSummary,
+      SummaryEntry seqSummary,
+      SummaryEntry parSummary,
+      SummaryEntry cpqkSummary) {
     System.out.println("\n" + "=".repeat(60));
-    System.out.println("PERFORMANCE COMPARISON SUMMARY");
+    System.out.println("PERFORMANCE COMPARISON SUMMARY (example " + exampleId + ")");
     System.out.println("=".repeat(60));
 
-    // Run all methods and collect times
-    long singleStart = System.nanoTime();
-    Decomposer.decompose(cq, Decomposer.DecompositionMethod.SINGLE_EDGE);
-    long singleTime = (System.nanoTime() - singleStart) / 1_000_000;
-
-    EvaluationRun seqRun =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_ENUMERATION);
-    long seqTime = seqRun.totalMs();
-
-    EvaluationRun parRun =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.EXHAUSTIVE_PARALLEL);
-    long parTime = parRun.totalMs();
-
-    EvaluationRun cpqkRun =
-        Decomposer.decomposeWithRun(cq, Decomposer.DecompositionMethod.CPQ_K_ENUMERATION);
-    long cpqkTime = cpqkRun.totalMs();
+    long singleTime = singleSummary.run().totalMs();
+    long seqTime = seqSummary.run().totalMs();
+    long parTime = parSummary.run().totalMs();
+    long cpqkTime = cpqkSummary.run().totalMs();
 
     System.out.printf("%-25s %8s %14s%n", "Method", "Time (ms)", "vs Sequential");
     System.out.println("-".repeat(45));
@@ -172,6 +228,16 @@ public final class Main {
     System.out.printf(
         "%-25s %8d %14.2fx%n",
         "CPQ-k Enumeration", cpqkTime, seqTime > 0 ? (double) seqTime / cpqkTime : 0);
+
+    System.out.println();
+    System.out.println("Answer comparison (projected to free vars):");
+    printAnswerComparison("Single-edge", singleSummary.evaluation(), singleSummary.evaluation());
+    printAnswerComparison(
+        "Exhaustive Sequential", seqSummary.evaluation(), singleSummary.evaluation());
+    printAnswerComparison(
+        "Exhaustive Parallel", parSummary.evaluation(), singleSummary.evaluation());
+    printAnswerComparison(
+        "CPQ-k Enumeration", cpqkSummary.evaluation(), singleSummary.evaluation());
   }
 
   private static CQ pickExample(int id) {
@@ -191,7 +257,187 @@ public final class Main {
     try {
       return Integer.parseInt(raw.trim());
     } catch (NumberFormatException ex) {
-      return 1;
+      return -1;
+    }
+  }
+
+  private static int[] resolveExampleIds(String[] args) {
+    if (args == null || args.length == 0) {
+      return ALL_EXAMPLES;
+    }
+    if (args.length == 1 && "all".equalsIgnoreCase(args[0].trim())) {
+      return ALL_EXAMPLES;
+    }
+
+    Set<Integer> ids = new LinkedHashSet<>();
+    for (String arg : args) {
+      if (arg == null) {
+        continue;
+      }
+      String trimmed = arg.trim();
+      if (trimmed.isEmpty()) {
+        continue;
+      }
+      if ("all".equalsIgnoreCase(trimmed)) {
+        return ALL_EXAMPLES;
+      }
+      int id = parseExampleId(trimmed);
+      if (id > 0) {
+        ids.add(id);
+      }
+    }
+
+    if (ids.isEmpty()) {
+      return ALL_EXAMPLES;
+    }
+    return ids.stream().mapToInt(Integer::intValue).toArray();
+  }
+
+  private static EvaluationComparison evaluateAllDecompositions(
+      CQ cq, List<List<CPQExpression>> decompositions, EvaluationIndex index, EvaluationRun run) {
+    List<String> freeVars = normalizedFreeVars(cq);
+    Set<Map<String, Integer>> union = new LinkedHashSet<>();
+    Set<Map<String, Integer>> baseline = null;
+    boolean allAgree = true;
+    int mismatches = 0;
+    long evalMs = 0L;
+    List<DecompositionTiming> timings = new ArrayList<>();
+
+    int ordinal = 1;
+    for (List<CPQExpression> tuple : decompositions) {
+      long start = System.nanoTime();
+      List<Map<String, Integer>> raw = index.evaluateDecomposition(tuple, run);
+      long end = System.nanoTime();
+      long elapsedMs = (end - start) / 1_000_000;
+      evalMs += elapsedMs;
+      Set<Map<String, Integer>> projected = projectResults(raw, freeVars);
+      union.addAll(projected);
+      if (baseline == null) {
+        baseline = projected;
+      }
+      boolean matchesBaseline = baseline.equals(projected);
+      if (!matchesBaseline) {
+        allAgree = false;
+        mismatches++;
+      }
+      timings.add(new DecompositionTiming(ordinal, elapsedMs, projected.size(), matchesBaseline));
+      ordinal++;
+    }
+
+    if (baseline == null) {
+      baseline = Set.of();
+    }
+
+    if (run != null) {
+      run.setEvaluationResults(List.copyOf(union));
+      run.recordPhaseMs(EvaluationRun.Phase.TOTAL, run.totalMs() + evalMs);
+    }
+
+    return new EvaluationComparison(
+        decompositions.size(),
+        Set.copyOf(baseline),
+        Set.copyOf(union),
+        allAgree,
+        mismatches,
+        evalMs,
+        List.copyOf(timings));
+  }
+
+  private static List<String> normalizedFreeVars(CQ cq) {
+    return cq.getFreeVariables().stream().map(var -> normalizeVar(var.getName())).toList();
+  }
+
+  private static String normalizeVar(String raw) {
+    if (raw == null) {
+      throw new IllegalArgumentException("Variable name must be non-null");
+    }
+    String trimmed = raw.trim();
+    if (trimmed.isEmpty()) {
+      throw new IllegalArgumentException("Variable name must be non-empty");
+    }
+    return trimmed.startsWith("?") ? trimmed : ("?" + trimmed);
+  }
+
+  private static Set<Map<String, Integer>> projectResults(
+      List<Map<String, Integer>> rows, List<String> freeVars) {
+    if (rows.isEmpty()) {
+      return Set.of();
+    }
+    if (freeVars.isEmpty()) {
+      return Set.of(Map.of());
+    }
+    Set<Map<String, Integer>> result = new LinkedHashSet<>();
+    for (Map<String, Integer> row : rows) {
+      Map<String, Integer> projected = projectRow(row, freeVars);
+      if (projected != null) {
+        result.add(projected);
+      }
+    }
+    return result;
+  }
+
+  private static Map<String, Integer> projectRow(Map<String, Integer> row, List<String> freeVars) {
+    LinkedHashMap<String, Integer> projected = new LinkedHashMap<>();
+    for (String var : freeVars) {
+      Integer value = row.get(var);
+      if (value == null) {
+        return null;
+      }
+      projected.put(var, value);
+    }
+    return Map.copyOf(projected);
+  }
+
+  private static void printEvaluationSummary(EvaluationComparison evaluation) {
+    System.out.printf("  Answers:     %d%n", evaluation.baselineResults().size());
+    if (!evaluation.allAgree()) {
+      System.out.printf("  Union:       %d%n", evaluation.unionResults().size());
+    }
+    if (evaluation.decompositionCount() > 1) {
+      String status =
+          evaluation.allAgree()
+              ? "yes"
+              : ("no ("
+                  + evaluation.mismatches()
+                  + " mismatch"
+                  + (evaluation.mismatches() == 1 ? "" : "es")
+                  + ")");
+      System.out.printf("  Consistent:  %s%n", status);
+    }
+    printDecompositionTimings(evaluation.timings());
+  }
+
+  private static void printAnswerComparison(
+      String label, EvaluationComparison evaluation, EvaluationComparison baseline) {
+    boolean matches = evaluation.baselineResults().equals(baseline.baselineResults());
+    String status = matches ? "matches" : "DIFFERS";
+    if (!evaluation.allAgree()) {
+      status = status + ", inconsistent";
+    }
+    System.out.printf(
+        "  %-23s %8d answers (%s)%n", label, evaluation.baselineResults().size(), status);
+  }
+
+  private static void printDecompositionTimings(List<DecompositionTiming> timings) {
+    if (timings.isEmpty()) {
+      return;
+    }
+    System.out.println("  Decomposition eval times:");
+    long min = Long.MAX_VALUE;
+    long max = Long.MIN_VALUE;
+    long total = 0L;
+    for (DecompositionTiming timing : timings) {
+      min = Math.min(min, timing.evaluationMs());
+      max = Math.max(max, timing.evaluationMs());
+      total += timing.evaluationMs();
+      String status = timing.matchesBaseline() ? "ok" : "DIFF";
+      System.out.printf(
+          "    #%d %6d ms (%d answers, %s)%n",
+          timing.index(), timing.evaluationMs(), timing.answerCount(), status);
+    }
+    if (timings.size() > 1) {
+      long avg = total / timings.size();
+      System.out.printf("    min/avg/max: %d/%d/%d ms%n", min, avg, max);
     }
   }
 }
