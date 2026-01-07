@@ -39,6 +39,11 @@ public class EvaluationIndex implements AutoCloseable {
   private final LeapfrogJoiner joiner;
   private final int k;
 
+  public record DecompositionEval(
+      List<Map<String, Integer>> results, List<Integer> relationSizes) {}
+
+  private record EvaluatedExpression(RelationBinding binding, int size) {}
+
   public EvaluationIndex(Path graphPath, int k) throws IOException {
     ensureNativesLoaded();
     this.k = k;
@@ -107,31 +112,7 @@ public class EvaluationIndex implements AutoCloseable {
 
   public List<Map<String, Integer>> evaluateDecomposition(
       List<CPQExpression> tuple, EvaluationRun run) {
-    Objects.requireNonNull(tuple, "tuple");
-    if (tuple.isEmpty()) {
-      return List.of();
-    }
-
-    List<RelationBinding> relations = new ArrayList<>(tuple.size());
-    try (var timer = run.startTimer(EvaluationRun.Phase.CPQ_EVALUATION)) {
-      for (CPQExpression expression : tuple) {
-        if (expression == null) {
-          continue;
-        }
-        RelationBinding binding = evaluateExpression(expression);
-        if (binding == null) {
-          return List.of();
-        }
-        relations.add(binding);
-      }
-    }
-    if (relations.isEmpty()) {
-      return List.of();
-    }
-
-    try (var timer = run.startTimer(EvaluationRun.Phase.JOIN)) {
-      return joiner.join(relations);
-    }
+    return evaluateDecompositionWithStats(tuple, run).results();
   }
 
   /** Legacy method for backward compatibility if needed, delegates with dummy run or throws. */
@@ -147,7 +128,43 @@ public class EvaluationIndex implements AutoCloseable {
     return evaluateDecomposition(tuple);
   }
 
-  private RelationBinding evaluateExpression(CPQExpression expression) {
+  public DecompositionEval evaluateDecompositionWithStats(
+      List<CPQExpression> tuple, EvaluationRun run) {
+    Objects.requireNonNull(tuple, "tuple");
+    Objects.requireNonNull(run, "run");
+    if (tuple.isEmpty()) {
+      return new DecompositionEval(List.of(), List.of());
+    }
+
+    List<RelationBinding> relations = new ArrayList<>(tuple.size());
+    List<Integer> relationSizes = new ArrayList<>(tuple.size());
+    boolean valid = true;
+    try (var timer = run.startTimer(EvaluationRun.Phase.CPQ_EVALUATION)) {
+      for (CPQExpression expression : tuple) {
+        if (expression == null) {
+          relationSizes.add(0);
+          valid = false;
+          continue;
+        }
+        EvaluatedExpression evaluated = evaluateExpressionWithSize(expression);
+        relationSizes.add(evaluated.size());
+        if (evaluated.binding() == null) {
+          valid = false;
+          continue;
+        }
+        relations.add(evaluated.binding());
+      }
+    }
+    if (!valid || relations.isEmpty()) {
+      return new DecompositionEval(List.of(), List.copyOf(relationSizes));
+    }
+
+    try (var timer = run.startTimer(EvaluationRun.Phase.JOIN)) {
+      return new DecompositionEval(joiner.join(relations), List.copyOf(relationSizes));
+    }
+  }
+
+  private EvaluatedExpression evaluateExpressionWithSize(CPQExpression expression) {
     CPQ cpq = expression.cpq();
     List<Pair> matches;
     try {
@@ -167,10 +184,11 @@ public class EvaluationIndex implements AutoCloseable {
         }
       }
       if (values.isEmpty()) {
-        return null;
+        return new EvaluatedExpression(null, 0);
       }
       int[] domain = values.stream().mapToInt(Integer::intValue).sorted().toArray();
-      return RelationBinding.unary(left, expression.derivation(), domain);
+      return new EvaluatedExpression(
+          RelationBinding.unary(left, expression.derivation(), domain), domain.length);
     }
 
     Map<Integer, IntAccumulator> forward = new HashMap<>();
@@ -184,19 +202,24 @@ public class EvaluationIndex implements AutoCloseable {
           .add(pair.getSource());
     }
     if (forward.isEmpty() || reverse.isEmpty()) {
-      return null;
+      return new EvaluatedExpression(null, 0);
+    }
+
+    Map<Integer, int[]> forwardMap = toIntArrayMap(forward);
+    Map<Integer, int[]> reverseMap = toIntArrayMap(reverse);
+    int size = 0;
+    for (int[] targets : forwardMap.values()) {
+      size += targets.length;
     }
 
     RelationProjection projection =
         new RelationProjection(
-            sortedKeys(forward.keySet()),
-            sortedKeys(reverse.keySet()),
-            toIntArrayMap(forward),
-            toIntArrayMap(reverse));
+            sortedKeys(forward.keySet()), sortedKeys(reverse.keySet()), forwardMap, reverseMap);
     if (projection.isEmpty()) {
-      return null;
+      return new EvaluatedExpression(null, 0);
     }
-    return RelationBinding.binary(left, right, expression.derivation(), projection);
+    return new EvaluatedExpression(
+        RelationBinding.binary(left, right, expression.derivation(), projection), size);
   }
 
   private static String endpointVariable(CPQExpression expression, String node) {

@@ -4,3 +4,5 @@ bin/
 .gradle/
 .gradle-user-home/
 graphs/
+.tools/
+.vscode/
