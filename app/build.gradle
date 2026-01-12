@@ -1,16 +1,13 @@
 plugins {
     id 'application'
-    id 'com.diffplug.spotless' version '6.25.0'
-    id 'net.ltgt.errorprone' version '3.1.0'
 }
 
 repositories {
     mavenCentral()
-    flatDir { dirs 'libs' } // only for local jars like the CPQ fork
 }
 
 application {
-    mainClass = 'decomposition.cli.Main'
+    mainClass = 'evaluator.Main'
 }
 
 distributions {
@@ -23,96 +20,25 @@ distributions {
     }
 }
 
-sourceSets {
-    main {
-        java {
-            srcDirs 'src/main/java'
-        }
-    }
-}
-
 dependencies {
-    implementation name: 'cpq-native-index-1.0'          // from libs/cpq-native-index-1.0.jar
-    implementation 'dev.roanh.gmark:gmark:2.1'           // from Maven Central
-    implementation 'com.google.guava:guava:32.1.2-jre'
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'commons-cli:commons-cli:1.6.0'
-    implementation 'org.slf4j:slf4j-api:2.0.12'
-    implementation 'org.slf4j:slf4j-simple:2.0.12'
+    implementation 'dev.roanh.cpqnativeindex:cpq-native-index:1.0'
+    implementation 'dev.roanh.gmark:gmark:2.1'
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // Error Prone for static analysis
-    errorprone 'com.google.errorprone:error_prone_core:2.24.1'
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.0")
+    testImplementation("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {
     useJUnitPlatform()
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)  
+    maxHeapSize = "15g"
+    testLogging {
+        showStandardStreams = true
     }
-}
-
-// Spotless: code formatting with Google Java Format
-spotless {
-    java {
-        target 'src/**/*.java'
-        googleJavaFormat('1.19.2')
-        removeUnusedImports()
-        trimTrailingWhitespace()
-        endWithNewline()
-    }
-}
-
-// Error Prone: static analysis (stable checks only)
-tasks.withType(JavaCompile).configureEach {
-    options.errorprone {
-        // Disable checks that conflict with code style or are too noisy
-        disable('UnusedVariable', 'UnusedMethod')  // Covered by IDE warnings
-        // Enable useful checks
-        error('ReferenceEquality')  // Prefer .equals() over ==
-        warn('MissingOverride')     // Warn on missing @Override
-    }
-}
-
-// Make test depend on spotless check
-tasks.test.dependsOn tasks.spotlessCheck
-
-tasks.register('runPlot', JavaExec) {
-    group = 'application'
-    description = 'Launches the CPQ plotting utility'
-    mainClass = 'decomposition.cli.PlotCommand'
-    classpath = sourceSets.main.runtimeClasspath
-    standardInput = System.in
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.register('verifyComponents', JavaExec) {
-    group = 'verification'
-    description = 'Verifies CPQ components against manual joins'
-    mainClass = 'decomposition.eval.SimpleComponentVerifier'
-    classpath = sourceSets.test.runtimeClasspath
-    dependsOn tasks.testClasses
-    args = ['graphs/example1_micro.edge']
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.register('runSimpleVerifier', JavaExec) {
-    group = 'verification'
-    description = 'Runs SimpleComponentVerifier on a specified graph'
-    mainClass = 'decomposition.eval.SimpleComponentVerifier'
-    classpath = sourceSets.test.runtimeClasspath
-    dependsOn tasks.testClasses
-    args = [project.findProperty('graph') ?: 'graphs/example1_micro.edge']
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+    systemProperty "cpq.enumeration.logEvery", System.getProperty("cpq.enumeration.logEvery", "10000")
+    systemProperty "cpq.test.dumpDecompositions", System.getProperty("cpq.test.dumpDecompositions", "false")
+    systemProperty "cpq.test.decompLimit", System.getProperty("cpq.test.decompLimit", "5")
+    systemProperty "cpq.test.queryCount", System.getProperty("cpq.test.queryCount", "5")
+    systemProperty "cpq.test.depth", System.getProperty("cpq.test.depth", "7")
+    systemProperty "cpq.test.labelCount", System.getProperty("cpq.test.labelCount", "4")
+    systemProperty "cpq.test.attemptLimit", System.getProperty("cpq.test.attemptLimit", "5000")
 }

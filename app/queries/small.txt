@@ -1,0 +1,7 @@
+# gMark CQ examples (one query per line). Uses Unicode assignment arrow: '←' (U+2190).
+(x,y) ← 0(x,y)
+(x,y) ← 0(x,z), 0(z,y)
+(x,y) ← 0(x,z), 0(z,w), 0(w,y)
+(x) ← 0(x,y)
+(y) ← 0(x,y)
+(x) ← 0(x,y), 0(y,x)

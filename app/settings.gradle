@@ -1,10 +1,31 @@
-rootProject.name = "decomposition"
-File cpqProjectDir = new File("/home/dazai/projects/CPQ-native-index/CPQ-native Index")
-if (cpqProjectDir.exists()) {
-    includeBuild(cpqProjectDir) {
+rootProject.name = "evaluator"
+
+def localCpqNativeIndexDir =
+    providers
+        .gradleProperty("cpqNativeIndexDir")
+        .map { file(it) }
+        .orElse(file("local/CPQ-native-index/CPQ-native Index"))
+        .get()
+
+if (localCpqNativeIndexDir.exists()) {
+    includeBuild(localCpqNativeIndexDir) {
         dependencySubstitution {
-            substitute(module("dev.roanh.cpqnativeindex:cpq-native-index"))
-                .using(project(":"))
+            substitute(module("dev.roanh.cpqnativeindex:cpq-native-index")).using(project(":"))
+        }
+    }
+}
+
+def localGmarkDir =
+    providers
+        .gradleProperty("gmarkDir")
+        .map { file(it) }
+        .orElse(file("local/gmark/gMark"))
+        .get()
+
+if (localGmarkDir.exists()) {
+    includeBuild(localGmarkDir) {
+        dependencySubstitution {
+            substitute(module("dev.roanh.gmark:gmark")).using(project(":"))
         }
     }
 }
