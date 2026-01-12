@@ -159,11 +159,9 @@ class CpqEnumerationExhaustiveTest {
         }
         Set<VarCQ> isolated = new HashSet<>(cq.getFreeVariables());
         isolated.removeAll(incident);
+        assertTrue(isolated.isEmpty(), "CQ must be connected (no isolated free variables)");
         for (Component component : decomposition) {
-            if (component.mask().isEmpty()) {
-                assertTrue(component.s().equals(component.t()), "Identity component must be unary");
-                assertTrue(isolated.contains(component.s()), "Identity component only allowed for isolated free vars");
-            }
+            assertTrue(!component.mask().isEmpty(), "Identity components are not allowed");
         }
     }
 
