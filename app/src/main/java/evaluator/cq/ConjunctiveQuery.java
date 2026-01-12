@@ -33,6 +33,11 @@ public final class ConjunctiveQuery {
         return new ConjunctiveQuery(ParserCQ.parse(text, labelAlphabet));
     }
 
+    public static ConjunctiveQuery from(dev.roanh.gmark.lang.cq.CQ syntax) {
+        Objects.requireNonNull(syntax, "syntax");
+        return new ConjunctiveQuery(syntax);
+    }
+
     public dev.roanh.gmark.lang.cq.CQ syntax() {
         return syntax;
     }

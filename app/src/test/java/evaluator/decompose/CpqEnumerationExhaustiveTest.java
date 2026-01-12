@@ -3,11 +3,11 @@ package evaluator.decompose;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.roanh.gmark.lang.cq.AtomCQ;
-import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.util.Util;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
+import evaluator.cq.ConjunctiveQuery;
 import evaluator.decompose.CpqDecomposition.Component;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -31,38 +31,33 @@ class CpqEnumerationExhaustiveTest {
         int collected = 0;
         int attemptLimit = Integer.getInteger("cpq.test.attemptLimit", 5_000);
         boolean dump = Boolean.getBoolean("cpq.test.dumpDecompositions");
-        int decompLimit = Integer.getInteger("cpq.test.decompLimit", 5);
         for (int attempt = 0; collected < queryCount && attempt < attemptLimit; attempt++) {
             long seed = baseSeed + attempt;
             Util.setRandomSeed(seed);
 
             CPQ cpq = CPQ.generateRandomCPQ(depth, labelCount);
 
-            CQ cq = cpq.toCQ();
+            ConjunctiveQuery cq = ConjunctiveQuery.from(cpq.toCQ());
             int k = cpq.getDiameter();
-            List<List<Component>> decomps = CpqEnumeration.enumerateExactDecompositions(cq, k, decompLimit);
+            List<Component> decomposition = cq.decompose(k).parts();
 
             if (dump) {
-                int edgeCount = cq.toQueryGraph().toUniqueGraph().getEdgeCount();
+                int edgeCount = cq.syntax().toQueryGraph().toUniqueGraph().getEdgeCount();
                 System.out.println("seed=" + seed + " diameter=" + k + " edges=" + edgeCount);
-                for (int i = 0; i < decomps.size(); i++) {
-                    System.out.println("decomp[" + i + "] size=" + decomps.get(i).size());
-                    for (Component part : decomps.get(i)) {
-                        System.out.println("  " + formatComponent(part));
-                    }
+                System.out.println("decomp size=" + decomposition.size());
+                for (Component part : decomposition) {
+                    System.out.println("  " + formatComponent(part));
                 }
             }
 
             assertTrue(
-                    !decomps.isEmpty(),
+                    !decomposition.isEmpty(),
                     () -> "Missing exact-cover decomposition"
                             + " (seed=" + seed
                             + ", diameter=" + k
                             + ", cpq=" + cpq.toFormalSyntax() + ")");
-            for (List<Component> decomposition : decomps) {
-                assertExactCover(cq, decomposition);
-                assertEndpointExposure(cq, decomposition);
-            }
+            assertExactCover(cq, decomposition);
+            assertEndpointExposure(cq, decomposition);
 
             collected++;
         }
@@ -72,8 +67,8 @@ class CpqEnumerationExhaustiveTest {
                 "Only generated " + collected + " CPQs within " + attemptLimit + " attempts.");
     }
 
-    private static void assertExactCover(CQ cq, List<Component> decomposition) {
-        int edgeCount = cq.toQueryGraph().toUniqueGraph().getEdgeCount();
+    private static void assertExactCover(ConjunctiveQuery cq, List<Component> decomposition) {
+        int edgeCount = cq.syntax().toQueryGraph().toUniqueGraph().getEdgeCount();
         BitSet covered = new BitSet(edgeCount);
         for (Component component : decomposition) {
             BitSet mask = component.mask();
@@ -83,8 +78,8 @@ class CpqEnumerationExhaustiveTest {
         assertTrue(covered.cardinality() == edgeCount, "Decomposition does not cover all atoms");
     }
 
-    private static void assertEndpointExposure(CQ cq, List<Component> decomposition) {
-        UniqueGraph<VarCQ, AtomCQ> graph = cq.toQueryGraph().toUniqueGraph();
+    private static void assertEndpointExposure(ConjunctiveQuery cq, List<Component> decomposition) {
+        UniqueGraph<VarCQ, AtomCQ> graph = cq.syntax().toQueryGraph().toUniqueGraph();
         List<UniqueGraph.GraphEdge<VarCQ, AtomCQ>> edges = graph.getEdges();
         List<VarCQ> vertices = graph.getNodes().stream()
                 .map(node -> node.getData())
@@ -149,7 +144,7 @@ class CpqEnumerationExhaustiveTest {
             endpointsCovered.add(component.s());
             endpointsCovered.add(component.t());
         }
-        assertTrue(endpointsCovered.containsAll(cq.getFreeVariables()), "Free variable not exposed as endpoint");
+        assertTrue(endpointsCovered.containsAll(cq.freeVariables()), "Free variable not exposed as endpoint");
 
         Set<VarCQ> incident = new HashSet<>();
         for (UniqueGraph.GraphEdge<VarCQ, AtomCQ> edge : edges) {
@@ -157,7 +152,7 @@ class CpqEnumerationExhaustiveTest {
             incident.add(atom.getSource());
             incident.add(atom.getTarget());
         }
-        Set<VarCQ> isolated = new HashSet<>(cq.getFreeVariables());
+        Set<VarCQ> isolated = new HashSet<>(cq.freeVariables());
         isolated.removeAll(incident);
         assertTrue(isolated.isEmpty(), "CQ must be connected (no isolated free variables)");
         for (Component component : decomposition) {
