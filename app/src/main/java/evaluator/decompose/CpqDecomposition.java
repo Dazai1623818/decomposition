@@ -62,21 +62,21 @@ public final class CpqDecomposition {
     }
 
     private final ConjunctiveQuery cq;
-    private final List<Component> parts;
+    private final List<Component> components;
     private final List<String> variableOrder;
 
-    public CpqDecomposition(ConjunctiveQuery cq, List<Component> parts) {
+    public CpqDecomposition(ConjunctiveQuery cq, List<Component> components) {
         this.cq = Objects.requireNonNull(cq, "cq");
-        this.parts = List.copyOf(Objects.requireNonNull(parts, "parts"));
-        this.variableOrder = computeVariableOrder(parts);
+        this.components = List.copyOf(Objects.requireNonNull(components, "components"));
+        this.variableOrder = computeVariableOrder(components);
     }
 
     public ConjunctiveQuery cq() {
         return cq;
     }
 
-    public List<Component> parts() {
-        return parts;
+    public List<Component> components() {
+        return components;
     }
 
     public Set<VarCQ> freeVars() {
@@ -87,9 +87,9 @@ public final class CpqDecomposition {
         return variableOrder;
     }
 
-    private static List<String> computeVariableOrder(List<Component> parts) {
+    private static List<String> computeVariableOrder(List<Component> components) {
         Map<String, Integer> counts = new HashMap<>();
-        for (Component part : parts) {
+        for (Component part : components) {
             counts.merge(varName(part.s()), 1, Integer::sum);
             counts.merge(varName(part.t()), 1, Integer::sum);
         }

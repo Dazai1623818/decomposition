@@ -8,6 +8,7 @@ import dev.roanh.gmark.lang.cq.ParserCQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
 import dev.roanh.gmark.lang.cpq.CPQ;
 import dev.roanh.gmark.type.schema.Predicate;
+import dev.roanh.gmark.util.Util;
 import dev.roanh.gmark.util.graph.generic.UniqueGraph;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -17,6 +18,12 @@ import java.util.Set;
 
 public final class ConjunctiveQuery {
     private final dev.roanh.gmark.lang.cq.CQ syntax;
+
+    public enum Strategy {
+        FIRST,
+        RANDOM,
+        SINGLE_EDGE
+    }
 
     private ConjunctiveQuery(dev.roanh.gmark.lang.cq.CQ syntax) {
         this.syntax = Objects.requireNonNull(syntax, "syntax");
@@ -56,11 +63,24 @@ public final class ConjunctiveQuery {
     }
 
     public CpqDecomposition decompose(int k) {
+        return decompose(k, Strategy.FIRST);
+    }
+
+    public CpqDecomposition decompose(int k, Strategy strategy) {
         Objects.checkIndex(Math.max(k, 1) - 1, Integer.MAX_VALUE);
+        Objects.requireNonNull(strategy, "strategy");
+
+        if (strategy == Strategy.SINGLE_EDGE) {
+            return new CpqDecomposition(this, SingleEdgeDecomposition());
+        }
 
         List<List<Component>> exact = CpqEnumeration.enumerateExactDecompositions(syntax, k, 1);
         if (!exact.isEmpty()) {
-            return new CpqDecomposition(this, exact.get(0));
+            int selected = 0;
+            if (strategy == Strategy.RANDOM) {
+                selected = Util.getRandom().nextInt(exact.size());
+            }
+            return new CpqDecomposition(this, exact.get(selected));
         }
         return new CpqDecomposition(this, SingleEdgeDecomposition());
     }

@@ -58,17 +58,17 @@ public final class CpqNativeIndex {
     public List<Map<String, Integer>> evaluate(CpqDecomposition decomposition) {
         Objects.requireNonNull(decomposition, "decomposition");
 
-        List<Component> parts = decomposition.parts();
-        if (parts.isEmpty()) {
+        List<Component> components = decomposition.components();
+        if (components.isEmpty()) {
             return List.of();
         }
 
-        List<RelationBinding> relations = parts.stream()
+        List<RelationBinding> relations = components.stream()
                 .map(this::evaluateComponent)
                 .filter(Objects::nonNull)
                 .toList();
 
-        if (relations.size() != parts.size()) {
+        if (relations.size() != components.size()) {
             return List.of();
         }
 
