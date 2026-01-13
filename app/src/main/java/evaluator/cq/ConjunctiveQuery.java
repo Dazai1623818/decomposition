@@ -70,19 +70,17 @@ public final class ConjunctiveQuery {
         Objects.checkIndex(Math.max(k, 1) - 1, Integer.MAX_VALUE);
         Objects.requireNonNull(strategy, "strategy");
 
-        if (strategy == Strategy.SINGLE_EDGE) {
+        List<List<Component>> exact = CpqEnumeration.enumerateExactDecompositions(syntax, k, 0);
+        if (strategy == Strategy.SINGLE_EDGE || exact.isEmpty()) {
             return new CpqDecomposition(this, SingleEdgeDecomposition());
         }
 
-        List<List<Component>> exact = CpqEnumeration.enumerateExactDecompositions(syntax, k, 1);
-        if (!exact.isEmpty()) {
-            int selected = 0;
-            if (strategy == Strategy.RANDOM) {
-                selected = Util.getRandom().nextInt(exact.size());
-            }
-            return new CpqDecomposition(this, exact.get(selected));
-        }
-        return new CpqDecomposition(this, SingleEdgeDecomposition());
+        int selected = switch (strategy) {
+            case RANDOM -> Util.getRandom().nextInt(exact.size());
+            case FIRST -> 0;
+            case SINGLE_EDGE -> 0;
+        };
+        return new CpqDecomposition(this, exact.get(selected));
     }
 
     private List<Component> SingleEdgeDecomposition() {
