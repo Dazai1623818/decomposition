@@ -39,14 +39,14 @@ class CpqEnumerationExhaustiveTest {
 
             ConjunctiveQuery cq = ConjunctiveQuery.from(cpq.toCQ());
             int k = cpq.getDiameter();
-            List<Component> decomposition = cq.decompose(k).parts();
+            List<Component> decomposition = cq.decompose(k).components();
 
             if (dump) {
                 int edgeCount = cq.syntax().toQueryGraph().toUniqueGraph().getEdgeCount();
                 System.out.println("seed=" + seed + " diameter=" + k + " edges=" + edgeCount);
                 System.out.println("decomp size=" + decomposition.size());
-                for (Component part : decomposition) {
-                    System.out.println("  " + formatComponent(part));
+                for (Component component : decomposition) {
+                    System.out.println("  " + formatComponent(component));
                 }
             }
 
