@@ -12,3 +12,5 @@ temp/
 logs/
 *.edge
 *.idx
+!app/index/robots.k2.idx
+*.md

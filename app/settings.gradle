@@ -1,31 +1,20 @@
-rootProject.name = "evaluator"
+rootProject.name = "enumerator"
 
-def localCpqNativeIndexDir =
-    providers
-        .gradleProperty("cpqNativeIndexDir")
-        .map { file(it) }
-        .orElse(file("local/CPQ-native-index/CPQ-native Index"))
-        .get()
+def gmarkDir = file("../../gmark/gMark")
+def cpqIndexDir = file("local/CPQ-native-index-fork/CPQ-native Index")
 
-if (localCpqNativeIndexDir.exists()) {
-    includeBuild(localCpqNativeIndexDir) {
+if (gmarkDir.exists()) {
+    includeBuild(gmarkDir) {
         dependencySubstitution {
-            substitute(module("dev.roanh.cpqnativeindex:cpq-native-index")).using(project(":"))
+            substitute(module("dev.roanh.gmark:gmark")).using(project(":"))
         }
     }
 }
 
-def localGmarkDir =
-    providers
-        .gradleProperty("gmarkDir")
-        .map { file(it) }
-        .orElse(file("local/gmark/gMark"))
-        .get()
-
-if (localGmarkDir.exists()) {
-    includeBuild(localGmarkDir) {
+if (cpqIndexDir.exists()) {
+    includeBuild(cpqIndexDir) {
         dependencySubstitution {
-            substitute(module("dev.roanh.gmark:gmark")).using(project(":"))
+            substitute(module("dev.roanh.cpqnativeindex:cpq-native-index")).using(project(":"))
         }
     }
 }

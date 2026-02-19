@@ -8,3 +8,9 @@ temp/
 local/
 docs/
 graphs/
+!src/test/java/evaluator/joiner/gmark-testcases/examplegraphs/**/*.edge
+*.md
+!README.md
+build.gradle
+settings.gradle
+.gitignore

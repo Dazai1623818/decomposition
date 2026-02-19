@@ -1,0 +1,6 @@
+# smoke fixture for eval-file
+(x,y) ← 0(x,y)
+
+# blank line and comment handling
+
+(x) ← 0(x,y)

@@ -1,0 +1,793 @@
+{
+  "format": "gmark-cpq-expected-v1",
+  "notes": [
+    "query_line is a 1-based index into the query_file (gMark cpq.query format: source, query, target).",
+    "source/target omitted means wildcard.",
+    "expected_card_stat matches gMark CardStat(sourceCount, pairCount, targetCount)."
+  ],
+  "datasets": [
+    {
+      "name": "syn/example",
+      "graph": "graphs/syn/example/graph.edge",
+      "query_file": "queries/syn/example/cpq.query",
+      "cases": [
+        {
+          "name": "query0",
+          "query_line": 1,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ],
+          "expected_pairs": [
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        {
+          "name": "query2",
+          "query_line": 3,
+          "expected_card_stat": [
+            14,
+            14,
+            14
+          ],
+          "expected_pairs": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              8,
+              8
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              11,
+              11
+            ],
+            [
+              12,
+              12
+            ],
+            [
+              13,
+              13
+            ]
+          ]
+        },
+        {
+          "name": "query5",
+          "query_line": 5,
+          "expected_card_stat": [
+            11,
+            11,
+            11
+          ],
+          "expected_pairs": [
+            [
+              1,
+              1
+            ],
+            [
+              3,
+              3
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              8,
+              8
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              11,
+              11
+            ],
+            [
+              12,
+              12
+            ]
+          ]
+        },
+        {
+          "name": "query6",
+          "query_line": 6,
+          "expected_card_stat": [
+            3,
+            3,
+            3
+          ],
+          "expected_pairs": [
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              7,
+              7
+            ]
+          ]
+        },
+        {
+          "name": "query7",
+          "query_line": 7,
+          "expected_card_stat": [
+            3,
+            4,
+            4
+          ],
+          "expected_pairs": [
+            [
+              4,
+              7
+            ],
+            [
+              5,
+              4
+            ],
+            [
+              7,
+              5
+            ],
+            [
+              7,
+              10
+            ]
+          ]
+        },
+        {
+          "name": "query13",
+          "query_expr": {
+            "type": "id"
+          },
+          "source": 1,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ],
+          "expected_pairs": [
+            [
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "name": "query14",
+          "query_expr": {
+            "type": "id"
+          },
+          "target": 2,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ],
+          "expected_pairs": [
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "name": "query15",
+          "query_expr": {
+            "type": "id"
+          },
+          "source": 1,
+          "target": 2,
+          "expected_card_stat": [
+            0,
+            0,
+            0
+          ],
+          "expected_pairs": []
+        },
+        {
+          "name": "query16",
+          "query_expr": {
+            "type": "id"
+          },
+          "source": 2,
+          "target": 2,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ],
+          "expected_pairs": [
+            [
+              2,
+              2
+            ]
+          ]
+        },
+        {
+          "name": "query17",
+          "query_expr": {
+            "type": "label",
+            "id": 0,
+            "inverse": false
+          },
+          "source": 3,
+          "target": 6,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ],
+          "expected_pairs": [
+            [
+              3,
+              6
+            ]
+          ]
+        },
+        {
+          "name": "query18",
+          "query_expr": {
+            "type": "label",
+            "id": 0,
+            "inverse": false
+          },
+          "source": 3,
+          "target": 2,
+          "expected_card_stat": [
+            0,
+            0,
+            0
+          ],
+          "expected_pairs": []
+        }
+      ]
+    },
+    {
+      "name": "syn/1",
+      "graph": "graphs/syn/1/graph.edge",
+      "query_file": "queries/syn/1/cpq.query",
+      "cases": [
+        {
+          "name": "syn1cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "syn1cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            2393,
+            4374,
+            2699
+          ]
+        },
+        {
+          "name": "syn1cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            2393,
+            10460,
+            491
+          ]
+        },
+        {
+          "name": "syn1cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            1268,
+            7904,
+            886
+          ]
+        },
+        {
+          "name": "syn1cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            280,
+            5728,
+            280
+          ]
+        },
+        {
+          "name": "syn1cpq5",
+          "query_line": 6,
+          "expected_card_stat": [
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "syn1cpq6",
+          "query_line": 7,
+          "expected_card_stat": [
+            2393,
+            2393,
+            2393
+          ]
+        },
+        {
+          "name": "syn1cpq7",
+          "query_line": 8,
+          "expected_card_stat": [
+            1,
+            157,
+            157
+          ]
+        },
+        {
+          "name": "syn1cpq8",
+          "query_line": 9,
+          "expected_card_stat": [
+            275,
+            275,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real/1",
+      "graph": "graphs/real/1/graph.edge",
+      "query_file": "queries/real/1/cpq.query",
+      "cases": [
+        {
+          "name": "real1cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            5,
+            5,
+            5
+          ]
+        },
+        {
+          "name": "real1cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            646,
+            46395,
+            259
+          ]
+        },
+        {
+          "name": "real1cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            19,
+            19,
+            19
+          ]
+        },
+        {
+          "name": "real1cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            14,
+            14,
+            14
+          ]
+        },
+        {
+          "name": "real1cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            4,
+            8,
+            5
+          ]
+        },
+        {
+          "name": "real1cpq5",
+          "query_line": 6,
+          "expected_card_stat": [
+            26,
+            161,
+            18
+          ]
+        },
+        {
+          "name": "real1cpq6",
+          "query_line": 7,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "real1cpq7",
+          "query_line": 8,
+          "expected_card_stat": [
+            7,
+            7,
+            7
+          ]
+        },
+        {
+          "name": "real1cpq8",
+          "query_line": 9,
+          "expected_card_stat": [
+            6,
+            6,
+            6
+          ]
+        },
+        {
+          "name": "real1cpq9",
+          "query_line": 10,
+          "expected_card_stat": [
+            26,
+            26,
+            26
+          ]
+        },
+        {
+          "name": "real1cpq10",
+          "query_line": 11,
+          "expected_card_stat": [
+            4,
+            4,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real/2",
+      "graph": "graphs/real/2/graph.edge",
+      "query_file": "queries/real/2/cpq.query",
+      "cases": [
+        {
+          "name": "real2cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            2023,
+            98657,
+            1348
+          ]
+        },
+        {
+          "name": "real2cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            238,
+            1192,
+            345
+          ]
+        },
+        {
+          "name": "real2cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            206,
+            28088,
+            1587
+          ]
+        },
+        {
+          "name": "real2cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            443,
+            24254,
+            548
+          ]
+        },
+        {
+          "name": "real2cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            60,
+            106,
+            54
+          ]
+        },
+        {
+          "name": "real2cpq5",
+          "query_line": 6,
+          "expected_card_stat": [
+            1101,
+            19187,
+            244
+          ]
+        },
+        {
+          "name": "real2cpq6",
+          "query_line": 7,
+          "expected_card_stat": [
+            513,
+            2599,
+            393
+          ]
+        },
+        {
+          "name": "real2cpq7",
+          "query_line": 8,
+          "expected_card_stat": [
+            269,
+            2151,
+            179
+          ]
+        },
+        {
+          "name": "real2cpq8",
+          "query_line": 9,
+          "expected_card_stat": [
+            145,
+            5854,
+            1289
+          ]
+        },
+        {
+          "name": "real2cpq9",
+          "query_line": 10,
+          "expected_card_stat": [
+            707,
+            707,
+            707
+          ]
+        },
+        {
+          "name": "real2cpq10",
+          "query_line": 11,
+          "expected_card_stat": [
+            741,
+            2294,
+            403
+          ]
+        },
+        {
+          "name": "real2cpq11",
+          "query_line": 12,
+          "expected_card_stat": [
+            372,
+            1631,
+            412
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real/3",
+      "graph": "graphs/real/3/graph.edge",
+      "query_file": "queries/real/3/cpq.query",
+      "cases": [
+        {
+          "name": "real3cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            19,
+            66,
+            44
+          ]
+        },
+        {
+          "name": "real3cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            40,
+            58,
+            17
+          ]
+        },
+        {
+          "name": "real3cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            21,
+            21,
+            21
+          ]
+        },
+        {
+          "name": "real3cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            3,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "real3cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            107,
+            365,
+            365
+          ]
+        },
+        {
+          "name": "real3cpq5",
+          "query_line": 6,
+          "expected_card_stat": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "real3cpq6",
+          "query_line": 7,
+          "expected_card_stat": [
+            32,
+            139,
+            65
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real/4",
+      "graph": "graphs/real/4/graph.edge",
+      "query_file": "queries/real/4/cpq.query",
+      "cases": [
+        {
+          "name": "real4cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            56,
+            137,
+            137
+          ]
+        },
+        {
+          "name": "real4cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            32,
+            32,
+            32
+          ]
+        },
+        {
+          "name": "real4cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            51,
+            52,
+            32
+          ]
+        },
+        {
+          "name": "real4cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "real4cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            78,
+            89,
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "name": "real/5",
+      "graph": "graphs/real/5/graph.edge",
+      "query_file": "queries/real/5/cpq.query",
+      "cases": [
+        {
+          "name": "real5cpq0",
+          "query_line": 1,
+          "expected_card_stat": [
+            14,
+            14,
+            14
+          ]
+        },
+        {
+          "name": "real5cpq1",
+          "query_line": 2,
+          "expected_card_stat": [
+            14,
+            14,
+            14
+          ]
+        },
+        {
+          "name": "real5cpq2",
+          "query_line": 3,
+          "expected_card_stat": [
+            10,
+            14,
+            13
+          ]
+        },
+        {
+          "name": "real5cpq3",
+          "query_line": 4,
+          "expected_card_stat": [
+            17,
+            66,
+            20
+          ]
+        },
+        {
+          "name": "real5cpq4",
+          "query_line": 5,
+          "expected_card_stat": [
+            166,
+            810,
+            6
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,13 +1,23 @@
 plugins {
     id 'application'
+    id 'jacoco'
 }
 
 repositories {
     mavenCentral()
 }
 
+dependencies {
+    implementation 'dev.roanh.cpqnativeindex:cpq-native-index:1.0'
+    implementation 'dev.roanh.gmark:gmark:2.1'
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.0")
+    testImplementation("org.junit.platform:junit-platform-launcher")
+    testImplementation("com.google.code.gson:gson:2.11.0")
+}
+
 application {
-    mainClass = 'evaluator.Main'
+    mainClass = 'evaluator.cli.Main'
 }
 
 distributions {
@@ -20,25 +30,27 @@ distributions {
     }
 }
 
-dependencies {
-    implementation 'dev.roanh.cpqnativeindex:cpq-native-index:1.0'
-    implementation 'dev.roanh.gmark:gmark:2.1'
-
-    testImplementation("org.junit.jupiter:junit-jupiter:5.12.0")
-    testImplementation("org.junit.platform:junit-platform-launcher")
-}
-
 tasks.test {
     useJUnitPlatform()
-    maxHeapSize = "15g"
+    systemProperties System.getProperties()
+    maxHeapSize = "32g"
     testLogging {
         showStandardStreams = true
     }
-    systemProperty "cpq.enumeration.logEvery", System.getProperty("cpq.enumeration.logEvery", "10000")
-    systemProperty "cpq.test.dumpDecompositions", System.getProperty("cpq.test.dumpDecompositions", "false")
-    systemProperty "cpq.test.decompLimit", System.getProperty("cpq.test.decompLimit", "5")
-    systemProperty "cpq.test.queryCount", System.getProperty("cpq.test.queryCount", "5")
-    systemProperty "cpq.test.depth", System.getProperty("cpq.test.depth", "7")
-    systemProperty "cpq.test.labelCount", System.getProperty("cpq.test.labelCount", "4")
-    systemProperty "cpq.test.attemptLimit", System.getProperty("cpq.test.attemptLimit", "5000")
+}
+
+tasks.register('runCompareFile', JavaExec) {
+    group = 'application'
+    description = 'Runs per-query, per-method comparison over a queries file.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'evaluator.cli.Main'
+    doFirst {
+        def current = args == null ? [] : new ArrayList<>(args)
+        if (current.isEmpty()) {
+            args = ['compare-file']
+        } else if (current[0] != 'compare-file') {
+            current.add(0, 'compare-file')
+            args = current
+        }
+    }
 }
