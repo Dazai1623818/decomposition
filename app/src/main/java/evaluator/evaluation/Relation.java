@@ -92,6 +92,33 @@ public final class Relation {
         return description;
     }
 
+    /**
+     * Returns relation tuple cardinality used by planner-side estimators.
+     */
+    public long tupleCount() {
+        return isUnary() ? unaryDomain.length : projection.tupleCount();
+    }
+
+    /**
+     * Returns the number of distinct values for a relation variable.
+     */
+    public long ndv(String variable) {
+        Objects.requireNonNull(variable, "variable");
+        if (isUnary()) {
+            if (sourceVar.equals(variable)) {
+                return unaryDomain.length;
+            }
+            throw new IllegalArgumentException("Variable " + variable + " not part of relation " + description);
+        }
+        if (sourceVar.equals(variable)) {
+            return projection.sourceCardinality();
+        }
+        if (targetVar.equals(variable)) {
+            return projection.targetCardinality();
+        }
+        throw new IllegalArgumentException("Variable " + variable + " not part of relation " + description);
+    }
+
     public boolean isUnary() {
         return unaryDomain != null;
     }
@@ -191,6 +218,7 @@ public final class Relation {
         private final int[][] forwardValues;
         private final int[] reverseKeys;
         private final int[][] reverseValues;
+        private final long tupleCount;
 
         /**
          * Builds a relation projection from boxed maps.
@@ -221,6 +249,7 @@ public final class Relation {
             this.forwardValues = Objects.requireNonNull(forwardValues, "forwardValues");
             this.reverseKeys = Objects.requireNonNull(reverseKeys, "reverseKeys");
             this.reverseValues = Objects.requireNonNull(reverseValues, "reverseValues");
+            this.tupleCount = countTuples(forwardValues);
             if (forwardKeys.length != forwardValues.length) {
                 throw new IllegalArgumentException("forwardKeys/forwardValues length mismatch");
             }
@@ -245,6 +274,18 @@ public final class Relation {
             return allTargets;
         }
 
+        public int sourceCardinality() {
+            return allSources.length;
+        }
+
+        public int targetCardinality() {
+            return allTargets.length;
+        }
+
+        public long tupleCount() {
+            return tupleCount;
+        }
+
         public int[] targetsForSource(int source) {
             return lookup(source, forwardKeys, forwardValues);
         }
@@ -256,6 +297,14 @@ public final class Relation {
         private static int[] lookup(int key, int[] keys, int[][] values) {
             int index = Arrays.binarySearch(keys, key);
             return index >= 0 ? values[index] : EMPTY_INT_ARRAY;
+        }
+
+        private static long countTuples(int[][] domains) {
+            long count = 0L;
+            for (int[] domain : domains) {
+                count += domain.length;
+            }
+            return count;
         }
 
         private static DenseLookup denseLookup(Map<Integer, int[]> input, String name) {

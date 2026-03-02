@@ -22,12 +22,32 @@ public final class WanderJoinEstimator {
     public record Estimate(double estimatedCount, double standardError) {
     }
 
+    /**
+     * Per-prefix projected-cardinality estimate for variable-order prefixes.
+     *
+     * @param estimatedCount Estimated projected cardinality for prefix 1..step.
+     * @param standardError  Standard error of the estimate.
+     * @param estimateNanos  Time spent computing this prefix estimate.
+     */
+    public record PrefixEstimate(double estimatedCount, double standardError, long estimateNanos) {
+    }
+
     public static Estimate estimateProjectedCount(
             List<Relation> relations,
             List<String> variableOrder,
             List<String> projectedVars,
             int walks,
             long seed) {
+        return estimateProjectedCount(relations, variableOrder, projectedVars, walks, seed, true);
+    }
+
+    public static Estimate estimateProjectedCount(
+            List<Relation> relations,
+            List<String> variableOrder,
+            List<String> projectedVars,
+            int walks,
+            long seed,
+            boolean requireExtensionCheck) {
         Objects.requireNonNull(relations, "relations");
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(projectedVars, "projectedVars");
@@ -80,7 +100,7 @@ public final class WanderJoinEstimator {
                 touched[touchedCount++] = variableIndex;
             }
 
-            if (alive && !existsExtension(variableOrder, 0, bindingsByVar, assignment, bound, indexByVar)) {
+            if (alive && requireExtensionCheck && !existsExtension(variableOrder, 0, bindingsByVar, assignment, bound, indexByVar)) {
                 alive = false;
             }
 
@@ -103,6 +123,123 @@ public final class WanderJoinEstimator {
             variance = 0.0;
         }
         return new Estimate(mean, Math.sqrt(variance / walks));
+    }
+
+    /**
+     * Estimates projected cardinalities for all prefixes of {@code variableOrder}
+     * using a single absolute walk budget. Prefix {@code i} corresponds to
+     * projected variables {@code variableOrder[0..i]}.
+     *
+     * @param relations     Join relations.
+     * @param variableOrder Variable order used by the join.
+     * @param walks         Absolute number of random trials.
+     * @param seed          Random seed for reproducibility.
+     * @return Prefix estimates in order of increasing prefix length.
+     */
+    public static List<PrefixEstimate> estimateProjectedCountPrefixes(
+            List<Relation> relations,
+            List<String> variableOrder,
+            int walks,
+            long seed) {
+        return estimateProjectedCountPrefixes(relations, variableOrder, walks, seed, true);
+    }
+
+    public static List<PrefixEstimate> estimateProjectedCountPrefixes(
+            List<Relation> relations,
+            List<String> variableOrder,
+            int walks,
+            long seed,
+            boolean requireExtensionCheck) {
+        Objects.requireNonNull(relations, "relations");
+        Objects.requireNonNull(variableOrder, "variableOrder");
+        if (walks < 1) {
+            throw new IllegalArgumentException("walks must be >= 1");
+        }
+        if (variableOrder.isEmpty()) {
+            return List.of();
+        }
+        if (relations.isEmpty()) {
+            return zeroPrefixEstimates(variableOrder.size());
+        }
+
+        Map<String, List<Relation>> bindingsByVar = buildBindingsByVar(relations);
+        Map<String, Integer> indexByVar = buildIndexByVar(variableOrder);
+        Random random = new Random(seed);
+        int[] assignment = new int[variableOrder.size()];
+        boolean[] bound = new boolean[variableOrder.size()];
+        int[] touched = new int[variableOrder.size()];
+
+        double[] sum = new double[variableOrder.size()];
+        double[] sumSquares = new double[variableOrder.size()];
+        long[] estimateNanos = new long[variableOrder.size()];
+
+        for (int walk = 0; walk < walks; walk++) {
+            checkInterrupted();
+            double weight = 1.0D;
+            int touchedCount = 0;
+
+            for (int depth = 0; depth < variableOrder.size(); depth++) {
+                long stepStart = System.nanoTime();
+                checkInterrupted();
+
+                String variable = variableOrder.get(depth);
+                List<Relation> constraints = bindingsByVar.getOrDefault(variable, List.of());
+                if (constraints.isEmpty()) {
+                    estimateNanos[depth] += System.nanoTime() - stepStart;
+                    break;
+                }
+
+                int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar);
+                if (domain.length == 0) {
+                    estimateNanos[depth] += System.nanoTime() - stepStart;
+                    break;
+                }
+
+                weight *= domain.length;
+                int value = domain[random.nextInt(domain.length)];
+                int variableIndex = indexByVar.get(variable);
+                assignment[variableIndex] = value;
+                bound[variableIndex] = true;
+                touched[touchedCount++] = variableIndex;
+
+                boolean alive = !requireExtensionCheck
+                        || existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar);
+                double sample = alive ? weight : 0.0D;
+                sum[depth] += sample;
+                sumSquares[depth] += sample * sample;
+                estimateNanos[depth] += System.nanoTime() - stepStart;
+                if (!alive) {
+                    break;
+                }
+            }
+
+            for (int i = 0; i < touchedCount; i++) {
+                bound[touched[i]] = false;
+            }
+        }
+
+        List<PrefixEstimate> estimates = new ArrayList<>(variableOrder.size());
+        for (int depth = 0; depth < variableOrder.size(); depth++) {
+            double mean = sum[depth] / walks;
+            if (walks == 1) {
+                estimates.add(new PrefixEstimate(mean, 0.0D, estimateNanos[depth]));
+                continue;
+            }
+            double variance = (sumSquares[depth] - (sum[depth] * sum[depth]) / walks) / (walks - 1);
+            if (variance < 0.0D) {
+                variance = 0.0D;
+            }
+            estimates.add(new PrefixEstimate(mean, Math.sqrt(variance / walks), estimateNanos[depth]));
+        }
+        return List.copyOf(estimates);
+    }
+
+    private static List<PrefixEstimate> zeroPrefixEstimates(int size) {
+        List<PrefixEstimate> estimates = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            estimates.add(new PrefixEstimate(0.0D, 0.0D, 0L));
+        }
+        return List.copyOf(estimates);
     }
 
     private static Map<String, List<Relation>> buildBindingsByVar(List<Relation> relations) {

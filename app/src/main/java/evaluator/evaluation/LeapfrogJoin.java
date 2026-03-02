@@ -137,7 +137,11 @@ public final class LeapfrogJoin {
 
         List<Map<String, Integer>> rows = collectRows ? new ArrayList<>() : List.of();
         long[] count = new long[] { 0L };
-        IntTupleHashSet seen = requiresDistinct ? new IntTupleHashSet(projectedIndices.length) : null;
+        IntHashSet seenSingles = requiresDistinct && projectedIndices.length == 1 ? new IntHashSet() : null;
+        IntPairHashSet seenPairs = requiresDistinct && projectedIndices.length == 2 ? new IntPairHashSet() : null;
+        IntTupleHashSet seenTuples = requiresDistinct && projectedIndices.length > 2
+                ? new IntTupleHashSet(projectedIndices.length)
+                : null;
         int[] keyBuffer = materializeProjection ? new int[projectedIndices.length] : null;
         CursorWorkspace[] workspaces = initWorkspaces(constraintsByDepth);
 
@@ -156,7 +160,11 @@ public final class LeapfrogJoin {
                         }
                     }
                     if (needsExtensionCheck) {
-                        if (requiresDistinct && seen.contains(keyBuffer)) {
+                        if (requiresDistinct && seenContains(
+                                seenSingles,
+                                seenPairs,
+                                seenTuples,
+                                keyBuffer)) {
                             return true;
                         }
                         if (!existsExtension(
@@ -170,10 +178,18 @@ public final class LeapfrogJoin {
                         }
                         // Only dedupe successful projected tuples. A failed extension for one
                         // prefix binding must not suppress another prefix that can extend.
-                        if (requiresDistinct && !seen.add(keyBuffer)) {
+                        if (requiresDistinct && !seenAdd(
+                                seenSingles,
+                                seenPairs,
+                                seenTuples,
+                                keyBuffer)) {
                             return true;
                         }
-                    } else if (requiresDistinct && !seen.add(keyBuffer)) {
+                    } else if (requiresDistinct && !seenAdd(
+                            seenSingles,
+                            seenPairs,
+                            seenTuples,
+                            keyBuffer)) {
                         return true;
                     }
                     if (collectRows) {
@@ -185,6 +201,202 @@ public final class LeapfrogJoin {
                 });
 
         return result(mode, rows, count[0]);
+    }
+
+    private static boolean seenContains(
+            IntHashSet seenSingles,
+            IntPairHashSet seenPairs,
+            IntTupleHashSet seenTuples,
+            int[] tuple) {
+        if (seenSingles != null) {
+            return seenSingles.contains(tuple[0]);
+        }
+        if (seenPairs != null) {
+            return seenPairs.contains(tuple[0], tuple[1]);
+        }
+        if (seenTuples != null) {
+            return seenTuples.contains(tuple);
+        }
+        return false;
+    }
+
+    private static boolean seenAdd(
+            IntHashSet seenSingles,
+            IntPairHashSet seenPairs,
+            IntTupleHashSet seenTuples,
+            int[] tuple) {
+        if (seenSingles != null) {
+            return seenSingles.add(tuple[0]);
+        }
+        if (seenPairs != null) {
+            return seenPairs.add(tuple[0], tuple[1]);
+        }
+        if (seenTuples != null) {
+            return seenTuples.add(tuple);
+        }
+        return true;
+    }
+
+    private static final class IntHashSet {
+        private static final float LOAD_FACTOR = 0.7f;
+        private int mask;
+        private int size;
+        private int threshold;
+        private int[] table;
+        private byte[] states;
+
+        IntHashSet() {
+            init(16);
+        }
+
+        boolean add(int value) {
+            if (size + 1 > threshold) {
+                resize();
+            }
+            int slot = mixHash(value) & mask;
+            while (states[slot] != 0) {
+                if (table[slot] == value) {
+                    return false;
+                }
+                slot = (slot + 1) & mask;
+            }
+            states[slot] = 1;
+            table[slot] = value;
+            size++;
+            return true;
+        }
+
+        boolean contains(int value) {
+            int slot = mixHash(value) & mask;
+            while (states[slot] != 0) {
+                if (table[slot] == value) {
+                    return true;
+                }
+                slot = (slot + 1) & mask;
+            }
+            return false;
+        }
+
+        private void init(int capacity) {
+            mask = capacity - 1;
+            table = new int[capacity];
+            states = new byte[capacity];
+            threshold = (int) (capacity * LOAD_FACTOR);
+            size = 0;
+        }
+
+        private void resize() {
+            int[] oldTable = table;
+            byte[] oldStates = states;
+            int oldCapacity = oldStates.length;
+            init(oldCapacity * 2);
+            for (int i = 0; i < oldCapacity; i++) {
+                if (oldStates[i] == 0) {
+                    continue;
+                }
+                int slot = mixHash(oldTable[i]) & mask;
+                while (states[slot] != 0) {
+                    slot = (slot + 1) & mask;
+                }
+                states[slot] = 1;
+                table[slot] = oldTable[i];
+                size++;
+            }
+        }
+
+        private static int mixHash(int value) {
+            int h = value;
+            h ^= (h >>> 16);
+            h *= 0x7feb352d;
+            h ^= (h >>> 15);
+            h *= 0x846ca68b;
+            h ^= (h >>> 16);
+            return h;
+        }
+    }
+
+    private static final class IntPairHashSet {
+        private static final float LOAD_FACTOR = 0.7f;
+        private int mask;
+        private int size;
+        private int threshold;
+        private long[] table;
+        private byte[] states;
+
+        IntPairHashSet() {
+            init(16);
+        }
+
+        boolean add(int first, int second) {
+            if (size + 1 > threshold) {
+                resize();
+            }
+            long key = pack(first, second);
+            int slot = mixHash(key) & mask;
+            while (states[slot] != 0) {
+                if (table[slot] == key) {
+                    return false;
+                }
+                slot = (slot + 1) & mask;
+            }
+            states[slot] = 1;
+            table[slot] = key;
+            size++;
+            return true;
+        }
+
+        boolean contains(int first, int second) {
+            long key = pack(first, second);
+            int slot = mixHash(key) & mask;
+            while (states[slot] != 0) {
+                if (table[slot] == key) {
+                    return true;
+                }
+                slot = (slot + 1) & mask;
+            }
+            return false;
+        }
+
+        private static long pack(int first, int second) {
+            return ((long) first << 32) ^ (second & 0xFFFFFFFFL);
+        }
+
+        private void init(int capacity) {
+            mask = capacity - 1;
+            table = new long[capacity];
+            states = new byte[capacity];
+            threshold = (int) (capacity * LOAD_FACTOR);
+            size = 0;
+        }
+
+        private void resize() {
+            long[] oldTable = table;
+            byte[] oldStates = states;
+            int oldCapacity = oldStates.length;
+            init(oldCapacity * 2);
+            for (int i = 0; i < oldCapacity; i++) {
+                if (oldStates[i] == 0) {
+                    continue;
+                }
+                int slot = mixHash(oldTable[i]) & mask;
+                while (states[slot] != 0) {
+                    slot = (slot + 1) & mask;
+                }
+                states[slot] = 1;
+                table[slot] = oldTable[i];
+                size++;
+            }
+        }
+
+        private static int mixHash(long value) {
+            long h = value;
+            h ^= (h >>> 33);
+            h *= 0xff51afd7ed558ccdL;
+            h ^= (h >>> 33);
+            h *= 0xc4ceb9fe1a85ec53L;
+            h ^= (h >>> 33);
+            return (int) h;
+        }
     }
 
     private static Map<String, Integer> buildIndexByVar(List<String> order) {

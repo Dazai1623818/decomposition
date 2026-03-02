@@ -19,22 +19,20 @@ import org.junit.jupiter.api.Test;
 
 class CoverSelectorTest {
     @Test
-    void costOrderPrefersHigherDiameterWhenCostTies() {
+    void costOrderPrefersLowerCostBeforeHigherDiameter() {
         QueryFixture fixture = singleEdgeQuery();
-        Component lowDiam = component(fixture, "low-diam", 10, 1);
-        Component highDiam = component(fixture, "high-diam", 11, 4);
-        Component expensive = component(fixture, "expensive", 12, 2);
+        Component lowDiamCheap = component(fixture, "low-diam", 10, 1);
+        Component highDiamExpensive = component(fixture, "high-diam", 11, 4);
 
         ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
-                lowDiam.cpq(), 1L,
-                highDiam.cpq(), 1L,
-                expensive.cpq(), 5L));
+                lowDiamCheap.cpq(), 1L,
+                highDiamExpensive.cpq(), 5L));
 
         CoverSelector selector = new CoverSelector(1, CoverSelector.Order.COST, costFn);
-        List<Plan> covers = selector.select(fixture.query(), List.of(lowDiam, highDiam, expensive)).toList();
+        List<Plan> covers = selector.select(fixture.query(), List.of(lowDiamCheap, highDiamExpensive)).toList();
 
         assertEquals(1, covers.size());
-        assertEquals("high-diam", covers.get(0).components().get(0).normalized());
+        assertEquals("low-diam", covers.get(0).components().get(0).normalized());
     }
 
     @Test
@@ -55,20 +53,40 @@ class CoverSelectorTest {
     }
 
     @Test
-    void costOrderPrefersHigherDiameterBeforeLowerCost() {
-        QueryFixture fixture = singleEdgeQuery();
-        Component highDiamExpensive = component(fixture, "high-diam", 22, 6);
-        Component lowDiamCheap = component(fixture, "low-diam", 23, 2);
+    void costOrderBreaksCostTiesByLargerMask() {
+        PathQueryFixture fixture = twoEdgePathQuery();
+        Component twoEdge = component(
+                fixture.x(),
+                fixture.z(),
+                "two-edge",
+                22,
+                2,
+                mask(0, 1));
+        Component left = component(
+                fixture.x(),
+                fixture.y(),
+                "left",
+                23,
+                1,
+                mask(0));
+        Component right = component(
+                fixture.y(),
+                fixture.z(),
+                "right",
+                24,
+                1,
+                mask(1));
 
         ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
-                highDiamExpensive.cpq(), 100L,
-                lowDiamCheap.cpq(), 1L));
+                twoEdge.cpq(), 10L,
+                left.cpq(), 5L,
+                right.cpq(), 5L));
 
         CoverSelector selector = new CoverSelector(1, CoverSelector.Order.COST, costFn);
-        List<Plan> covers = selector.select(fixture.query(), List.of(lowDiamCheap, highDiamExpensive)).toList();
+        List<Plan> covers = selector.select(fixture.query(), List.of(twoEdge, left, right)).toList();
 
         assertEquals(1, covers.size());
-        assertEquals("high-diam", covers.get(0).components().get(0).normalized());
+        assertEquals("two-edge", covers.get(0).components().get(0).normalized());
     }
 
     @Test
@@ -109,11 +127,39 @@ class CoverSelectorTest {
         return new QueryFixture(ConjunctiveQuery.from(cq), x, y);
     }
 
+    private static PathQueryFixture twoEdgePathQuery() {
+        CQ cq = CQ.empty();
+        VarCQ x = cq.addBoundVariable("x");
+        VarCQ y = cq.addBoundVariable("y");
+        VarCQ z = cq.addBoundVariable("z");
+        cq.addAtom(x, new Predicate(0, "0"), y);
+        cq.addAtom(y, new Predicate(1, "1"), z);
+        return new PathQueryFixture(ConjunctiveQuery.from(cq), x, y, z);
+    }
+
     private static Component component(QueryFixture fixture, String normalized, int labelId, int diameter) {
-        BitSet mask = new BitSet();
-        mask.set(0);
+        BitSet mask = mask(0);
         CPQ cpq = CPQ.label(new Predicate(labelId, String.valueOf(labelId)));
         return new Component(fixture.s(), fixture.t(), diameter, mask, cpq, normalized);
+    }
+
+    private static Component component(
+            VarCQ s,
+            VarCQ t,
+            String normalized,
+            int labelId,
+            int diameter,
+            BitSet mask) {
+        CPQ cpq = CPQ.label(new Predicate(labelId, String.valueOf(labelId)));
+        return new Component(s, t, diameter, mask, cpq, normalized);
+    }
+
+    private static BitSet mask(int... edges) {
+        BitSet mask = new BitSet();
+        for (int edge : edges) {
+            mask.set(edge);
+        }
+        return mask;
     }
 
     private static ToLongFunction<CPQ> cpqCostFn(Map<CPQ, Long> costs) {
@@ -122,5 +168,8 @@ class CoverSelectorTest {
     }
 
     private record QueryFixture(ConjunctiveQuery query, VarCQ s, VarCQ t) {
+    }
+
+    private record PathQueryFixture(ConjunctiveQuery query, VarCQ x, VarCQ y, VarCQ z) {
     }
 }

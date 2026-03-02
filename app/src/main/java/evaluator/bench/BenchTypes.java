@@ -1,6 +1,7 @@
 package evaluator.bench;
 
 import evaluator.cpq.Plan;
+import evaluator.evaluation.DecompositionMethod;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -11,24 +12,6 @@ import java.util.Set;
  */
 public final class BenchTypes {
     private BenchTypes() {
-    }
-
-    public enum DecompositionMethod {
-        SINGLE_EDGE("single_edge"),
-        COST("cost"),
-        DIAMETER("diameter"),
-        SPQR("spqr"),
-        SERIES_PARALLEL("series_parallel");
-
-        private final String id;
-
-        DecompositionMethod(String id) {
-            this.id = id;
-        }
-
-        public String id() {
-            return id;
-        }
     }
 
     public record DecompositionCandidate(
@@ -60,7 +43,8 @@ public final class BenchTypes {
 
     public record CandidateSelection(
             List<DecompositionCandidate> candidates,
-            Set<DecompositionMethod> timedOutMethods) {
+            Set<DecompositionMethod> timedOutMethods,
+            Map<DecompositionMethod, Long> decompositionNanosByMethod) {
     }
 
     public record ComponentFilteredCandidates(
@@ -89,7 +73,8 @@ public final class BenchTypes {
     public record ComparisonCandidates(
             ComparisonPreparationStatus status,
             List<DecompositionCandidate> candidates,
-            Set<DecompositionMethod> timedOutWithoutCandidate) {
+            Set<DecompositionMethod> timedOutWithoutCandidate,
+            Map<DecompositionMethod, Long> decompositionNanosByMethod) {
     }
 
     public enum EvaluationMode {
@@ -180,7 +165,12 @@ public final class BenchTypes {
         }
     }
 
-    public record EvaluationWithStats(EvaluationResult result, EvaluationStats stats) {
+    public record EvaluationWithStats(
+            EvaluationResult result,
+            EvaluationStats stats,
+            List<String> variableOrder,
+            double estimatedCount,
+            double estimateStdError) {
     }
 
     public record CardinalityEstimate(
@@ -328,6 +318,19 @@ public final class BenchTypes {
             Path decompositionLogPath) {
     }
 
+    public record EstimationBenchSpec(
+            Path indexPath,
+            Path queriesFile,
+            Path warmupQueriesFile,
+            int methodTimeoutMs,
+            int decompositionTimeoutMs,
+            int coverLimit,
+            int kOverride,
+            int walks,
+            long seed,
+            Path outputPath) {
+    }
+
     public record EvalFileReport(
             int queryCount,
             int failureCount,
@@ -357,6 +360,18 @@ public final class BenchTypes {
     public record CompareFileReport(
             int queryCount,
             long methodRows,
+            long okRows,
+            long timeoutRows,
+            long decompositionTimeoutRows,
+            long noCandidateRows,
+            long errorRows,
+            long elapsedNanos) {
+    }
+
+    public record EstimationBenchReport(
+            int queryCount,
+            long methodRows,
+            long stepRows,
             long okRows,
             long timeoutRows,
             long decompositionTimeoutRows,

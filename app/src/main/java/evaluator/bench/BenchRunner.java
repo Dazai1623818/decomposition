@@ -43,4 +43,8 @@ public final class BenchRunner {
     public BenchTypes.CompareFileReport compareFile(BenchTypes.CompareFileSpec spec) throws Exception {
         return delegate.compareFile(spec);
     }
+
+    public BenchTypes.EstimationBenchReport estimationBench(BenchTypes.EstimationBenchSpec spec) throws Exception {
+        return delegate.estimationBench(spec);
+    }
 }

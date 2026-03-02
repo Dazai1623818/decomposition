@@ -3,6 +3,7 @@ package evaluator.cli;
 import evaluator.bench.BenchRunner;
 import evaluator.bench.BenchTypes;
 import evaluator.bench.EngineConfig;
+import evaluator.evaluation.DecompositionMethod;
 import evaluator.index.NativeCpqIndex;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,13 +46,15 @@ public final class Main {
 
     private static void run(ParsedArgs args) throws Exception {
         NativeCpqIndex index = NativeCpqIndex.load(args.indexPath());
-        BenchRunner runner = new BenchRunner(index, SYSTEM_CONFIG);
+        EngineConfig runConfig = SYSTEM_CONFIG.withEstimationSeed(args.seed());
+        BenchRunner runner = new BenchRunner(index, runConfig);
 
         switch (args.command()) {
             case EVAL_FILE -> runEvalFile(runner, args);
             case EXPLORE -> runExplore(runner, args);
             case COMPARE -> runCompare(runner, args);
             case COMPARE_FILE -> runCompareFile(runner, args);
+            case ESTIMATION_BENCH -> runEstimationBench(runner, args);
             case PROFILE -> runProfile(runner, args);
             case ESTIMATE -> runEstimate(runner, args);
         }
@@ -239,6 +242,45 @@ public final class Main {
                 status));
     }
 
+    private static void runEstimationBench(BenchRunner runner, ParsedArgs args) throws Exception {
+        Path outputPath = args.compareLogPath();
+        if (args.outputDir() != null && outputPath == null) {
+            outputPath = args.outputDir().resolve("estimationbench.log");
+        }
+        if (outputPath == null) {
+            outputPath = Path.of("logs", "estimationbench.log");
+        }
+        BenchTypes.EstimationBenchSpec spec = new BenchTypes.EstimationBenchSpec(
+                args.indexPath(),
+                requiredPath(args.queriesFile(), "--queries-file"),
+                args.warmupQueriesFile(),
+                args.methodTimeoutMs(),
+                args.decompositionTimeoutMs(),
+                args.coverLimit(),
+                args.kOverride(),
+                args.estimateWalks() > 0 ? args.estimateWalks() : 64,
+                args.seed(),
+                outputPath);
+        BenchTypes.EstimationBenchReport report = runner.estimationBench(spec);
+        String status = (report.timeoutRows() == 0 && report.decompositionTimeoutRows() == 0 && report.errorRows() == 0)
+                ? "OK"
+                : "PARTIAL";
+        System.out.println(String.format(
+                Locale.ROOT,
+                "command=estimationbench queries=%d method_rows=%d step_rows=%d ok=%d timeouts=%d decomp_timeouts=%d no_candidate=%d errors=%d elapsed_ms=%.3f output=%s status=%s",
+                report.queryCount(),
+                report.methodRows(),
+                report.stepRows(),
+                report.okRows(),
+                report.timeoutRows(),
+                report.decompositionTimeoutRows(),
+                report.noCandidateRows(),
+                report.errorRows(),
+                nanosToMillis(report.elapsedNanos()),
+                outputPath,
+                status));
+    }
+
     private static void runProfile(BenchRunner runner, ParsedArgs args) throws Exception {
         BenchTypes.ProfileSpec spec = new BenchTypes.ProfileSpec(
                 args.indexPath(),
@@ -376,7 +418,7 @@ public final class Main {
 
     private static String supportedDecompositionMethods() {
         StringBuilder builder = new StringBuilder();
-        BenchTypes.DecompositionMethod[] methods = BenchTypes.DecompositionMethod.values();
+        DecompositionMethod[] methods = DecompositionMethod.values();
         for (int i = 0; i < methods.length; i++) {
             if (i > 0) {
                 builder.append(',');
@@ -405,6 +447,7 @@ public final class Main {
         System.err.println("Commands:");
         System.err.println("  eval-file --queries-file <path> [--index <path>]");
         System.err.println("  compare-file --queries-file <path> [--index <path>]");
+        System.err.println("  estimationbench --queries-file <path> [--index <path>]");
         System.err.println("  explore <query> [--index <path>]");
         System.err.println("  compare <query> [--index <path>]");
         System.err.println("  profile <query> [--index <path>]");
@@ -417,12 +460,14 @@ public final class Main {
         System.err.println("  --method-timeout-ms <n> --decomposition-timeout-ms <n> --profile-timeout-ms <n>");
         System.err.println("  --estimate-walks <n> --profile-orders <n> --seed <n>");
         System.err.println("  --min-components <n> --max-components <n> --warmup-rounds <n>");
+        System.err.println("  --warmup-queries-file <path>         warmup-only workload for estimationbench");
         System.err.println("  --compare-log <path> --decomposition-log <path>");
     }
 
     private enum Command {
         EVAL_FILE("eval-file"),
         COMPARE_FILE("compare-file"),
+        ESTIMATION_BENCH("estimationbench"),
         EXPLORE("explore"),
         COMPARE("compare"),
         PROFILE("profile"),
@@ -448,6 +493,7 @@ public final class Main {
             Command command,
             Path indexPath,
             Path queriesFile,
+            Path warmupQueriesFile,
             String queryText,
             Path outputDir,
             Path compareLogPath,
@@ -474,6 +520,7 @@ public final class Main {
             Command command = Command.parse(args[0]);
             Path indexPath = DEFAULT_INDEX;
             Path queriesFile = null;
+            Path warmupQueriesFile = null;
             String queryText = null;
             Path outputDir = null;
             Path compareLogPath = null;
@@ -490,13 +537,14 @@ public final class Main {
             int profileOrders = 0;
             int minComponents = 0;
             int maxComponents = 0;
-            long seed = 0xC0FFEE;
+            long seed = SYSTEM_CONFIG.estimationSeed();
 
             for (int i = 1; i < args.length; i++) {
                 String arg = args[i];
                 switch (arg) {
                     case "--index" -> indexPath = Path.of(requireValue(args, ++i, "--index"));
                     case "--queries-file" -> queriesFile = Path.of(requireValue(args, ++i, "--queries-file"));
+                    case "--warmup-queries-file" -> warmupQueriesFile = Path.of(requireValue(args, ++i, "--warmup-queries-file"));
                     case "--output-dir" -> outputDir = Path.of(requireValue(args, ++i, "--output-dir"));
                     case "--compare-log" -> compareLogPath = Path.of(requireValue(args, ++i, "--compare-log"));
                     case "--decomposition-log" -> decompositionLogPath = Path.of(requireValue(args, ++i, "--decomposition-log"));
@@ -532,6 +580,7 @@ public final class Main {
                     command,
                     indexPath,
                     queriesFile,
+                    warmupQueriesFile,
                     queryText,
                     outputDir,
                     compareLogPath,
@@ -563,7 +612,9 @@ public final class Main {
             if (minComponents > 0 && maxComponents > 0 && minComponents > maxComponents) {
                 throw new IllegalArgumentException("min-components must be <= max-components");
             }
-            if (command == Command.EVAL_FILE || command == Command.COMPARE_FILE) {
+            if (command == Command.EVAL_FILE
+                    || command == Command.COMPARE_FILE
+                    || command == Command.ESTIMATION_BENCH) {
                 if (queriesFile == null) {
                     throw new IllegalArgumentException(command.token + " requires --queries-file <path>");
                 }
