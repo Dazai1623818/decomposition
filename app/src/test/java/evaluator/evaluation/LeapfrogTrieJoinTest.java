@@ -9,6 +9,7 @@ import evaluator.evaluation.LeapfrogJoin.JoinMode;
 import evaluator.evaluation.LeapfrogJoin.JoinResult;
 import evaluator.evaluation.Relation;
 import evaluator.evaluation.Relation.RelationProjection;
+import evaluator.util.Deadline;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -149,6 +150,19 @@ class LeapfrogTrieJoinTest {
                 List.of("?x"),
                 List.of("?x", "?missing"),
                 JoinMode.PROJECTED_COUNT));
+    }
+
+    @Test
+    void joinRejectsExpiredDeadline() {
+        Relation relation = relation("?x", "?y", new int[][] { { 1, 2 }, { 2, 3 } });
+
+        assertThrows(Deadline.Exceeded.class, () -> LeapfrogJoin.join(
+                List.of(relation),
+                List.of("?x", "?y"),
+                List.of("?x"),
+                JoinMode.PROJECTED_COUNT,
+                true,
+                System.nanoTime() - 1));
     }
 
     @Test

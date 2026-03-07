@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
 final class SeriesParallelDecomposer {
@@ -26,6 +28,7 @@ final class SeriesParallelDecomposer {
     }
 
     private static final long NO_DEADLINE = Long.MAX_VALUE;
+    private static final double GUIDED_SERIES_HARD_BLOWUP = 64.0D;
 
     static Stream<Plan> decomposeGreedy(CQ cq) {
         return decomposeGreedy(cq, null);
@@ -102,6 +105,29 @@ final class SeriesParallelDecomposer {
         return ranked.stream();
     }
 
+    static Stream<Plan> decomposeGuided(
+            CQ cq,
+            java.util.function.Predicate<CPQ> componentFilter,
+            ToLongFunction<CPQ> costFn,
+            ToDoubleFunction<Plan> joinScoreFn,
+            long deadlineNanos) {
+        Objects.requireNonNull(cq, "cq");
+        Objects.requireNonNull(costFn, "costFn");
+        Objects.requireNonNull(joinScoreFn, "joinScoreFn");
+
+        checkDeadline(deadlineNanos);
+        ConjunctiveQuery query = ConjunctiveQuery.from(cq);
+        if (query.edges().isEmpty()) {
+            return Stream.of(new Plan(query, List.of()));
+        }
+
+        List<Integer> edgeIds = allEdgeIds(query);
+        Set<VarCQ> terminals = new HashSet<>(query.freeVariables());
+        SeriesParallelReducer reducer = new SeriesParallelReducer(query, componentFilter, deadlineNanos);
+        List<Component> components = reducer.reduceGuided(edgeIds, terminals, costFn, joinScoreFn);
+        return Stream.of(new Plan(query, components));
+    }
+
     private static List<Integer> allEdgeIds(ConjunctiveQuery query) {
         List<Integer> edgeIds = new ArrayList<>(query.edges().size());
         for (int i = 0; i < query.edges().size(); i++) {
@@ -154,6 +180,7 @@ final class SeriesParallelDecomposer {
      */
     private static final class SeriesParallelReducer {
         private static final Comparator<VarCQ> VAR_ORDER = Comparator.comparing(VarCQ::getName);
+        private final ConjunctiveQuery query;
         private final List<AtomCQ> atoms;
         private final java.util.function.Predicate<CPQ> componentFilter;
         private final long deadlineNanos;
@@ -162,6 +189,7 @@ final class SeriesParallelDecomposer {
                 ConjunctiveQuery query,
                 java.util.function.Predicate<CPQ> componentFilter,
                 long deadlineNanos) {
+            this.query = query;
             this.atoms = query.edges();
             this.componentFilter = componentFilter;
             this.deadlineNanos = deadlineNanos;
@@ -176,22 +204,47 @@ final class SeriesParallelDecomposer {
             return reduceInternal(edgeIds, terminals, random);
         }
 
+        List<Component> reduceGuided(
+                List<Integer> edgeIds,
+                Set<VarCQ> terminals,
+                ToLongFunction<CPQ> costFn,
+                ToDoubleFunction<Plan> joinScoreFn) {
+            Objects.requireNonNull(costFn, "costFn");
+            Objects.requireNonNull(joinScoreFn, "joinScoreFn");
+            checkDeadline(deadlineNanos);
+
+            List<ReducedEdge> edges = initialReducedEdges(edgeIds, costFn);
+            while (true) {
+                checkDeadline(deadlineNanos);
+                List<MergeCandidate> candidates = enumerateMergeCandidates(edges, terminals, costFn);
+                if (candidates.isEmpty()) {
+                    break;
+                }
+
+                MergeChoice best = null;
+                for (MergeCandidate candidate : candidates) {
+                    checkDeadline(deadlineNanos);
+                    MergeChoice choice = scoreMergeCandidate(edges, candidate, joinScoreFn);
+                    if (choice == null) {
+                        continue;
+                    }
+                    if (best == null || compareMergeChoice(choice, best) < 0) {
+                        best = choice;
+                    }
+                }
+
+                if (best == null) {
+                    break;
+                }
+                applyMerge(edges, best.candidate());
+            }
+
+            return collectActiveComponents(edges);
+        }
+
         private List<Component> reduceInternal(List<Integer> edgeIds, Set<VarCQ> terminals, Random random) {
             checkDeadline(deadlineNanos);
-            List<ReducedEdge> edges = new ArrayList<>(edgeIds.size());
-            for (int edgeId : edgeIds) {
-                checkDeadline(deadlineNanos);
-                AtomCQ atom = atoms.get(edgeId);
-                VarCQ s = atom.getSource();
-                VarCQ t = atom.getTarget();
-                CPQ cpq = CPQ.label(atom.getLabel());
-                if (s.equals(t)) {
-                    cpq = CPQ.intersect(cpq, CPQ.id());
-                }
-                BitSet mask = new BitSet();
-                mask.set(edgeId);
-                edges.add(new ReducedEdge(s, t, cpq, mask, 1));
-            }
+            List<ReducedEdge> edges = initialReducedEdges(edgeIds, cpq -> 0L);
 
             while (true) {
                 checkDeadline(deadlineNanos);
@@ -208,6 +261,29 @@ final class SeriesParallelDecomposer {
                 break;
             }
 
+            return collectActiveComponents(edges);
+        }
+
+        private List<ReducedEdge> initialReducedEdges(List<Integer> edgeIds, ToLongFunction<CPQ> costFn) {
+            List<ReducedEdge> edges = new ArrayList<>(edgeIds.size());
+            for (int edgeId : edgeIds) {
+                checkDeadline(deadlineNanos);
+                AtomCQ atom = atoms.get(edgeId);
+                VarCQ s = atom.getSource();
+                VarCQ t = atom.getTarget();
+                CPQ cpq = CPQ.label(atom.getLabel());
+                if (s.equals(t)) {
+                    cpq = CPQ.intersect(cpq, CPQ.id());
+                }
+                BitSet mask = new BitSet();
+                mask.set(edgeId);
+                long cardinality = safeCost(costFn.applyAsLong(cpq));
+                edges.add(new ReducedEdge(s, t, cpq, mask, 1, cardinality));
+            }
+            return edges;
+        }
+
+        private List<Component> collectActiveComponents(List<ReducedEdge> edges) {
             List<Component> out = new ArrayList<>();
             for (ReducedEdge edge : edges) {
                 checkDeadline(deadlineNanos);
@@ -303,7 +379,7 @@ final class SeriesParallelDecomposer {
                 if (componentFilter != null && !componentFilter.test(merged)) {
                     continue;
                 }
-                candidates.add(new ParallelMerge(group, s, t, merged, mask, diameter));
+                candidates.add(new ParallelMerge(group, s, t, merged, mask, diameter, 0L));
             }
 
             if (candidates.isEmpty()) {
@@ -313,7 +389,13 @@ final class SeriesParallelDecomposer {
             for (ReducedEdge edge : chosen.group()) {
                 edge.active = false;
             }
-            edges.add(new ReducedEdge(chosen.s(), chosen.t(), chosen.cpq(), chosen.mask(), chosen.diameter()));
+            edges.add(new ReducedEdge(
+                    chosen.s(),
+                    chosen.t(),
+                    chosen.cpq(),
+                    chosen.mask(),
+                    chosen.diameter(),
+                    chosen.cardinality()));
             return true;
         }
 
@@ -421,7 +503,7 @@ final class SeriesParallelDecomposer {
                 }
                 BitSet mask = union(left.mask, right.mask);
                 int diameter = left.diameter + right.diameter;
-                candidates.add(new SeriesMerge(left, right, a, b, merged, mask, diameter));
+                candidates.add(new SeriesMerge(left, right, a, b, merged, mask, diameter, 0L));
             }
 
             if (candidates.isEmpty()) {
@@ -430,8 +512,239 @@ final class SeriesParallelDecomposer {
             SeriesMerge chosen = candidates.get(random.nextInt(candidates.size()));
             chosen.left().active = false;
             chosen.right().active = false;
-            edges.add(new ReducedEdge(chosen.a(), chosen.b(), chosen.cpq(), chosen.mask(), chosen.diameter()));
+            edges.add(new ReducedEdge(
+                    chosen.a(),
+                    chosen.b(),
+                    chosen.cpq(),
+                    chosen.mask(),
+                    chosen.diameter(),
+                    chosen.cardinality()));
             return true;
+        }
+
+        private List<MergeCandidate> enumerateMergeCandidates(
+                List<ReducedEdge> edges,
+                Set<VarCQ> terminals,
+                ToLongFunction<CPQ> costFn) {
+            List<MergeCandidate> out = new ArrayList<>();
+            for (ParallelMerge merge : guidedParallelMerges(edges, costFn)) {
+                ReducedEdge mergedEdge = new ReducedEdge(
+                        merge.s(),
+                        merge.t(),
+                        merge.cpq(),
+                        merge.mask(),
+                        merge.diameter(),
+                        merge.cardinality());
+                out.add(new MergeCandidate(
+                        MergeKind.PARALLEL,
+                        List.copyOf(merge.group()),
+                        mergedEdge,
+                        mergeSignature(MergeKind.PARALLEL, mergedEdge)));
+            }
+            for (SeriesMerge merge : guidedSeriesMerges(edges, terminals, costFn)) {
+                ReducedEdge mergedEdge = new ReducedEdge(
+                        merge.a(),
+                        merge.b(),
+                        merge.cpq(),
+                        merge.mask(),
+                        merge.diameter(),
+                        merge.cardinality());
+                out.add(new MergeCandidate(
+                        MergeKind.SERIES,
+                        List.of(merge.left(), merge.right()),
+                        mergedEdge,
+                        mergeSignature(MergeKind.SERIES, mergedEdge)));
+            }
+            out.sort(Comparator.comparing(MergeCandidate::signature));
+            return out;
+        }
+
+        private List<ParallelMerge> guidedParallelMerges(List<ReducedEdge> edges, ToLongFunction<CPQ> costFn) {
+            Map<EndpointPair, List<ReducedEdge>> groups = new HashMap<>();
+            for (ReducedEdge edge : edges) {
+                checkDeadline(deadlineNanos);
+                if (!edge.active) {
+                    continue;
+                }
+                EndpointPair key = EndpointPair.ordered(edge.s, edge.t);
+                groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(edge);
+            }
+
+            List<EndpointPair> orderedPairs = new ArrayList<>(groups.keySet());
+            orderedPairs.sort(Comparator.comparing((EndpointPair p) -> p.s.getName())
+                    .thenComparing(p -> p.t.getName()));
+
+            List<ParallelMerge> candidates = new ArrayList<>();
+            for (EndpointPair pair : orderedPairs) {
+                checkDeadline(deadlineNanos);
+                List<ReducedEdge> group = groups.get(pair);
+                if (group.size() < 2) {
+                    continue;
+                }
+                VarCQ s = pair.s;
+                VarCQ t = pair.t;
+                CPQ merged = null;
+                int diameter = 0;
+                BitSet mask = new BitSet();
+                for (ReducedEdge edge : group) {
+                    checkDeadline(deadlineNanos);
+                    CPQ part = oriented(edge, s, t);
+                    merged = merged == null ? part : CPQ.intersect(merged, part);
+                    diameter = Math.max(diameter, edge.diameter);
+                    mask.or(edge.mask);
+                }
+                merged = ensureUnary(merged, s, t);
+                if (componentFilter != null && !componentFilter.test(merged)) {
+                    continue;
+                }
+                long cardinality = safeCost(costFn.applyAsLong(merged));
+                candidates.add(new ParallelMerge(group, s, t, merged, mask, diameter, cardinality));
+            }
+            return candidates;
+        }
+
+        private List<SeriesMerge> guidedSeriesMerges(
+                List<ReducedEdge> edges,
+                Set<VarCQ> terminals,
+                ToLongFunction<CPQ> costFn) {
+            Map<VarCQ, List<ReducedEdge>> incident = new HashMap<>();
+            for (ReducedEdge edge : edges) {
+                checkDeadline(deadlineNanos);
+                if (!edge.active) {
+                    continue;
+                }
+                incident.computeIfAbsent(edge.s, ignored -> new ArrayList<>()).add(edge);
+                if (!edge.s.equals(edge.t)) {
+                    incident.computeIfAbsent(edge.t, ignored -> new ArrayList<>()).add(edge);
+                }
+            }
+
+            List<VarCQ> vertices = new ArrayList<>(incident.keySet());
+            vertices.sort(VAR_ORDER);
+            List<SeriesMerge> candidates = new ArrayList<>();
+            for (VarCQ v : vertices) {
+                checkDeadline(deadlineNanos);
+                if (terminals.contains(v)) {
+                    continue;
+                }
+                List<ReducedEdge> list = incident.get(v);
+                if (list.size() != 2) {
+                    continue;
+                }
+                ReducedEdge left = list.get(0);
+                ReducedEdge right = list.get(1);
+                if (left == right || left.isLoop() || right.isLoop()) {
+                    continue;
+                }
+                VarCQ a = left.other(v);
+                VarCQ b = right.other(v);
+                if (a == null || b == null) {
+                    throw new IllegalStateException("Series reduction edge not incident to vertex");
+                }
+                if (a.equals(b)) {
+                    continue;
+                }
+
+                CPQ first = oriented(left, a, v);
+                CPQ second = oriented(right, v, b);
+                CPQ merged = CPQ.concat(first, second);
+                merged = ensureUnary(merged, a, b);
+                if (componentFilter != null && !componentFilter.test(merged)) {
+                    continue;
+                }
+
+                BitSet mask = union(left.mask, right.mask);
+                int diameter = left.diameter + right.diameter;
+                long cardinality = safeCost(costFn.applyAsLong(merged));
+                candidates.add(new SeriesMerge(left, right, a, b, merged, mask, diameter, cardinality));
+            }
+            return candidates;
+        }
+
+        private MergeChoice scoreMergeCandidate(
+                List<ReducedEdge> edges,
+                MergeCandidate candidate,
+                ToDoubleFunction<Plan> joinScoreFn) {
+            double mergedCardinality = Math.max(1.0D, candidate.merged().cardinality);
+            double inputMin = Double.POSITIVE_INFINITY;
+            for (ReducedEdge edge : candidate.consumed()) {
+                inputMin = Math.min(inputMin, Math.max(1.0D, edge.cardinality));
+            }
+            double blowupRatio = mergedCardinality / Math.max(1.0D, inputMin);
+            if (candidate.kind() == MergeKind.SERIES && blowupRatio > GUIDED_SERIES_HARD_BLOWUP) {
+                return null;
+            }
+
+            List<Component> components = componentsAfterMerge(edges, candidate);
+            Plan plan = new Plan(query, components);
+            double score = joinScoreFn.applyAsDouble(plan);
+
+            return new MergeChoice(
+                    candidate,
+                    score,
+                    (long) Math.ceil(mergedCardinality),
+                    candidate.kind() == MergeKind.PARALLEL ? 0 : 1,
+                    candidate.signature());
+        }
+
+        private List<Component> componentsAfterMerge(List<ReducedEdge> edges, MergeCandidate candidate) {
+            List<Component> components = new ArrayList<>();
+            for (ReducedEdge edge : edges) {
+                if (!edge.active || candidate.consumed().contains(edge)) {
+                    continue;
+                }
+                components.add(new Component(edge.s, edge.t, edge.diameter, edge.mask, edge.cpq, edge.cpq.toString()));
+            }
+            ReducedEdge merged = candidate.merged();
+            components.add(new Component(
+                    merged.s,
+                    merged.t,
+                    merged.diameter,
+                    merged.mask,
+                    merged.cpq,
+                    merged.cpq.toString()));
+            return components;
+        }
+
+        private static int compareMergeChoice(MergeChoice left, MergeChoice right) {
+            int cmp = Double.compare(left.score(), right.score());
+            if (cmp != 0) {
+                return cmp;
+            }
+            cmp = Long.compare(left.mergedCardinality(), right.mergedCardinality());
+            if (cmp != 0) {
+                return cmp;
+            }
+            cmp = Integer.compare(left.kindOrder(), right.kindOrder());
+            if (cmp != 0) {
+                return cmp;
+            }
+            return left.signature().compareTo(right.signature());
+        }
+
+        private static String mergeSignature(MergeKind kind, ReducedEdge merged) {
+            return kind.name()
+                    + "|"
+                    + merged.s.getName()
+                    + "->"
+                    + merged.t.getName()
+                    + "|d="
+                    + merged.diameter
+                    + "|m="
+                    + merged.mask
+                    + "|c="
+                    + merged.cpq;
+        }
+
+        private static void applyMerge(List<ReducedEdge> edges, MergeCandidate candidate) {
+            for (ReducedEdge consumed : candidate.consumed()) {
+                consumed.active = false;
+            }
+            edges.add(candidate.merged());
+        }
+
+        private static long safeCost(long raw) {
+            return Math.max(0L, raw);
         }
 
         private static CPQ oriented(ReducedEdge edge, VarCQ s, VarCQ t) {
@@ -494,7 +807,8 @@ final class SeriesParallelDecomposer {
                 VarCQ t,
                 CPQ cpq,
                 BitSet mask,
-                int diameter) {
+                int diameter,
+                long cardinality) {
         }
 
         private record SeriesMerge(
@@ -504,7 +818,28 @@ final class SeriesParallelDecomposer {
                 VarCQ b,
                 CPQ cpq,
                 BitSet mask,
-                int diameter) {
+                int diameter,
+                long cardinality) {
+        }
+
+        private enum MergeKind {
+            PARALLEL,
+            SERIES
+        }
+
+        private record MergeCandidate(
+                MergeKind kind,
+                List<ReducedEdge> consumed,
+                ReducedEdge merged,
+                String signature) {
+        }
+
+        private record MergeChoice(
+                MergeCandidate candidate,
+                double score,
+                long mergedCardinality,
+                int kindOrder,
+                String signature) {
         }
     }
 
@@ -514,14 +849,20 @@ final class SeriesParallelDecomposer {
         private final CPQ cpq;
         private final BitSet mask;
         private final int diameter;
+        private final long cardinality;
         private boolean active;
 
         private ReducedEdge(VarCQ s, VarCQ t, CPQ cpq, BitSet mask, int diameter) {
+            this(s, t, cpq, mask, diameter, 0L);
+        }
+
+        private ReducedEdge(VarCQ s, VarCQ t, CPQ cpq, BitSet mask, int diameter, long cardinality) {
             this.s = Objects.requireNonNull(s, "s");
             this.t = Objects.requireNonNull(t, "t");
             this.cpq = Objects.requireNonNull(cpq, "cpq");
             this.mask = (BitSet) Objects.requireNonNull(mask, "mask").clone();
             this.diameter = diameter;
+            this.cardinality = Math.max(0L, cardinality);
             this.active = true;
         }
 

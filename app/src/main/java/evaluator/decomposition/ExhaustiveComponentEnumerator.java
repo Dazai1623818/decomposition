@@ -93,8 +93,6 @@ final class ExhaustiveComponentEnumerator {
                 BitSet owned = new BitSet(atomCount);
                 owned.set(i);
                 BitSet inverseEmpty = new BitSet(atomCount);
-                BitSet inverseSingle = new BitSet(atomCount);
-                inverseSingle.set(i);
                 long canonicalCost = canonicalEdgeCost(edge);
 
                 addAtomicComponent(
@@ -105,14 +103,18 @@ final class ExhaustiveComponentEnumerator {
                         owned,
                         inverseEmpty,
                         canonicalCost);
-                addAtomicComponent(
-                        worklist,
-                        edge.getTarget(),
-                        edge.getSource(),
-                        edge.getLabel().getInverse(),
-                        owned,
-                        inverseSingle,
-                        canonicalCost);
+                if (!edge.getSource().equals(edge.getTarget())) {
+                    BitSet inverseSingle = new BitSet(atomCount);
+                    inverseSingle.set(i);
+                    addAtomicComponent(
+                            worklist,
+                            edge.getTarget(),
+                            edge.getSource(),
+                            edge.getLabel().getInverse(),
+                            owned,
+                            inverseSingle,
+                            canonicalCost);
+                }
             }
 
             // Phase 2: expand components by concatenation and intersection.

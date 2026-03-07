@@ -26,7 +26,6 @@ public final class Planner {
     private static final String METHODS_PROPERTY = "cpq.decompose.methods";
 
     private final CpqIndex index;
-    private final boolean enableTw2CostDp;
     private final Set<DecompositionMethod> methodAllowlist;
     private final long seriesParallelSeed;
 
@@ -36,7 +35,6 @@ public final class Planner {
 
     public Planner(CpqIndex index, long seriesParallelSeed) {
         this.index = Objects.requireNonNull(index, "index");
-        this.enableTw2CostDp = booleanProperty("cpq.decompose.experimental.tw2CostDp", false);
         this.methodAllowlist = parseMethodAllowlistProperty(METHODS_PROPERTY);
         this.seriesParallelSeed = seriesParallelSeed;
     }
@@ -50,11 +48,10 @@ public final class Planner {
         EnumSet<DecompositionMethod> methods = EnumSet.of(
                 DecompositionMethod.SINGLE_EDGE,
                 DecompositionMethod.COST,
+                DecompositionMethod.COST_OVERLAP,
                 DecompositionMethod.DIAMETER,
-                DecompositionMethod.SERIES_PARALLEL);
-        if (enableTw2CostDp) {
-            methods.add(DecompositionMethod.TW2_COST_DP);
-        }
+                DecompositionMethod.SERIES_PARALLEL,
+                DecompositionMethod.SERIES_PARALLEL_OVERLAP);
         if (!methodAllowlist.isEmpty()) {
             methods.retainAll(methodAllowlist);
             if (methods.isEmpty()) {
@@ -82,79 +79,56 @@ public final class Planner {
             int k,
             int decompositionTimeoutMs) {
         Objects.requireNonNull(cq, "cq");
-        if (coverLimit < 0) {
-            throw new IllegalArgumentException("coverLimit must be >= 0");
-        }
-        if (k < 1) {
-            throw new IllegalArgumentException("k must be >= 1");
-        }
-        if (k > index.k()) {
-            throw new IllegalArgumentException("k must be <= index k");
-        }
-        if (decompositionTimeoutMs < 0) {
-            throw new IllegalArgumentException("decompositionTimeoutMs must be >= 0");
-        }
+        validatePlanArguments(coverLimit, k, decompositionTimeoutMs);
 
         List<Candidate> results = new ArrayList<>();
         EnumSet<DecompositionMethod> timedOutMethods = EnumSet.noneOf(DecompositionMethod.class);
         EnumMap<DecompositionMethod, Long> decompositionNanosByMethod = new EnumMap<>(DecompositionMethod.class);
-
-        long singleStart = System.nanoTime();
-        Plan single = cq.decomposeSingleEdge();
-        long singleNanos = System.nanoTime() - singleStart;
-        decompositionNanosByMethod.put(DecompositionMethod.SINGLE_EDGE, singleNanos);
-        addCandidate(results, DecompositionMethod.SINGLE_EDGE, single, singleNanos);
-
-        long costDeadline = computeDeadlineNanos(decompositionTimeoutMs);
-        Decomposer cost = Decomposer.cpqkCoverCost(k, coverLimit, index::cost, index::supports, costDeadline);
-        TimedDecompositions costDecomps = collectWithTimeoutGuard(() -> cost.decompose(cq.syntax()));
-        decompositionNanosByMethod.put(DecompositionMethod.COST, costDecomps.nanos());
-        if (costDecomps.timedOut()) {
-            timedOutMethods.add(DecompositionMethod.COST);
-        }
-        addAllCandidates(results, DecompositionMethod.COST, costDecomps.decompositions(), costDecomps.nanos());
-
-        long diameterDeadline = computeDeadlineNanos(decompositionTimeoutMs);
-        Decomposer diameter = Decomposer.cpqkCoverDiameter(k, coverLimit, index::supports, diameterDeadline);
-        TimedDecompositions diameterDecomps = collectWithTimeoutGuard(() -> diameter.decompose(cq.syntax()));
-        decompositionNanosByMethod.put(DecompositionMethod.DIAMETER, diameterDecomps.nanos());
-        if (diameterDecomps.timedOut()) {
-            timedOutMethods.add(DecompositionMethod.DIAMETER);
-        }
-        addAllCandidates(results, DecompositionMethod.DIAMETER, diameterDecomps.decompositions(), diameterDecomps.nanos());
-
-        if (enableTw2CostDp) {
-            long tw2Deadline = computeDeadlineNanos(decompositionTimeoutMs);
-            Decomposer tw2CostDp = Decomposer.tw2CostDp(k, index::cost, index::supports, tw2Deadline);
-            TimedDecompositions tw2Dp = collectWithTimeoutGuard(() -> tw2CostDp.decompose(cq.syntax()));
-            decompositionNanosByMethod.put(DecompositionMethod.TW2_COST_DP, tw2Dp.nanos());
-            if (tw2Dp.timedOut()) {
-                timedOutMethods.add(DecompositionMethod.TW2_COST_DP);
+        Set<DecompositionMethod> enabledMethods = supportedMethods();
+        for (DecompositionMethod method : DecompositionMethod.values()) {
+            if (!enabledMethods.contains(method)) {
+                continue;
             }
-            addAllCandidates(results, DecompositionMethod.TW2_COST_DP, tw2Dp.decompositions(), tw2Dp.nanos());
+            MethodSelection planned = planMethod(cq, method, coverLimit, k, decompositionTimeoutMs);
+            decompositionNanosByMethod.put(method, planned.decomposeNanos());
+            if (planned.timedOut()) {
+                timedOutMethods.add(method);
+            }
+            results.addAll(planned.candidates());
         }
-
-        int maxPlans = Math.max(1, coverLimit);
-        int restarts = computeSeriesParallelRestarts(maxPlans);
-        long seriesParallelDeadline = computeDeadlineNanos(decompositionTimeoutMs);
-        TimedDecompositions seriesParallel = collectWithTimeoutGuard(
-                () -> Decomposer.seriesParallelCandidates(
-                                restarts,
-                                maxPlans,
-                                seriesParallelSeed,
-                                index::supports,
-                                seriesParallelDeadline)
-                        .decompose(cq.syntax()));
-        decompositionNanosByMethod.put(DecompositionMethod.SERIES_PARALLEL, seriesParallel.nanos());
-        if (seriesParallel.timedOut()) {
-            timedOutMethods.add(DecompositionMethod.SERIES_PARALLEL);
-        }
-        addAllCandidates(results, DecompositionMethod.SERIES_PARALLEL, seriesParallel.decompositions(), seriesParallel.nanos());
 
         return new Selection(
                 List.copyOf(results),
                 Set.copyOf(timedOutMethods),
                 Map.copyOf(decompositionNanosByMethod));
+    }
+
+    /**
+     * Plans candidates for exactly one decomposition method. This keeps method
+     * accounting isolated for compare-style benchmarks without changing the
+     * shared multi-method planning path used elsewhere.
+     */
+    public MethodSelection planMethod(
+            ConjunctiveQuery cq,
+            DecompositionMethod method,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs) {
+        Objects.requireNonNull(cq, "cq");
+        Objects.requireNonNull(method, "method");
+        validatePlanArguments(coverLimit, k, decompositionTimeoutMs);
+        if (!supportedMethods().contains(method)) {
+            throw new IllegalArgumentException("Unsupported decomposition method: " + method.id());
+        }
+
+        return switch (method) {
+            case SINGLE_EDGE -> planSingleEdge(cq);
+            case COST -> planCost(cq, coverLimit, k, decompositionTimeoutMs);
+            case COST_OVERLAP -> planCostOverlap(cq, coverLimit, k, decompositionTimeoutMs);
+            case DIAMETER -> planDiameter(cq, coverLimit, k, decompositionTimeoutMs);
+            case SERIES_PARALLEL -> planSeriesParallel(cq, coverLimit, decompositionTimeoutMs);
+            case SERIES_PARALLEL_OVERLAP -> planSeriesParallelOverlap(cq, decompositionTimeoutMs);
+        };
     }
 
     public PreparedPlan prepare(
@@ -174,6 +148,135 @@ public final class Planner {
         return new PreparedPlan(
                 candidate,
                 ExecutablePlan.compile(candidate.plan(), index));
+    }
+
+    private void validatePlanArguments(int coverLimit, int k, int decompositionTimeoutMs) {
+        if (coverLimit < 0) {
+            throw new IllegalArgumentException("coverLimit must be >= 0");
+        }
+        if (k < 1) {
+            throw new IllegalArgumentException("k must be >= 1");
+        }
+        if (k > index.k()) {
+            throw new IllegalArgumentException("k must be <= index k");
+        }
+        if (decompositionTimeoutMs < 0) {
+            throw new IllegalArgumentException("decompositionTimeoutMs must be >= 0");
+        }
+    }
+
+    private MethodSelection planSingleEdge(ConjunctiveQuery cq) {
+        long start = System.nanoTime();
+        Plan single = cq.decomposeSingleEdge();
+        long decomposeNanos = System.nanoTime() - start;
+        return methodSelectionSingle(DecompositionMethod.SINGLE_EDGE, single, decomposeNanos);
+    }
+
+    private MethodSelection planCost(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs) {
+        long deadline = computeDeadlineNanos(decompositionTimeoutMs);
+        Decomposer cost = Decomposer.cpqkCoverCost(k, coverLimit, index::cost, index::supports, deadline);
+        TimedDecompositions decompositions = collectWithTimeoutGuard(() -> cost.decompose(cq.syntax()));
+        return methodSelectionMany(
+                DecompositionMethod.COST,
+                decompositions.decompositions(),
+                decompositions.nanos(),
+                decompositions.timedOut());
+    }
+
+    private MethodSelection planCostOverlap(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs) {
+        long deadline = computeDeadlineNanos(decompositionTimeoutMs);
+        Decomposer cost = Decomposer.cpqkCoverCost(k, coverLimit, index::cost, index::supports, deadline);
+        TimedDecompositions decompositions = collectWithTimeoutGuard(() -> cost.decompose(cq.syntax()));
+        long overlapStart = System.nanoTime();
+        List<Plan> ranked = rankPlansByOverlapScore(decompositions.decompositions(), coverLimit);
+        long decomposeNanos = decompositions.nanos() + (System.nanoTime() - overlapStart);
+        return methodSelectionMany(
+                DecompositionMethod.COST_OVERLAP,
+                ranked,
+                decomposeNanos,
+                decompositions.timedOut());
+    }
+
+    private MethodSelection planDiameter(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs) {
+        long deadline = computeDeadlineNanos(decompositionTimeoutMs);
+        Decomposer diameter = Decomposer.cpqkCoverDiameter(k, coverLimit, index::supports, deadline);
+        TimedDecompositions decompositions = collectWithTimeoutGuard(() -> diameter.decompose(cq.syntax()));
+        return methodSelectionMany(
+                DecompositionMethod.DIAMETER,
+                decompositions.decompositions(),
+                decompositions.nanos(),
+                decompositions.timedOut());
+    }
+
+    private MethodSelection planSeriesParallel(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int decompositionTimeoutMs) {
+        int maxPlans = coverLimit == 0 ? Integer.MAX_VALUE : Math.max(1, coverLimit);
+        int restarts = computeSeriesParallelRestarts(maxPlans);
+        long deadline = computeDeadlineNanos(decompositionTimeoutMs);
+        TimedDecompositions decompositions = collectWithTimeoutGuard(
+                () -> Decomposer.seriesParallelCandidates(
+                        restarts,
+                        maxPlans,
+                        seriesParallelSeed,
+                        index::supports,
+                        deadline)
+                        .decompose(cq.syntax()));
+        return methodSelectionMany(
+                DecompositionMethod.SERIES_PARALLEL,
+                decompositions.decompositions(),
+                decompositions.nanos(),
+                decompositions.timedOut());
+    }
+
+    private MethodSelection planSeriesParallelOverlap(
+            ConjunctiveQuery cq,
+            int decompositionTimeoutMs) {
+        long deadline = computeDeadlineNanos(decompositionTimeoutMs);
+        TimedDecompositions decompositions = collectWithTimeoutGuard(
+                () -> Decomposer.seriesParallelOverlapGuided(
+                        index::cost,
+                        index::overlapJoinScore,
+                        index::supports,
+                        deadline)
+                        .decompose(cq.syntax()));
+        return methodSelectionMany(
+                DecompositionMethod.SERIES_PARALLEL_OVERLAP,
+                decompositions.decompositions(),
+                decompositions.nanos(),
+                decompositions.timedOut());
+    }
+
+    private MethodSelection methodSelectionSingle(
+            DecompositionMethod method,
+            Plan plan,
+            long decomposeNanos) {
+        List<Candidate> results = new ArrayList<>(1);
+        addCandidate(results, method, plan, decomposeNanos);
+        return new MethodSelection(List.copyOf(results), false, decomposeNanos);
+    }
+
+    private MethodSelection methodSelectionMany(
+            DecompositionMethod method,
+            List<Plan> plans,
+            long decomposeNanos,
+            boolean timedOut) {
+        List<Candidate> results = new ArrayList<>(plans.size());
+        addAllCandidates(results, method, plans, decomposeNanos);
+        return new MethodSelection(List.copyOf(results), timedOut, decomposeNanos);
     }
 
     private Plan ensureIndexable(Plan plan) {
@@ -215,6 +318,53 @@ public final class Planner {
         }
     }
 
+    private List<Plan> rankPlansByOverlapScore(List<Plan> plans, int limit) {
+        if (plans.isEmpty()) {
+            return List.of();
+        }
+        int max = limit == 0 ? Integer.MAX_VALUE : Math.max(1, limit);
+        List<ScoredPlan> scored = new ArrayList<>(plans.size());
+        for (Plan plan : plans) {
+            scored.add(new ScoredPlan(
+                    plan,
+                    index.overlapScore(plan),
+                    plan.components().size(),
+                    plan.maxDiameter(),
+                    planSignature(plan)));
+        }
+        scored.sort((left, right) -> {
+            int cmp = Double.compare(left.score(), right.score());
+            if (cmp != 0) {
+                return cmp;
+            }
+            cmp = Integer.compare(left.components(), right.components());
+            if (cmp != 0) {
+                return cmp;
+            }
+            cmp = Integer.compare(left.maxDiameter(), right.maxDiameter());
+            if (cmp != 0) {
+                return cmp;
+            }
+            return left.signature().compareTo(right.signature());
+        });
+
+        int resultSize = Math.min(max, scored.size());
+        List<Plan> ranked = new ArrayList<>(resultSize);
+        for (int i = 0; i < resultSize; i++) {
+            ranked.add(scored.get(i).plan());
+        }
+        return ranked;
+    }
+
+    private static String planSignature(Plan plan) {
+        List<String> signatures = new ArrayList<>(plan.components().size());
+        for (Component component : plan.components()) {
+            signatures.add(component.signature());
+        }
+        signatures.sort(String::compareTo);
+        return String.join("|", signatures);
+    }
+
     private TimedDecompositions collect(java.util.stream.Stream<Plan> stream) {
         long start = System.nanoTime();
         List<Plan> list = stream.toList();
@@ -249,21 +399,6 @@ public final class Planner {
             return Integer.MAX_VALUE;
         }
         return Math.max(1, maxPlans) * EXPERIMENTAL_SERIES_PARALLEL_RESTARTS_PER_PLAN;
-    }
-
-    private static boolean booleanProperty(String name, boolean fallback) {
-        String raw = System.getProperty(name);
-        if (raw == null || raw.isBlank()) {
-            return fallback;
-        }
-        String normalized = raw.trim();
-        if ("true".equalsIgnoreCase(normalized) || "1".equals(normalized)) {
-            return true;
-        }
-        if ("false".equalsIgnoreCase(normalized) || "0".equals(normalized)) {
-            return false;
-        }
-        return fallback;
     }
 
     private static int positiveIntProperty(String name, int fallback) {
@@ -323,12 +458,26 @@ public final class Planner {
             Map<DecompositionMethod, Long> decompositionNanosByMethod) {
     }
 
+    public record MethodSelection(
+            List<Candidate> candidates,
+            boolean timedOut,
+            long decomposeNanos) {
+    }
+
     public record PreparedPlan(
             Candidate candidate,
             ExecutablePlan executable) {
         public Plan plan() {
             return candidate.plan();
         }
+    }
+
+    private record ScoredPlan(
+            Plan plan,
+            double score,
+            int components,
+            int maxDiameter,
+            String signature) {
     }
 
     private record TimedDecompositions(List<Plan> decompositions, long nanos, boolean timedOut) {

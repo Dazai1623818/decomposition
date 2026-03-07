@@ -1,5 +1,6 @@
 package evaluator.evaluation;
 
+import evaluator.util.Deadline;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -38,7 +39,7 @@ public final class WanderJoinEstimator {
             List<String> projectedVars,
             int walks,
             long seed) {
-        return estimateProjectedCount(relations, variableOrder, projectedVars, walks, seed, true);
+        return estimateProjectedCount(relations, variableOrder, projectedVars, walks, seed, true, Long.MAX_VALUE);
     }
 
     public static Estimate estimateProjectedCount(
@@ -48,6 +49,34 @@ public final class WanderJoinEstimator {
             int walks,
             long seed,
             boolean requireExtensionCheck) {
+        return estimateProjectedCount(
+                relations,
+                variableOrder,
+                projectedVars,
+                walks,
+                seed,
+                requireExtensionCheck,
+                Long.MAX_VALUE);
+    }
+
+    public static Estimate estimateProjectedCount(
+            List<Relation> relations,
+            List<String> variableOrder,
+            List<String> projectedVars,
+            int walks,
+            long seed,
+            long deadlineNanos) {
+        return estimateProjectedCount(relations, variableOrder, projectedVars, walks, seed, true, deadlineNanos);
+    }
+
+    public static Estimate estimateProjectedCount(
+            List<Relation> relations,
+            List<String> variableOrder,
+            List<String> projectedVars,
+            int walks,
+            long seed,
+            boolean requireExtensionCheck,
+            long deadlineNanos) {
         Objects.requireNonNull(relations, "relations");
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(projectedVars, "projectedVars");
@@ -74,19 +103,19 @@ public final class WanderJoinEstimator {
         double sumSquares = 0.0;
 
         for (int walk = 0; walk < walks; walk++) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             double weight = 1.0;
             boolean alive = true;
             int touchedCount = 0;
 
             for (String variable : projectedOrder) {
-                checkInterrupted();
+                Deadline.check(deadlineNanos);
                 List<Relation> constraints = bindingsByVar.getOrDefault(variable, List.of());
                 if (constraints.isEmpty()) {
                     alive = false;
                     break;
                 }
-                int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar);
+                int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar, deadlineNanos);
                 if (domain.length == 0) {
                     alive = false;
                     break;
@@ -100,7 +129,8 @@ public final class WanderJoinEstimator {
                 touched[touchedCount++] = variableIndex;
             }
 
-            if (alive && requireExtensionCheck && !existsExtension(variableOrder, 0, bindingsByVar, assignment, bound, indexByVar)) {
+            if (alive && requireExtensionCheck
+                    && !existsExtension(variableOrder, 0, bindingsByVar, assignment, bound, indexByVar, deadlineNanos)) {
                 alive = false;
             }
 
@@ -141,7 +171,7 @@ public final class WanderJoinEstimator {
             List<String> variableOrder,
             int walks,
             long seed) {
-        return estimateProjectedCountPrefixes(relations, variableOrder, walks, seed, true);
+        return estimateProjectedCountPrefixes(relations, variableOrder, walks, seed, true, Long.MAX_VALUE);
     }
 
     public static List<PrefixEstimate> estimateProjectedCountPrefixes(
@@ -150,6 +180,25 @@ public final class WanderJoinEstimator {
             int walks,
             long seed,
             boolean requireExtensionCheck) {
+        return estimateProjectedCountPrefixes(relations, variableOrder, walks, seed, requireExtensionCheck, Long.MAX_VALUE);
+    }
+
+    public static List<PrefixEstimate> estimateProjectedCountPrefixes(
+            List<Relation> relations,
+            List<String> variableOrder,
+            int walks,
+            long seed,
+            long deadlineNanos) {
+        return estimateProjectedCountPrefixes(relations, variableOrder, walks, seed, true, deadlineNanos);
+    }
+
+    public static List<PrefixEstimate> estimateProjectedCountPrefixes(
+            List<Relation> relations,
+            List<String> variableOrder,
+            int walks,
+            long seed,
+            boolean requireExtensionCheck,
+            long deadlineNanos) {
         Objects.requireNonNull(relations, "relations");
         Objects.requireNonNull(variableOrder, "variableOrder");
         if (walks < 1) {
@@ -174,13 +223,13 @@ public final class WanderJoinEstimator {
         long[] estimateNanos = new long[variableOrder.size()];
 
         for (int walk = 0; walk < walks; walk++) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             double weight = 1.0D;
             int touchedCount = 0;
 
             for (int depth = 0; depth < variableOrder.size(); depth++) {
                 long stepStart = System.nanoTime();
-                checkInterrupted();
+                Deadline.check(deadlineNanos);
 
                 String variable = variableOrder.get(depth);
                 List<Relation> constraints = bindingsByVar.getOrDefault(variable, List.of());
@@ -189,7 +238,7 @@ public final class WanderJoinEstimator {
                     break;
                 }
 
-                int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar);
+                int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar, deadlineNanos);
                 if (domain.length == 0) {
                     estimateNanos[depth] += System.nanoTime() - stepStart;
                     break;
@@ -203,7 +252,14 @@ public final class WanderJoinEstimator {
                 touched[touchedCount++] = variableIndex;
 
                 boolean alive = !requireExtensionCheck
-                        || existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar);
+                        || existsExtension(
+                                variableOrder,
+                                depth + 1,
+                                bindingsByVar,
+                                assignment,
+                                bound,
+                                indexByVar,
+                                deadlineNanos);
                 double sample = alive ? weight : 0.0D;
                 sum[depth] += sample;
                 sumSquares[depth] += sample * sample;
@@ -290,8 +346,9 @@ public final class WanderJoinEstimator {
             Map<String, List<Relation>> bindingsByVar,
             int[] assignment,
             boolean[] bound,
-            Map<String, Integer> indexByVar) {
-        checkInterrupted();
+            Map<String, Integer> indexByVar,
+            long deadlineNanos) {
+        Deadline.check(deadlineNanos);
         if (depth == variableOrder.size()) {
             return true;
         }
@@ -307,15 +364,15 @@ public final class WanderJoinEstimator {
             if (!valueAllowed(variable, assignment[variableIndex], constraints, assignment, bound, indexByVar)) {
                 return false;
             }
-            return existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar);
+            return existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar, deadlineNanos);
         }
 
-        int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar);
+        int[] domain = intersectDomains(constraints, variable, assignment, bound, indexByVar, deadlineNanos);
         for (int value : domain) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             assignment[variableIndex] = value;
             bound[variableIndex] = true;
-            if (existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar)) {
+            if (existsExtension(variableOrder, depth + 1, bindingsByVar, assignment, bound, indexByVar, deadlineNanos)) {
                 bound[variableIndex] = false;
                 return true;
             }
@@ -349,10 +406,11 @@ public final class WanderJoinEstimator {
             String variable,
             int[] assignment,
             boolean[] bound,
-            Map<String, Integer> indexByVar) {
+            Map<String, Integer> indexByVar,
+            long deadlineNanos) {
         int[] intersection = null;
         for (Relation binding : constraints) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             int[] domain = binding.domainFor(variable, assignment, bound, indexByVar);
             if (domain.length == 0) {
                 return EMPTY_INT_ARRAY;
@@ -391,15 +449,5 @@ public final class WanderJoinEstimator {
             return EMPTY_INT_ARRAY;
         }
         return size == out.length ? out : Arrays.copyOf(out, size);
-    }
-
-    private static void checkInterrupted() {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new EstimationInterruptedException();
-        }
-    }
-
-    private static final class EstimationInterruptedException extends RuntimeException {
-        private static final long serialVersionUID = 1L;
     }
 }

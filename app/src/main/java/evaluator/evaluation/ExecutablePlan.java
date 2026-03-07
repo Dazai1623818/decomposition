@@ -3,6 +3,7 @@ package evaluator.evaluation;
 import evaluator.cpq.Plan;
 import evaluator.cpq.Plan.Component;
 import evaluator.index.CpqIndex;
+import evaluator.util.Deadline;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -59,6 +60,10 @@ public final class ExecutablePlan {
     }
 
     public static ExecutablePlan compile(Plan plan, CpqIndex index) {
+        return compile(plan, index, Long.MAX_VALUE);
+    }
+
+    public static ExecutablePlan compile(Plan plan, CpqIndex index, long deadlineNanos) {
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(index, "index");
 
@@ -77,6 +82,7 @@ public final class ExecutablePlan {
         List<Relation> relations = new ArrayList<>(components.size());
         List<Long> componentCounts = new ArrayList<>(components.size());
         for (Component component : components) {
+            Deadline.check(deadlineNanos);
             long queryStart = System.nanoTime();
             List<CpqIndex.Edge> matches = index.query(component.cpq());
             queryNanos += System.nanoTime() - queryStart;
@@ -84,7 +90,7 @@ public final class ExecutablePlan {
             long mappingStart = System.nanoTime();
             CompiledComponent compiled;
             try {
-                compiled = evaluateComponent(component, matches);
+                compiled = evaluateComponent(component, matches, deadlineNanos);
             } finally {
                 mappingNanos += System.nanoTime() - mappingStart;
             }
@@ -122,6 +128,14 @@ public final class ExecutablePlan {
             List<String> variableOrder,
             LeapfrogJoin.JoinMode mode,
             boolean safeDistinctFastPath) {
+        return join(variableOrder, mode, safeDistinctFastPath, Long.MAX_VALUE);
+    }
+
+    public LeapfrogJoin.JoinResult join(
+            List<String> variableOrder,
+            LeapfrogJoin.JoinMode mode,
+            boolean safeDistinctFastPath,
+            long deadlineNanos) {
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(mode, "mode");
         return LeapfrogJoin.join(
@@ -129,7 +143,8 @@ public final class ExecutablePlan {
                 variableOrder,
                 plan.projectedVariableNames(),
                 mode,
-                safeDistinctFastPath);
+                safeDistinctFastPath,
+                deadlineNanos);
     }
 
     public WanderJoinEstimator.Estimate estimateProjectedCount(
@@ -137,6 +152,15 @@ public final class ExecutablePlan {
             List<String> projectedVars,
             int walks,
             long seed) {
+        return estimateProjectedCount(variableOrder, projectedVars, walks, seed, Long.MAX_VALUE);
+    }
+
+    public WanderJoinEstimator.Estimate estimateProjectedCount(
+            List<String> variableOrder,
+            List<String> projectedVars,
+            int walks,
+            long seed,
+            long deadlineNanos) {
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(projectedVars, "projectedVars");
         if (empty) {
@@ -147,27 +171,33 @@ public final class ExecutablePlan {
                 variableOrder,
                 projectedVars,
                 walks,
-                seed);
+                seed,
+                deadlineNanos);
     }
 
-    private static CompiledComponent evaluateComponent(Component component, List<CpqIndex.Edge> matches) {
+    private static CompiledComponent evaluateComponent(
+            Component component,
+            List<CpqIndex.Edge> matches,
+            long deadlineNanos) {
         String left = component.sourceVarName();
         String right = component.targetVarName();
         String description = component.normalized();
         long resultCount = matches.size();
         if (left.equals(right)) {
-            return buildUnaryBinding(left, description, matches, resultCount);
+            return buildUnaryBinding(left, description, matches, resultCount, deadlineNanos);
         }
-        return buildBinaryBinding(left, right, description, matches, resultCount);
+        return buildBinaryBinding(left, right, description, matches, resultCount, deadlineNanos);
     }
 
     private static CompiledComponent buildUnaryBinding(
             String variable,
             String description,
             List<CpqIndex.Edge> matches,
-            long resultCount) {
+            long resultCount,
+            long deadlineNanos) {
         IntAccumulator values = new IntAccumulator(matches.size());
         for (CpqIndex.Edge pair : matches) {
+            Deadline.check(deadlineNanos);
             values.add(pair.source());
         }
         int[] domain = values.toSortedDistinctArray();
@@ -182,10 +212,12 @@ public final class ExecutablePlan {
             String right,
             String description,
             List<CpqIndex.Edge> matches,
-            long resultCount) {
+            long resultCount,
+            long deadlineNanos) {
         IntAccumulatorMap forward = new IntAccumulatorMap();
         IntAccumulatorMap reverse = new IntAccumulatorMap();
         for (CpqIndex.Edge pair : matches) {
+            Deadline.check(deadlineNanos);
             forward.add(pair.source(), pair.target());
             reverse.add(pair.target(), pair.source());
         }

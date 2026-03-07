@@ -6,9 +6,10 @@ package evaluator.evaluation;
 public enum DecompositionMethod {
     SINGLE_EDGE("single_edge"),
     COST("cost"),
+    COST_OVERLAP("cost_overlap"),
     DIAMETER("diameter"),
-    TW2_COST_DP("tw2_cost_dp"),
-    SERIES_PARALLEL("series_parallel");
+    SERIES_PARALLEL("series_parallel"),
+    SERIES_PARALLEL_OVERLAP("series_parallel_overlap");
 
     private final String id;
 

@@ -170,8 +170,9 @@ public final class Main {
         BenchTypes.ExploreReport report = runner.explore(spec);
         System.out.println(String.format(
                 Locale.ROOT,
-                "command=explore candidates=%d status=OK",
-                report.candidateCount()));
+                "command=explore candidates=%d status=%s",
+                report.candidateCount(),
+                report.status().name()));
         if (args.outputDir() != null) {
             writeExploreOutputs(args.outputDir(), report);
         }
@@ -189,14 +190,13 @@ public final class Main {
                 args.seed());
         BenchTypes.CompareReport report = runner.compare(spec);
         String evaluationMethodId = BenchTypes.EvaluationMethod.fromMode(args.mode()).id();
-        String status = report.timeoutCount() > 0 ? "TIMEOUT" : "OK";
         System.out.println(String.format(
                 Locale.ROOT,
                 "command=compare evaluation_method=%s candidates=%d timeouts=%d status=%s",
                 evaluationMethodId,
                 report.comparedMethods(),
                 report.timeoutCount(),
-                status));
+                report.status().name()));
         if (args.outputDir() != null) {
             writeCompareOutputs(args.outputDir(), report, evaluationMethodId);
         }
@@ -364,9 +364,10 @@ public final class Main {
                 outputDir.resolve("candidates.jsonl"),
                 String.format(
                         Locale.ROOT,
-                        "{\"candidate_count\":%d,\"decomposition_methods\":\"%s\",\"status\":\"OK\"}%n",
+                        "{\"candidate_count\":%d,\"decomposition_methods\":\"%s\",\"status\":\"%s\"}%n",
                         report.candidateCount(),
-                        supportedDecompositionMethods()),
+                        supportedDecompositionMethods(),
+                        report.status().name()),
                 StandardCharsets.UTF_8);
     }
 
@@ -383,7 +384,7 @@ public final class Main {
                         evaluationMethodId,
                         report.comparedMethods(),
                         report.timeoutCount(),
-                        report.timeoutCount() > 0 ? "TIMEOUT" : "OK"),
+                        report.status().name()),
                 StandardCharsets.UTF_8);
     }
 

@@ -338,10 +338,12 @@ public final class BenchTypes {
     }
 
     public record ExploreReport(
+            ExplorePreparationStatus status,
             int candidateCount) {
     }
 
     public record CompareReport(
+            ComparisonPreparationStatus status,
             int comparedMethods,
             int timeoutCount) {
     }

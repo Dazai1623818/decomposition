@@ -1,6 +1,7 @@
 package evaluator.evaluation;
 
 import evaluator.evaluation.Relation.DomainAccessor;
+import evaluator.util.Deadline;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -50,7 +51,7 @@ public final class LeapfrogJoin {
             List<String> variableOrder,
             List<String> projectedVars,
             JoinMode mode) {
-        return join(relations, variableOrder, projectedVars, mode, DEFAULT_SAFE_DISTINCT_FAST_PATH);
+        return join(relations, variableOrder, projectedVars, mode, DEFAULT_SAFE_DISTINCT_FAST_PATH, Long.MAX_VALUE);
     }
 
     public static JoinResult join(
@@ -59,6 +60,16 @@ public final class LeapfrogJoin {
             List<String> projectedVars,
             JoinMode mode,
             boolean safeDistinctFastPath) {
+        return join(relations, variableOrder, projectedVars, mode, safeDistinctFastPath, Long.MAX_VALUE);
+    }
+
+    public static JoinResult join(
+            List<Relation> relations,
+            List<String> variableOrder,
+            List<String> projectedVars,
+            JoinMode mode,
+            boolean safeDistinctFastPath,
+            long deadlineNanos) {
         Objects.requireNonNull(relations, "relations");
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(projectedVars, "projectedVars");
@@ -68,7 +79,7 @@ public final class LeapfrogJoin {
         }
 
         Map<String, List<Relation>> bindingsByVar = buildBindingsByVar(relations);
-        return joinProjected(bindingsByVar, variableOrder, projectedVars, mode, safeDistinctFastPath);
+        return joinProjected(bindingsByVar, variableOrder, projectedVars, mode, safeDistinctFastPath, deadlineNanos);
     }
 
     private static JoinResult emptyResult(JoinMode mode) {
@@ -117,7 +128,8 @@ public final class LeapfrogJoin {
             List<String> variableOrder,
             List<String> projectedVars,
             JoinMode mode,
-            boolean safeDistinctFastPath) {
+            boolean safeDistinctFastPath,
+            long deadlineNanos) {
         if (projectedVars.isEmpty()) {
             return result(mode, List.of(), 0L);
         }
@@ -153,6 +165,7 @@ public final class LeapfrogJoin {
                 assignment,
                 bound,
                 workspaces,
+                deadlineNanos,
                 (prefixAssignment, prefixBound) -> {
                     if (materializeProjection) {
                         for (int i = 0; i < projectedIndices.length; i++) {
@@ -173,7 +186,8 @@ public final class LeapfrogJoin {
                                 constraintsByDepth,
                                 prefixAssignment,
                                 prefixBound,
-                                workspaces)) {
+                                workspaces,
+                                deadlineNanos)) {
                             return true;
                         }
                         // Only dedupe successful projected tuples. A failed extension for one
@@ -470,8 +484,9 @@ public final class LeapfrogJoin {
             int[] assignment,
             boolean[] bound,
             CursorWorkspace[] workspaces,
+            long deadlineNanos,
             PrefixAction action) {
-        checkInterrupted();
+        Deadline.check(deadlineNanos);
         if (depth == stopDepth) {
             return action.handle(assignment, bound);
         }
@@ -484,7 +499,7 @@ public final class LeapfrogJoin {
         if (constraints.length == 1) {
             int[] domain = constraints[FIRST].domain(assignment, bound);
             for (int value : domain) {
-                checkInterrupted();
+                Deadline.check(deadlineNanos);
                 assignment[variableIndex] = value;
                 bound[variableIndex] = true;
                 if (!searchPrefix(
@@ -495,6 +510,7 @@ public final class LeapfrogJoin {
                         assignment,
                         bound,
                         workspaces,
+                        deadlineNanos,
                         action)) {
                     bound[variableIndex] = false;
                     return false;
@@ -510,9 +526,9 @@ public final class LeapfrogJoin {
         }
 
         LeapfrogIterator iterator = workspace.iterator();
-        iterator.init();
+        iterator.init(deadlineNanos);
         while (!iterator.atEnd()) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             assignment[variableIndex] = iterator.key();
             bound[variableIndex] = true;
             if (!searchPrefix(
@@ -523,12 +539,13 @@ public final class LeapfrogJoin {
                     assignment,
                     bound,
                     workspaces,
+                    deadlineNanos,
                     action)) {
                 bound[variableIndex] = false;
                 return false;
             }
             bound[variableIndex] = false;
-            iterator.next();
+            iterator.next(deadlineNanos);
         }
         return true;
     }
@@ -539,9 +556,10 @@ public final class LeapfrogJoin {
             DomainAccessor[][] constraintsByDepth,
             int[] assignment,
             boolean[] bound,
-            CursorWorkspace[] workspaces) {
+            CursorWorkspace[] workspaces,
+            long deadlineNanos) {
 
-        checkInterrupted();
+        Deadline.check(deadlineNanos);
         if (depth == order.size()) {
             return true;
         }
@@ -554,10 +572,10 @@ public final class LeapfrogJoin {
         if (constraints.length == 1) {
             int[] domain = constraints[FIRST].domain(assignment, bound);
             for (int value : domain) {
-                checkInterrupted();
+                Deadline.check(deadlineNanos);
                 assignment[variableIndex] = value;
                 bound[variableIndex] = true;
-                if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces)) {
+                if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces, deadlineNanos)) {
                     bound[variableIndex] = false;
                     return true;
                 }
@@ -572,17 +590,17 @@ public final class LeapfrogJoin {
         }
 
         LeapfrogIterator iterator = workspace.iterator();
-        iterator.init();
+        iterator.init(deadlineNanos);
         while (!iterator.atEnd()) {
-            checkInterrupted();
+            Deadline.check(deadlineNanos);
             assignment[variableIndex] = iterator.key();
             bound[variableIndex] = true;
-            if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces)) {
+            if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces, deadlineNanos)) {
                 bound[variableIndex] = false;
                 return true;
             }
             bound[variableIndex] = false;
-            iterator.next();
+            iterator.next(deadlineNanos);
         }
         return false;
     }
@@ -719,12 +737,6 @@ public final class LeapfrogJoin {
         }
     }
 
-    private static void checkInterrupted() {
-        if (Thread.currentThread().isInterrupted()) {
-            throw new JoinInterruptedException();
-        }
-    }
-
     private static CursorWorkspace[] initWorkspaces(
             DomainAccessor[][] constraintsByDepth) {
         CursorWorkspace[] workspaces = new CursorWorkspace[constraintsByDepth.length];
@@ -769,10 +781,6 @@ public final class LeapfrogJoin {
             workspace.cursors()[i].reset(domain);
         }
         return true;
-    }
-
-    private static final class JoinInterruptedException extends RuntimeException {
-        private static final long serialVersionUID = 1L;
     }
 
     private static final class CursorWorkspace {
@@ -826,10 +834,10 @@ public final class LeapfrogJoin {
             this.atEnd = false;
         }
 
-        void init() {
+        void init(long deadlineNanos) {
             pivot = 0;
             atEnd = false;
-            leapfrogSearch();
+            leapfrogSearch(deadlineNanos);
         }
 
         boolean atEnd() {
@@ -843,18 +851,18 @@ public final class LeapfrogJoin {
             return cursors[pivot].key();
         }
 
-        void next() {
+        void next(long deadlineNanos) {
             if (atEnd) {
                 return;
             }
             cursors[pivot].next();
             pivot = (pivot + 1) % size;
-            leapfrogSearch();
+            leapfrogSearch(deadlineNanos);
         }
 
-        private void leapfrogSearch() {
+        private void leapfrogSearch(long deadlineNanos) {
             while (true) {
-                checkInterrupted();
+                Deadline.check(deadlineNanos);
                 if (anyCursorAtEnd()) {
                     atEnd = true;
                     return;

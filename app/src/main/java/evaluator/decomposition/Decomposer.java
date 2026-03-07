@@ -8,6 +8,7 @@ import evaluator.cpq.Plan;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToDoubleFunction;
 import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
@@ -119,30 +120,6 @@ public interface Decomposer {
     }
 
     /**
-     * Treewidth-2 aware dynamic programming decomposer.
-     * Enumerates CPQk components, then minimizes a System-R style join-cost
-     * estimate over exact edge-disjoint covers.
-     */
-    static Decomposer tw2CostDp(
-            int k,
-            ToLongFunction<CPQ> costFn,
-            java.util.function.Predicate<CPQ> componentFilter) {
-        return tw2CostDp(k, costFn, componentFilter, Long.MAX_VALUE);
-    }
-
-    static Decomposer tw2CostDp(
-            int k,
-            ToLongFunction<CPQ> costFn,
-            java.util.function.Predicate<CPQ> componentFilter,
-            long deadlineNanos) {
-        if (k < 1) {
-            throw new IllegalArgumentException("k must be >= 1");
-        }
-        Objects.requireNonNull(costFn, "costFn");
-        return cq -> Tw2CostDpDecomposer.decompose(cq, k, costFn, componentFilter, deadlineNanos);
-    }
-
-    /**
      * Generates multiple randomized series/parallel greedy decompositions over
      * the full CQ graph and returns the best unique plans by structural score.
      */
@@ -176,6 +153,26 @@ public interface Decomposer {
                 restarts,
                 maxPlans,
                 seed,
+                deadlineNanos);
+    }
+
+    /**
+     * Deterministic overlap-guided series/parallel reduction.
+     * Uses index-visible score and exact component cardinalities while
+     * selecting each reduction step (no random restarts).
+     */
+    static Decomposer seriesParallelOverlapGuided(
+            ToLongFunction<CPQ> costFn,
+            ToDoubleFunction<Plan> overlapScoreFn,
+            java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos) {
+        Objects.requireNonNull(costFn, "costFn");
+        Objects.requireNonNull(overlapScoreFn, "overlapScoreFn");
+        return cq -> SeriesParallelDecomposer.decomposeGuided(
+                cq,
+                componentFilter,
+                costFn,
+                overlapScoreFn,
                 deadlineNanos);
     }
 

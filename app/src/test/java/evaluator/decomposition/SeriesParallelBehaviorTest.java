@@ -52,4 +52,27 @@ class SeriesParallelBehaviorTest {
         assertEquals(2, plans.get(0).components().size());
     }
 
+    @Test
+    void seriesParallelOverlapGuidedIsDeterministic() {
+        CQ cq = ConjunctiveQuery.parse(PATH_FOUR_EDGES).syntax();
+        Decomposer guided = Decomposer.seriesParallelOverlapGuided(
+                cpq -> 1L,
+                plan -> plan.components().size(),
+                cpq -> cpq.getDiameter() <= 2,
+                Long.MAX_VALUE);
+
+        Plan first = guided.decompose(cq).findFirst().orElseThrow();
+        Plan second = guided.decompose(cq).findFirst().orElseThrow();
+
+        assertEquals(componentSignature(first), componentSignature(second));
+    }
+
+    private static String componentSignature(Plan plan) {
+        return plan.components().stream()
+                .map(Plan.Component::signature)
+                .sorted()
+                .reduce((a, b) -> a + "|" + b)
+                .orElse("");
+    }
+
 }

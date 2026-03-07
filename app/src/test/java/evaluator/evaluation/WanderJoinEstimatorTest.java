@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import evaluator.evaluation.Relation;
 import evaluator.evaluation.Relation.RelationProjection;
+import evaluator.util.Deadline;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
 
 class WanderJoinEstimatorTest {
@@ -61,7 +63,7 @@ class WanderJoinEstimatorTest {
 
         Thread.currentThread().interrupt();
         try {
-            assertThrows(RuntimeException.class, () -> WanderJoinEstimator.estimateProjectedCount(
+            assertThrows(CancellationException.class, () -> WanderJoinEstimator.estimateProjectedCount(
                     List.of(relation),
                     List.of("?x", "?y"),
                     List.of("?x"),
@@ -70,6 +72,23 @@ class WanderJoinEstimatorTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void rejectsExpiredDeadline() {
+        Relation relation = relation("?x", "?y", new int[][] {
+                { 1, 10 },
+                { 2, 20 },
+                { 2, 30 }
+        });
+
+        assertThrows(Deadline.Exceeded.class, () -> WanderJoinEstimator.estimateProjectedCount(
+                List.of(relation),
+                List.of("?x", "?y"),
+                List.of("?x"),
+                8,
+                7L,
+                System.nanoTime() - 1));
     }
 
     private static Relation relation(String sourceVar, String targetVar, int[][] pairs) {

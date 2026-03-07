@@ -3,6 +3,8 @@ package evaluator.index;
 import dev.roanh.gmark.ast.OperationType;
 import dev.roanh.gmark.ast.QueryTree;
 import dev.roanh.gmark.lang.cpq.CPQ;
+import evaluator.cpq.Plan;
+import evaluator.cpq.Plan.Component;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Objects;
@@ -37,6 +39,28 @@ public interface CpqIndex {
     long cost(CPQ cpq);
 
     List<Edge> query(CPQ cpq);
+
+    /**
+     * Scores a decomposition using only index-visible statistics.
+     * Lower scores are preferred.
+     */
+    default double overlapScore(Plan plan) {
+        Objects.requireNonNull(plan, "plan");
+        double total = 0.0D;
+        for (Component component : plan.components()) {
+            long card = Math.max(0L, cost(component.cpq()));
+            total += Math.log1p(card);
+        }
+        return total;
+    }
+
+    /**
+     * Scores a decomposition by estimated join/intermediate overlap only.
+     * Lower scores are preferred.
+     */
+    default double overlapJoinScore(Plan plan) {
+        return overlapScore(plan);
+    }
 
     /**
      * Directed edge match between source and target graph nodes.
