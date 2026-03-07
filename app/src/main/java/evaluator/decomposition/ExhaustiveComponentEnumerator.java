@@ -197,8 +197,7 @@ final class ExhaustiveComponentEnumerator {
                     BitSet owned = union(left.maskUnsafe(), other.maskUnsafe());
                     BitSet inverse = union(left.inverseAtoms(), other.inverseAtoms());
                     CPQ cpq = CPQ.intersect(List.of(left.cpq(), other.cpq()));
-                    CPQ effective = left.s().equals(left.t()) ? CPQ.intersect(cpq, CPQ.id()) : cpq;
-                    CPQ normalized = normalizeTree(Objects.requireNonNull(effective, "cpq").toAbstractSyntaxTree());
+                    CPQ normalized = normalizeTree(Objects.requireNonNull(cpq, "cpq").toAbstractSyntaxTree());
                     Component out = newComponent(
                             left.s(),
                             left.t(),
