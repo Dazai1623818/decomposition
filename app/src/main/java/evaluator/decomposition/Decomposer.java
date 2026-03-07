@@ -5,7 +5,6 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import evaluator.cpq.Plan.Component;
 import evaluator.cpq.ConjunctiveQuery;
 import evaluator.cpq.Plan;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.ToDoubleFunction;
@@ -59,15 +58,12 @@ public interface Decomposer {
             throw new IllegalArgumentException("limit must be >= 0");
         }
         Objects.requireNonNull(costFn, "costFn");
-        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, deadlineNanos);
+        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, componentFilter, deadlineNanos);
         CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.COST, costFn, deadlineNanos);
         return cq -> {
             Objects.requireNonNull(cq, "cq");
             ConjunctiveQuery query = ConjunctiveQuery.from(cq);
             List<Component> components = enumerator.enumerate(query);
-            if (componentFilter != null) {
-                components = filterComponents(components, componentFilter);
-            }
             return selector.select(query, components).sequential();
         };
     }
@@ -88,15 +84,12 @@ public interface Decomposer {
         if (limit < 0) {
             throw new IllegalArgumentException("limit must be >= 0");
         }
-        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, deadlineNanos);
+        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, componentFilter, deadlineNanos);
         CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.DIAMETER, null, deadlineNanos);
         return cq -> {
             Objects.requireNonNull(cq, "cq");
             ConjunctiveQuery query = ConjunctiveQuery.from(cq);
             List<Component> components = enumerator.enumerate(query);
-            if (componentFilter != null) {
-                components = filterComponents(components, componentFilter);
-            }
             return selector.select(query, components).sequential();
         };
     }
@@ -174,17 +167,6 @@ public interface Decomposer {
                 costFn,
                 overlapScoreFn,
                 deadlineNanos);
-    }
-
-    private static List<Component> filterComponents(List<Component> components,
-            java.util.function.Predicate<CPQ> componentFilter) {
-        List<Component> filtered = new ArrayList<>(components.size());
-        for (Component component : components) {
-            if (componentFilter.test(component.cpq())) {
-                filtered.add(component);
-            }
-        }
-        return filtered;
     }
 
     /**

@@ -7,6 +7,7 @@ import dev.roanh.gmark.lang.cpq.CPQ;
 import evaluator.cpq.ConjunctiveQuery;
 import evaluator.index.CpqIndex;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class PlannerTest {
@@ -24,9 +25,8 @@ class PlannerTest {
 
             assertEquals(List.of(DecompositionMethod.SINGLE_EDGE, DecompositionMethod.COST),
                     selection.candidates().stream().map(Planner.Candidate::method).distinct().toList());
-            assertEquals(
-                    List.of(DecompositionMethod.SINGLE_EDGE, DecompositionMethod.COST),
-                    selection.decompositionNanosByMethod().keySet().stream().toList());
+            assertEquals(Set.of(DecompositionMethod.SINGLE_EDGE, DecompositionMethod.COST),
+                    selection.decompositionNanosByMethod().keySet());
             assertTrue(selection.timedOutMethods().isEmpty());
         } finally {
             restoreProperty("cpq.decompose.methods", previousMethods);

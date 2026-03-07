@@ -17,9 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.function.ToLongFunction;
 
 /**
  * Enumerates CPQ components by expanding atomic edges through concatenation and intersection
@@ -27,7 +25,7 @@ import java.util.function.ToLongFunction;
  */
 final class ExhaustiveComponentEnumerator {
     private final int maxCoreDiam;
-    private final ToLongFunction<CPQ> costFn;
+    private final java.util.function.Predicate<CPQ> componentFilter;
     private final long deadlineNanos;
 
     ExhaustiveComponentEnumerator(int maxCoreDiam) {
@@ -38,22 +36,21 @@ final class ExhaustiveComponentEnumerator {
         this(maxCoreDiam, null, deadlineNanos);
     }
 
-    ExhaustiveComponentEnumerator(int maxCoreDiam, ToLongFunction<CPQ> costFn) {
-        this(maxCoreDiam, costFn, Long.MAX_VALUE);
-    }
-
-    ExhaustiveComponentEnumerator(int maxCoreDiam, ToLongFunction<CPQ> costFn, long deadlineNanos) {
+    ExhaustiveComponentEnumerator(
+            int maxCoreDiam,
+            java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos) {
         if (maxCoreDiam < 0) {
             throw new IllegalArgumentException("k must be >= 0");
         }
         this.maxCoreDiam = maxCoreDiam;
-        this.costFn = costFn;
+        this.componentFilter = componentFilter;
         this.deadlineNanos = deadlineNanos;
     }
 
     public List<Component> enumerate(ConjunctiveQuery query) {
         Objects.requireNonNull(query, "query");
-        return new Enumerator(query, maxCoreDiam, costFn, deadlineNanos).enumerate();
+        return new Enumerator(query, maxCoreDiam, componentFilter, deadlineNanos).enumerate();
     }
 
     /**
@@ -65,27 +62,29 @@ final class ExhaustiveComponentEnumerator {
         private final int atomCount;
         private int nextId;
         private final Map<ComponentKey, Component> bestByKey = new HashMap<>();
-        private final ToLongFunction<CPQ> costFn;
+        private final java.util.function.Predicate<CPQ> componentFilter;
 
         private final Map<VarCQ, List<Component>> bySource = new HashMap<>();
         private final Map<VarCQ, List<Component>> byTarget = new HashMap<>();
         private final Map<EndpointPair, List<Component>> byEndpoints = new HashMap<>();
         private final long deadlineNanos;
 
-        private Enumerator(ConjunctiveQuery query, int maxCoreDiam, ToLongFunction<CPQ> costFn, long deadlineNanos) {
+        private Enumerator(
+                ConjunctiveQuery query,
+                int maxCoreDiam,
+                java.util.function.Predicate<CPQ> componentFilter,
+                long deadlineNanos) {
             this.maxCoreDiam = maxCoreDiam;
             this.edges = query.edges();
             this.atomCount = edges.size();
             this.nextId = 0;
-            this.costFn = costFn;
+            this.componentFilter = componentFilter;
             this.deadlineNanos = deadlineNanos;
         }
 
         private List<Component> enumerate() {
             checkDeadline();
-            Queue<WorkItem> worklist = costFn == null
-                    ? new ArrayDeque<>()
-                    : new PriorityQueue<>(workItemComparator());
+            Queue<Component> worklist = new ArrayDeque<>();
 
             // Phase 1: seed worklist with atomic edge components.
             for (int i = 0; i < edges.size(); i++) {
@@ -93,7 +92,6 @@ final class ExhaustiveComponentEnumerator {
                 BitSet owned = new BitSet(atomCount);
                 owned.set(i);
                 BitSet inverseEmpty = new BitSet(atomCount);
-                long canonicalCost = canonicalEdgeCost(edge);
 
                 addAtomicComponent(
                         worklist,
@@ -101,8 +99,7 @@ final class ExhaustiveComponentEnumerator {
                         edge.getTarget(),
                         edge.getLabel(),
                         owned,
-                        inverseEmpty,
-                        canonicalCost);
+                        inverseEmpty);
                 if (!edge.getSource().equals(edge.getTarget())) {
                     BitSet inverseSingle = new BitSet(atomCount);
                     inverseSingle.set(i);
@@ -112,8 +109,7 @@ final class ExhaustiveComponentEnumerator {
                             edge.getSource(),
                             edge.getLabel().getInverse(),
                             owned,
-                            inverseSingle,
-                            canonicalCost);
+                            inverseSingle);
                 }
             }
 
@@ -124,11 +120,10 @@ final class ExhaustiveComponentEnumerator {
                     throw new RuntimeException("Enumeration interrupted");
                 }
 
-                WorkItem item = worklist.poll();
-                if (item == null) {
+                Component left = worklist.poll();
+                if (left == null) {
                     continue;
                 }
-                Component left = item.component;
                 if (!isCurrent(left)) {
                     continue;
                 }
@@ -174,7 +169,7 @@ final class ExhaustiveComponentEnumerator {
                                 normalized,
                                 normalized.toString(),
                                 cpqSize(normalized));
-                        registerIfBetter(out, costOf(normalized), worklist);
+                        registerIfBetter(out, worklist);
                     }
                 }
 
@@ -207,7 +202,7 @@ final class ExhaustiveComponentEnumerator {
                             normalized,
                             normalized.toString(),
                             cpqSize(normalized));
-                    registerIfBetter(out, costOf(normalized), worklist);
+                    registerIfBetter(out, worklist);
                 }
             }
 
@@ -322,13 +317,12 @@ final class ExhaustiveComponentEnumerator {
          * Builds and registers a component consisting of a single labeled edge.
          */
         private void addAtomicComponent(
-                Queue<WorkItem> worklist,
+                Queue<Component> worklist,
                 VarCQ s,
                 VarCQ t,
                 Predicate label,
                 BitSet ownedAtoms,
-                BitSet inverseAtoms,
-                long cost) {
+                BitSet inverseAtoms) {
             CPQ cpq = CPQ.label(label);
             if (s.equals(t)) {
                 cpq = CPQ.intersect(cpq, CPQ.id());
@@ -343,10 +337,13 @@ final class ExhaustiveComponentEnumerator {
                     cpq,
                     normalized,
                     cpqSize(cpq));
-            registerIfBetter(component, cost, worklist);
+            registerIfBetter(component, worklist);
         }
 
-        private void registerIfBetter(Component c, long cost, Queue<WorkItem> worklist) {
+        private void registerIfBetter(Component c, Queue<Component> worklist) {
+            if (componentFilter != null && !componentFilter.test(c.cpq())) {
+                return;
+            }
             ComponentKey key = key(c);
             Component existing = bestByKey.get(key);
             if (existing != null) {
@@ -359,7 +356,7 @@ final class ExhaustiveComponentEnumerator {
             }
 
             bestByKey.put(key, c);
-            worklist.add(new WorkItem(c, cost));
+            worklist.add(c);
 
             bySource.computeIfAbsent(c.s(), v -> new ArrayList<>()).add(c);
             byTarget.computeIfAbsent(c.t(), v -> new ArrayList<>()).add(c);
@@ -376,25 +373,6 @@ final class ExhaustiveComponentEnumerator {
                 String normalized,
                 int size) {
             return new Component(s, t, coreDiam, ownedAtoms, inverseAtoms, cpq, normalized, nextId++, size);
-        }
-
-        /**
-         * Computes a direction-agnostic cost for a single-edge component.
-         * Uses the forward label from the original CQ edge, regardless of component direction.
-         */
-        private long canonicalEdgeCost(AtomCQ edge) {
-            if (costFn == null) {
-                return 0L;
-            }
-            CPQ cpq = CPQ.label(edge.getLabel());
-            if (edge.getSource().equals(edge.getTarget())) {
-                cpq = CPQ.intersect(cpq, CPQ.id());
-            }
-            return costFn.applyAsLong(cpq);
-        }
-
-        private long costOf(CPQ cpq) {
-            return costFn == null ? 0L : costFn.applyAsLong(cpq);
         }
 
         private boolean isCurrent(Component component) {
@@ -424,28 +402,6 @@ final class ExhaustiveComponentEnumerator {
         }
 
         private record EndpointPair(VarCQ s, VarCQ t) {
-        }
-
-        private static Comparator<WorkItem> workItemComparator() {
-            return Comparator
-                    .comparingLong((WorkItem item) -> item.cost)
-                    .thenComparing(Comparator
-                            .comparingInt((WorkItem item) -> item.component.maskUnsafe().cardinality())
-                            .reversed())
-                    .thenComparing(Comparator
-                            .comparingInt((WorkItem item) -> item.component.diameter())
-                            .reversed())
-                    .thenComparingInt(item -> item.component.id());
-        }
-
-        private static final class WorkItem {
-            private final Component component;
-            private final long cost;
-
-            private WorkItem(Component component, long cost) {
-                this.component = component;
-                this.cost = cost;
-            }
         }
     }
 }
