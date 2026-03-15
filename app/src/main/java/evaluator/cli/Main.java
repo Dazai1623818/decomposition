@@ -5,12 +5,17 @@ import evaluator.bench.BenchTypes;
 import evaluator.bench.EngineConfig;
 import evaluator.evaluation.DecompositionMethod;
 import evaluator.index.NativeCpqIndex;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Properties;
 
 public final class Main {
     private static final int EXIT_USAGE = 2;
@@ -46,7 +51,13 @@ public final class Main {
 
     private static void run(ParsedArgs args) throws Exception {
         NativeCpqIndex index = NativeCpqIndex.load(args.indexPath());
-        EngineConfig runConfig = SYSTEM_CONFIG.withEstimationSeed(args.seed());
+        if (args.command() == Command.COMPARE_FILE_WORKER) {
+            runCompareFileWorker(index, args);
+            return;
+        }
+        EngineConfig runConfig = SYSTEM_CONFIG
+                .withEstimationSeed(args.seed())
+                .withSystemRMaxCandidateOrders(args.joinOrderBudget());
         BenchRunner runner = new BenchRunner(index, runConfig);
 
         switch (args.command()) {
@@ -54,6 +65,7 @@ public final class Main {
             case EXPLORE -> runExplore(runner, args);
             case COMPARE -> runCompare(runner, args);
             case COMPARE_FILE -> runCompareFile(runner, args);
+            case COMPARE_FILE_WORKER -> throw new IllegalStateException("compare-file-worker handled earlier");
             case ESTIMATION_BENCH -> runEstimationBench(runner, args);
             case PROFILE -> runProfile(runner, args);
             case ESTIMATE -> runEstimate(runner, args);
@@ -66,19 +78,10 @@ public final class Main {
                 args.indexPath(),
                 requiredPath(args.queriesFile(), "--queries-file"),
                 args.mode(),
+                requiredMethod(args.method(), "--method"),
                 args.coverLimit(),
                 args.kOverride(),
-                args.candidateLimit(),
-                args.warmupRounds(),
-                1,
-                args.methodTimeoutMs(),
-                args.decompositionTimeoutMs(),
-                args.profileTimeoutMs(),
-                args.estimateWalks(),
-                args.minComponents(),
-                args.maxComponents(),
-                args.seed(),
-                args.outputDir(),
+                args.timeoutMs(),
                 progressSink);
         BenchTypes.EvalFileReport report = runner.evalFile(spec);
         String evaluationMethodId = BenchTypes.EvaluationMethod.fromMode(args.mode()).id();
@@ -116,7 +119,7 @@ public final class Main {
                         : progress.decompositionMethodId();
                 System.out.println(String.format(
                         Locale.ROOT,
-                        "query=%d method=%s comps=%d max_diam=%d answers=%d parse_ms=%.3f decompose_ms=%.3f query_ms=%.3f mapping_ms=%.3f estimate_ms=%.3f join_ms=%.3f wall_ms=%.3f status=%s%s",
+                        "query=%d method=%s comps=%d max_diam=%d answers=%d parse_ms=%.3f planning_ms=%.3f index_lookup_ms=%.3f mapping_ms=%.3f join_order_ms=%.3f join_ms=%.3f execution_ms=%.3f method_wall_ms=%.3f end_to_end_ms=%.3f status=%s%s",
                         progress.queryNumber(),
                         methodId,
                         progress.components(),
@@ -128,6 +131,11 @@ public final class Main {
                         nanosToMillis(progress.mappingNanos()),
                         nanosToMillis(progress.estimateNanos()),
                         nanosToMillis(progress.joinNanos()),
+                        nanosToMillis(progress.queryNanos()
+                                + progress.mappingNanos()
+                                + progress.estimateNanos()
+                                + progress.joinNanos()),
+                        nanosToMillis(Math.max(0L, progress.wallNanos() - progress.parseNanos())),
                         nanosToMillis(progress.wallNanos()),
                         progress.status(),
                         errorSegment));
@@ -163,9 +171,8 @@ public final class Main {
                 args.minComponents(),
                 args.maxComponents(),
                 args.methodTimeoutMs(),
-                args.profileTimeoutMs(),
+                0,
                 args.profileOrders(),
-                args.estimateWalks(),
                 args.seed());
         BenchTypes.ExploreReport report = runner.explore(spec);
         System.out.println(String.format(
@@ -217,20 +224,24 @@ public final class Main {
         BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                 args.indexPath(),
                 requiredPath(args.queriesFile(), "--queries-file"),
+                args.warmupQueriesFile(),
+                args.warmupQueryLimit(),
+                args.mode(),
                 args.methodTimeoutMs(),
                 args.decompositionTimeoutMs(),
                 args.coverLimit(),
                 args.kOverride(),
                 args.seed(),
                 compareLog,
-                decompositionLog);
+                decompositionLog,
+                args.warmup());
         BenchTypes.CompareFileReport report = runner.compareFile(spec);
         String status = (report.timeoutRows() == 0 && report.decompositionTimeoutRows() == 0 && report.errorRows() == 0)
                 ? "OK"
                 : "PARTIAL";
         System.out.println(String.format(
                 Locale.ROOT,
-                "command=compare-file queries=%d method_rows=%d ok=%d timeouts=%d decomp_timeouts=%d no_candidate=%d errors=%d elapsed_ms=%.3f status=%s",
+                "command=compare-file queries=%d method_rows=%d ok=%d exec_timeouts=%d planning_timeouts=%d no_candidate=%d errors=%d elapsed_ms=%.3f status=%s",
                 report.queryCount(),
                 report.methodRows(),
                 report.okRows(),
@@ -240,6 +251,94 @@ public final class Main {
                 report.errorRows(),
                 nanosToMillis(report.elapsedNanos()),
                 status));
+    }
+
+    private static void runCompareFileWorker(NativeCpqIndex index, ParsedArgs args) throws Exception {
+        WorkerRunnerState runnerState = null;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String command = line.trim();
+                if (command.isEmpty()) {
+                    continue;
+                }
+                if ("STOP".equals(command)) {
+                    return;
+                }
+
+                WorkerJob job = WorkerJob.load(Path.of(command));
+                runnerState = ensureWorkerRunner(index, job, runnerState);
+                runWorkerJob(runnerState.runner(), job);
+                System.out.println("DONE");
+                System.out.flush();
+            }
+        }
+    }
+
+    private static WorkerRunnerState ensureWorkerRunner(
+            NativeCpqIndex index,
+            WorkerJob job,
+            WorkerRunnerState current) {
+        if (current != null
+                && Objects.equals(current.methodsProperty(), job.methodsProperty())
+                && current.seed() == job.seed()
+                && current.joinOrderBudget() == job.joinOrderBudget()) {
+            return current;
+        }
+
+        if (job.methodsProperty() == null || job.methodsProperty().isBlank()) {
+            System.clearProperty("cpq.decompose.methods");
+        } else {
+            System.setProperty("cpq.decompose.methods", job.methodsProperty());
+        }
+        EngineConfig runConfig = SYSTEM_CONFIG
+                .withEstimationSeed(job.seed())
+                .withSystemRMaxCandidateOrders(job.joinOrderBudget());
+        return new WorkerRunnerState(
+                job.methodsProperty(),
+                job.seed(),
+                job.joinOrderBudget(),
+                new BenchRunner(index, runConfig));
+    }
+
+    private static void runWorkerJob(BenchRunner runner, WorkerJob job) throws Exception {
+        Files.createDirectories(job.runDir());
+        deleteIfExists(job.runDir().resolve("exit.status"));
+        deleteIfExists(job.runDir().resolve("error.txt"));
+
+        try {
+            BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
+                    job.indexPath(),
+                    job.queriesFile(),
+                    job.warmupQueriesFile(),
+                    job.warmupQueryLimit(),
+                    job.mode(),
+                    job.methodTimeoutMs(),
+                    job.decompositionTimeoutMs(),
+                    job.coverLimit(),
+                    job.kOverride(),
+                    job.seed(),
+                    job.compareLogPath(),
+                    job.decompositionLogPath(),
+                    job.warmup());
+            runner.compareFile(spec);
+            Files.writeString(job.runDir().resolve("exit.status"), "0\n", StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            writeWorkerError(job.runDir().resolve("error.txt"), ex);
+            Files.writeString(job.runDir().resolve("exit.status"), "1\n", StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void deleteIfExists(Path path) throws Exception {
+        Files.deleteIfExists(path);
+    }
+
+    private static void writeWorkerError(Path path, Exception ex) throws Exception {
+        StringWriter buffer = new StringWriter();
+        try (PrintWriter writer = new PrintWriter(buffer)) {
+            ex.printStackTrace(writer);
+        }
+        Files.writeString(path, buffer.toString(), StandardCharsets.UTF_8);
     }
 
     private static void runEstimationBench(BenchRunner runner, ParsedArgs args) throws Exception {
@@ -258,7 +357,6 @@ public final class Main {
                 args.decompositionTimeoutMs(),
                 args.coverLimit(),
                 args.kOverride(),
-                args.estimateWalks() > 0 ? args.estimateWalks() : 64,
                 args.seed(),
                 outputPath);
         BenchTypes.EstimationBenchReport report = runner.estimationBench(spec);
@@ -267,7 +365,7 @@ public final class Main {
                 : "PARTIAL";
         System.out.println(String.format(
                 Locale.ROOT,
-                "command=estimationbench queries=%d method_rows=%d step_rows=%d ok=%d timeouts=%d decomp_timeouts=%d no_candidate=%d errors=%d elapsed_ms=%.3f output=%s status=%s",
+                "command=estimationbench queries=%d method_rows=%d step_rows=%d ok=%d exec_timeouts=%d planning_timeouts=%d no_candidate=%d errors=%d elapsed_ms=%.3f output=%s status=%s",
                 report.queryCount(),
                 report.methodRows(),
                 report.stepRows(),
@@ -285,9 +383,12 @@ public final class Main {
         BenchTypes.ProfileSpec spec = new BenchTypes.ProfileSpec(
                 args.indexPath(),
                 requiredText(args.queryText(), "<query>"),
+                requiredMethod(args.method(), "--method"),
+                args.coverLimit(),
+                args.kOverride(),
                 args.profileOrders(),
                 args.seed(),
-                args.profileTimeoutMs());
+                args.timeoutMs());
         BenchTypes.ProfileReport report = runner.profile(spec);
         String status = report.timedOut() ? "TIMEOUT" : "OK";
         System.out.println(String.format(
@@ -305,24 +406,20 @@ public final class Main {
         BenchTypes.EstimateSpec spec = new BenchTypes.EstimateSpec(
                 args.indexPath(),
                 requiredText(args.queryText(), "<query>"),
+                requiredMethod(args.method(), "--method"),
                 args.coverLimit(),
                 args.kOverride(),
-                args.decompositionTimeoutMs(),
-                args.methodTimeoutMs(),
-                args.estimateWalks() > 0 ? args.estimateWalks() : 64,
-                args.seed());
+                args.timeoutMs());
         BenchTypes.EstimateReport report = runner.estimate(spec);
         String status = report.timedOut() ? "TIMEOUT" : "OK";
         System.out.println(String.format(
                 Locale.ROOT,
-                "command=estimate estimate=%.6f stderr=%.6f seed=%d walks=%d status=%s",
+                "command=estimate estimate=%.6f stderr=%.6f status=%s",
                 report.estimate(),
                 report.standardError(),
-                args.seed(),
-                spec.walks(),
                 status));
         if (args.outputDir() != null) {
-            writeEstimateOutputs(args.outputDir(), report, args.seed(), spec.walks());
+            writeEstimateOutputs(args.outputDir(), report);
         }
     }
 
@@ -401,18 +498,16 @@ public final class Main {
                 StandardCharsets.UTF_8);
     }
 
-    private static void writeEstimateOutputs(Path outputDir, BenchTypes.EstimateReport report, long seed, int walks)
+    private static void writeEstimateOutputs(Path outputDir, BenchTypes.EstimateReport report)
             throws Exception {
         Files.createDirectories(outputDir);
         Files.writeString(
                 outputDir.resolve("estimate.jsonl"),
                 String.format(
                         Locale.ROOT,
-                        "{\"estimate\":%.6f,\"standard_error\":%.6f,\"seed\":%d,\"walks\":%d,\"status\":\"%s\"}%n",
+                        "{\"estimate\":%.6f,\"standard_error\":%.6f,\"status\":\"%s\"}%n",
                         report.estimate(),
                         report.standardError(),
-                        seed,
-                        walks,
                         report.timedOut() ? "TIMEOUT" : "OK"),
                 StandardCharsets.UTF_8);
     }
@@ -443,11 +538,20 @@ public final class Main {
         return path;
     }
 
+    private static DecompositionMethod requiredMethod(DecompositionMethod method, String name) {
+        if (method == null) {
+            throw new IllegalArgumentException(
+                    "Missing required argument: " + name + " (supported: " + supportedDecompositionMethods() + ")");
+        }
+        return method;
+    }
+
     private static void printUsage() {
         System.err.println("Usage: <command> [options]");
         System.err.println("Commands:");
         System.err.println("  eval-file --queries-file <path> [--index <path>]");
         System.err.println("  compare-file --queries-file <path> [--index <path>]");
+        System.err.println("  compare-file-worker --index <path>");
         System.err.println("  estimationbench --queries-file <path> [--index <path>]");
         System.err.println("  explore <query> [--index <path>]");
         System.err.println("  compare <query> [--index <path>]");
@@ -456,18 +560,23 @@ public final class Main {
         System.err.println("Common options:");
         System.err.println("  --index <path>                      (default: index.bin)");
         System.err.println("  --output-dir <path>                write command output files");
-        System.err.println("  --rows | --count                   evaluation mode (default: count)");
+        System.err.println("  --method <id>                      required for eval-file/profile/estimate");
+        System.err.println("  --rows | --count                   evaluation mode (default: rows)");
         System.err.println("  --cover-limit <n> --k <n> --candidate-limit <n>");
-        System.err.println("  --method-timeout-ms <n> --decomposition-timeout-ms <n> --profile-timeout-ms <n>");
-        System.err.println("  --estimate-walks <n> --profile-orders <n> --seed <n>");
+        System.err.println("  --timeout-ms <n>                   single-plan timeout for eval-file/profile/estimate");
+        System.err.println("  --per-method-timeout-ms <n> --planning-timeout-ms <n>");
+        System.err.println("  --join-order-budget <n> --profile-orders <n> --seed <n>");
         System.err.println("  --min-components <n> --max-components <n> --warmup-rounds <n>");
-        System.err.println("  --warmup-queries-file <path>         warmup-only workload for estimationbench");
+        System.err.println("  --warmup                            run compare-file warmup workload before measuring");
+        System.err.println("  --warmup-query-limit <n>            limit compare-file warmup workload size");
+        System.err.println("  --warmup-queries-file <path>         warmup workload for compare-file or estimationbench");
         System.err.println("  --compare-log <path> --decomposition-log <path>");
     }
 
     private enum Command {
         EVAL_FILE("eval-file"),
         COMPARE_FILE("compare-file"),
+        COMPARE_FILE_WORKER("compare-file-worker"),
         ESTIMATION_BENCH("estimationbench"),
         EXPLORE("explore"),
         COMPARE("compare"),
@@ -500,14 +609,17 @@ public final class Main {
             Path compareLogPath,
             Path decompositionLogPath,
             BenchTypes.EvaluationMode mode,
+            DecompositionMethod method,
             int coverLimit,
             int candidateLimit,
             int kOverride,
+            boolean warmup,
+            int warmupQueryLimit,
             int warmupRounds,
+            int timeoutMs,
             int methodTimeoutMs,
             int decompositionTimeoutMs,
-            int profileTimeoutMs,
-            int estimateWalks,
+            int joinOrderBudget,
             int profileOrders,
             int minComponents,
             int maxComponents,
@@ -526,15 +638,18 @@ public final class Main {
             Path outputDir = null;
             Path compareLogPath = null;
             Path decompositionLogPath = null;
-            BenchTypes.EvaluationMode mode = BenchTypes.EvaluationMode.COUNT;
-            int coverLimit = 1;
+            BenchTypes.EvaluationMode mode = BenchTypes.EvaluationMode.ROWS;
+            DecompositionMethod method = null;
+            int coverLimit = 2048;
             int candidateLimit = 0;
             int kOverride = 0;
+            boolean warmup = false;
+            int warmupQueryLimit = 0;
             int warmupRounds = 0;
+            int timeoutMs = 0;
             int methodTimeoutMs = 0;
             int decompositionTimeoutMs = 0;
-            int profileTimeoutMs = 0;
-            int estimateWalks = 0;
+            int joinOrderBudget = SYSTEM_CONFIG.systemRMaxCandidateOrders();
             int profileOrders = 0;
             int minComponents = 0;
             int maxComponents = 0;
@@ -549,16 +664,22 @@ public final class Main {
                     case "--output-dir" -> outputDir = Path.of(requireValue(args, ++i, "--output-dir"));
                     case "--compare-log" -> compareLogPath = Path.of(requireValue(args, ++i, "--compare-log"));
                     case "--decomposition-log" -> decompositionLogPath = Path.of(requireValue(args, ++i, "--decomposition-log"));
+                    case "--method" -> method = DecompositionMethod.fromToken(requireValue(args, ++i, "--method"));
                     case "--rows" -> mode = BenchTypes.EvaluationMode.ROWS;
                     case "--count", "--count-only" -> mode = BenchTypes.EvaluationMode.COUNT;
                     case "--cover-limit" -> coverLimit = parseInt(requireValue(args, ++i, "--cover-limit"), arg);
                     case "--candidate-limit" -> candidateLimit = parseInt(requireValue(args, ++i, "--candidate-limit"), arg);
                     case "--k" -> kOverride = parseInt(requireValue(args, ++i, "--k"), arg);
+                    case "--warmup" -> warmup = true;
+                    case "--warmup-query-limit" -> warmupQueryLimit = parseInt(requireValue(args, ++i, "--warmup-query-limit"), arg);
                     case "--warmup-rounds" -> warmupRounds = parseInt(requireValue(args, ++i, "--warmup-rounds"), arg);
-                    case "--method-timeout-ms" -> methodTimeoutMs = parseInt(requireValue(args, ++i, "--method-timeout-ms"), arg);
-                    case "--decomposition-timeout-ms" -> decompositionTimeoutMs = parseInt(requireValue(args, ++i, "--decomposition-timeout-ms"), arg);
-                    case "--profile-timeout-ms" -> profileTimeoutMs = parseInt(requireValue(args, ++i, "--profile-timeout-ms"), arg);
-                    case "--estimate-walks" -> estimateWalks = parseInt(requireValue(args, ++i, "--estimate-walks"), arg);
+                    case "--timeout-ms", "--profile-timeout-ms" -> timeoutMs = parseInt(requireValue(args, ++i, arg), arg);
+                    case "--per-method-timeout-ms", "--method-timeout-ms" ->
+                        methodTimeoutMs = parseInt(requireValue(args, ++i, arg), arg);
+                    case "--planning-timeout-ms", "--decomposition-timeout-ms" ->
+                        decompositionTimeoutMs = parseInt(requireValue(args, ++i, arg), arg);
+                    case "--join-order-budget" ->
+                        joinOrderBudget = parseInt(requireValue(args, ++i, "--join-order-budget"), arg);
                     case "--profile-orders" -> profileOrders = parseInt(requireValue(args, ++i, "--profile-orders"), arg);
                     case "--min-components" -> minComponents = parseInt(requireValue(args, ++i, "--min-components"), arg);
                     case "--max-components" -> maxComponents = parseInt(requireValue(args, ++i, "--max-components"), arg);
@@ -576,7 +697,16 @@ public final class Main {
                 }
             }
 
-            validate(command, queriesFile, queryText, minComponents, maxComponents);
+            validate(
+                    command,
+                    queriesFile,
+                    queryText,
+                    method,
+                    joinOrderBudget,
+                    minComponents,
+                    maxComponents,
+                    warmup,
+                    warmupQueryLimit);
             return new ParsedArgs(
                     command,
                     indexPath,
@@ -587,14 +717,17 @@ public final class Main {
                     compareLogPath,
                     decompositionLogPath,
                     mode,
+                    method,
                     coverLimit,
                     candidateLimit,
                     kOverride,
+                    warmup,
+                    warmupQueryLimit,
                     warmupRounds,
+                    timeoutMs,
                     methodTimeoutMs,
                     decompositionTimeoutMs,
-                    profileTimeoutMs,
-                    estimateWalks,
+                    joinOrderBudget,
                     profileOrders,
                     minComponents,
                     maxComponents,
@@ -605,13 +738,32 @@ public final class Main {
                 Command command,
                 Path queriesFile,
                 String queryText,
+                DecompositionMethod method,
+                int joinOrderBudget,
                 int minComponents,
-                int maxComponents) {
+                int maxComponents,
+                boolean warmup,
+                int warmupQueryLimit) {
+            if (command != Command.COMPARE_FILE && warmupQueryLimit != 0) {
+                throw new IllegalArgumentException("--warmup-query-limit is only supported for compare-file");
+            }
+            if (joinOrderBudget < 0) {
+                throw new IllegalArgumentException("join-order-budget must be >= 0");
+            }
+            if (warmupQueryLimit < 0) {
+                throw new IllegalArgumentException("warmup-query-limit must be >= 0");
+            }
             if (minComponents < 0 || maxComponents < 0) {
                 throw new IllegalArgumentException("min-components and max-components must be >= 0");
             }
             if (minComponents > 0 && maxComponents > 0 && minComponents > maxComponents) {
                 throw new IllegalArgumentException("min-components must be <= max-components");
+            }
+            if (warmup && command != Command.COMPARE_FILE) {
+                throw new IllegalArgumentException("--warmup is only supported for compare-file");
+            }
+            if (command == Command.COMPARE_FILE_WORKER) {
+                return;
             }
             if (command == Command.EVAL_FILE
                     || command == Command.COMPARE_FILE
@@ -619,7 +771,13 @@ public final class Main {
                 if (queriesFile == null) {
                     throw new IllegalArgumentException(command.token + " requires --queries-file <path>");
                 }
+                if (command == Command.EVAL_FILE && method == null) {
+                    throw new IllegalArgumentException(command.token + " requires --method <id>");
+                }
                 return;
+            }
+            if ((command == Command.PROFILE || command == Command.ESTIMATE) && method == null) {
+                throw new IllegalArgumentException(command.token + " requires --method <id>");
             }
             if (queryText == null || queryText.isBlank()) {
                 throw new IllegalArgumentException(command.token + " requires a query argument");
@@ -647,6 +805,97 @@ public final class Main {
             } catch (NumberFormatException ex) {
                 throw new IllegalArgumentException("Invalid long for " + option + ": " + value);
             }
+        }
+    }
+
+    private record WorkerRunnerState(
+            String methodsProperty,
+            long seed,
+            int joinOrderBudget,
+            BenchRunner runner) {
+    }
+
+    private record WorkerJob(
+            Path runDir,
+            Path indexPath,
+            Path queriesFile,
+            Path compareLogPath,
+            Path decompositionLogPath,
+            Path warmupQueriesFile,
+            int warmupQueryLimit,
+            BenchTypes.EvaluationMode mode,
+            int methodTimeoutMs,
+            int decompositionTimeoutMs,
+            int coverLimit,
+            int kOverride,
+            long seed,
+            String methodsProperty,
+            int joinOrderBudget,
+            boolean warmup) {
+        private static WorkerJob load(Path jobFile) throws Exception {
+            Properties properties = new Properties();
+            try (BufferedReader reader = Files.newBufferedReader(jobFile, StandardCharsets.UTF_8)) {
+                properties.load(reader);
+            }
+            Path runDir = jobFile.toAbsolutePath().getParent();
+            Path warmupQueriesFile = propertyPath(properties, "warmup_queries_file");
+            String modeToken = properties.getProperty("mode", BenchTypes.EvaluationMode.ROWS.id());
+            return new WorkerJob(
+                    runDir,
+                    Path.of(requiredProperty(properties, "index_path")),
+                    Path.of(requiredProperty(properties, "query_file")),
+                    Path.of(requiredProperty(properties, "compare_log_file")),
+                    Path.of(requiredProperty(properties, "decomposition_log_file")),
+                    warmupQueriesFile,
+                    intProperty(properties, "warmup_query_limit", 0),
+                    "count".equals(modeToken)
+                            ? BenchTypes.EvaluationMode.COUNT
+                            : BenchTypes.EvaluationMode.ROWS,
+                    intProperty(properties, "method_timeout_ms", 0),
+                    intProperty(properties, "decomposition_timeout_ms", 0),
+                    intProperty(properties, "cover_limit", 0),
+                    intProperty(properties, "k_override", 0),
+                    longProperty(properties, "seed", 0L),
+                    properties.getProperty("methods_property", ""),
+                    intProperty(properties, "join_order_budget", SYSTEM_CONFIG.systemRMaxCandidateOrders()),
+                    booleanProperty(properties, "warmup", false));
+        }
+
+        private static String requiredProperty(Properties properties, String key) {
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException("Missing worker job property: " + key);
+            }
+            return value;
+        }
+
+        private static Path propertyPath(Properties properties, String key) {
+            String value = properties.getProperty(key);
+            return value == null || value.isBlank() ? null : Path.of(value);
+        }
+
+        private static int intProperty(Properties properties, String key, int fallback) {
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                return fallback;
+            }
+            return Integer.parseInt(value.trim());
+        }
+
+        private static long longProperty(Properties properties, String key, long fallback) {
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                return fallback;
+            }
+            return Long.parseLong(value.trim());
+        }
+
+        private static boolean booleanProperty(Properties properties, String key, boolean fallback) {
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                return fallback;
+            }
+            return Boolean.parseBoolean(value.trim());
         }
     }
 }

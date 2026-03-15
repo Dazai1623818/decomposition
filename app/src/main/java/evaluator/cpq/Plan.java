@@ -11,14 +11,25 @@ import java.util.Objects;
 import java.util.Set;
 
 public final class Plan {
+    public enum OrderPolicy {
+        HEURISTIC,
+        SYSTEM_R
+    }
+
     private final ConjunctiveQuery cq;
     private final List<Component> components;
     private final List<String> variableOrder;
+    private final OrderPolicy orderPolicy;
 
     public Plan(ConjunctiveQuery cq, List<Component> components) {
+        this(cq, components, OrderPolicy.HEURISTIC);
+    }
+
+    public Plan(ConjunctiveQuery cq, List<Component> components, OrderPolicy orderPolicy) {
         this.cq = Objects.requireNonNull(cq, "cq");
         this.components = List.copyOf(Objects.requireNonNull(components, "components"));
         this.variableOrder = computeVariableOrder(components);
+        this.orderPolicy = Objects.requireNonNull(orderPolicy, "orderPolicy");
     }
 
     public ConjunctiveQuery cq() {
@@ -45,8 +56,24 @@ public final class Plan {
         return cq.freeVariables();
     }
 
+    public OrderPolicy orderPolicy() {
+        return orderPolicy;
+    }
+
     public List<String> variableOrder() {
         return variableOrder;
+    }
+
+    /**
+     * Returns a copy of this plan with a different variable-order planning
+     * policy while preserving the decomposition itself.
+     */
+    public Plan withOrderPolicy(OrderPolicy nextOrderPolicy) {
+        Objects.requireNonNull(nextOrderPolicy, "nextOrderPolicy");
+        if (orderPolicy == nextOrderPolicy) {
+            return this;
+        }
+        return new Plan(cq, components, nextOrderPolicy);
     }
 
     /**

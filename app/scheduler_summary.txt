@@ -1,0 +1,13 @@
+manifest=/workspace/app/local/tmp/compare_manifest_s60_repeat3_robots_baseline_cov32_warm1000_minishard10_nowarm_smoke2_seed20260314.csv
+current_phase=done
+total_runs=2
+launched_runs=2
+finished_runs=2
+active_runs=0
+pending_runs=0
+warmup_runs=1
+warmup_finished_runs=1
+warmup_query_limit=10
+warmup_queries=10
+child_log_layout=flat
+concurrency=2

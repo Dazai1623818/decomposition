@@ -1,9 +1,9 @@
 package evaluator.bench;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import dev.roanh.gmark.lang.cpq.CPQ;
-import evaluator.bench.BenchTypes.DecompositionCandidate;
 import evaluator.cpq.ConjunctiveQuery;
 import evaluator.cpq.Plan;
 import evaluator.evaluation.ExecutablePlan;
@@ -16,37 +16,29 @@ class BenchEnginePreparedCandidateTest {
     private static final String VALID_QUERY = "(x,y) \u2190 0(x,y)";
 
     @Test
-    void preparedWinnerIsReusedForEvaluation() throws Exception {
+    void preparedSelectionIsReusedForEvaluation() throws Exception {
         CountingIndex index = new CountingIndex();
-        EngineConfig config = new EngineConfig(
-                true,
-                2,
-                1,
-                0,
-                0,
-                0,
-                EngineConfig.EstimatorType.WANDERJOIN,
-                true,
-                true,
-                123L);
-        BenchEngine engine = new BenchEngine(index, config);
-        Plan plan = ConjunctiveQuery.parse(VALID_QUERY).decomposeSingleEdge();
-        List<DecompositionCandidate> candidates = List.of(
-                new DecompositionCandidate(evaluator.evaluation.DecompositionMethod.SINGLE_EDGE, 0, plan, 0L),
-                new DecompositionCandidate(evaluator.evaluation.DecompositionMethod.SINGLE_EDGE, 1, plan, 0L));
+        BenchEngine engine = new BenchEngine(index, EngineConfig.defaults());
+        ConjunctiveQuery cq = ConjunctiveQuery.parse(VALID_QUERY);
 
-        Method pick = BenchEngine.class.getDeclaredMethod(
-                "pickBestPreparedCandidate",
-                List.class,
+        Method select = BenchEngine.class.getDeclaredMethod(
+                "selectBestPreparedCandidatesWithTimeoutInfo",
+                ConjunctiveQuery.class,
                 int.class,
                 int.class,
                 int.class,
                 long.class);
-        pick.setAccessible(true);
-        Object prepared = pick.invoke(engine, candidates, 1, 0, 1, Long.MAX_VALUE);
+        select.setAccessible(true);
+        Object selection = select.invoke(engine, cq, 1, 2, 0, Long.MAX_VALUE);
 
-        assertEquals(2, index.queryCalls);
+        Method candidatesMethod = selection.getClass().getDeclaredMethod("candidates");
+        candidatesMethod.setAccessible(true);
+        List<?> candidates = (List<?>) candidatesMethod.invoke(selection);
 
+        assertFalse(candidates.isEmpty());
+        assertEquals(candidates.size(), index.queryCalls);
+
+        Object prepared = candidates.get(0);
         Method executableMethod = prepared.getClass().getDeclaredMethod("executable");
         executableMethod.setAccessible(true);
         ExecutablePlan executable = (ExecutablePlan) executableMethod.invoke(prepared);
@@ -59,7 +51,34 @@ class BenchEnginePreparedCandidateTest {
         evaluate.setAccessible(true);
         evaluate.invoke(engine, executable, BenchTypes.EvaluationMode.COUNT, Long.MAX_VALUE);
 
-        assertEquals(2, index.queryCalls);
+        assertEquals(candidates.size(), index.queryCalls);
+    }
+
+    @Test
+    void systemROrderSelectionReusesPreparedExecutable() throws Exception {
+        CountingIndex index = new CountingIndex();
+        BenchEngine engine = new BenchEngine(index, EngineConfig.defaults());
+        Plan plan = ConjunctiveQuery.parse(VALID_QUERY)
+                .decomposeSingleEdge()
+                .withOrderPolicy(Plan.OrderPolicy.SYSTEM_R);
+        ExecutablePlan executable = ExecutablePlan.compile(plan, index, Long.MAX_VALUE);
+
+        assertEquals(1, index.queryCalls);
+
+        Method evaluate = BenchEngine.class.getDeclaredMethod(
+                "evaluateWithStats",
+                ExecutablePlan.class,
+                BenchTypes.EvaluationMode.class,
+                long.class);
+        evaluate.setAccessible(true);
+        BenchTypes.EvaluationWithStats evaluation = (BenchTypes.EvaluationWithStats) evaluate.invoke(
+                engine,
+                executable,
+                BenchTypes.EvaluationMode.COUNT,
+                Long.MAX_VALUE);
+
+        assertEquals(1, index.queryCalls);
+        assertEquals(3.0D, evaluation.estimatedCount());
     }
 
     private static final class CountingIndex implements CpqIndex {
@@ -93,6 +112,11 @@ class BenchEnginePreparedCandidateTest {
         public List<Edge> query(CPQ cpq) {
             queryCalls++;
             return edges;
+        }
+
+        @Override
+        public ComponentStats componentStats(CPQ cpq) {
+            return ComponentStats.fromEdges(edges);
         }
     }
 }

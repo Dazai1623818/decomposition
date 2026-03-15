@@ -1,6 +1,7 @@
 package evaluator.decomposition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import dev.roanh.gmark.lang.cq.CQ;
 import dev.roanh.gmark.lang.cq.VarCQ;
@@ -28,15 +29,15 @@ class CoverSelectorTest {
                 lowDiamCheap.cpq(), 1L,
                 highDiamExpensive.cpq(), 5L));
 
-        CoverSelector selector = new CoverSelector(1, CoverSelector.Order.COST, costFn);
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.COST, costFn);
         List<Plan> covers = selector.select(fixture.query(), List.of(lowDiamCheap, highDiamExpensive)).toList();
 
-        assertEquals(1, covers.size());
+        assertFalse(covers.isEmpty());
         assertEquals("low-diam", covers.get(0).components().get(0).normalized());
     }
 
     @Test
-    void diameterOrderPrefersHigherDiameterBeforeLowerCost() {
+    void maxCollapsePrefersHigherDiameterBeforeLowerCost() {
         QueryFixture fixture = singleEdgeQuery();
         Component highDiamExpensive = component(fixture, "high-diam", 20, 5);
         Component lowDiamCheap = component(fixture, "low-diam", 21, 2);
@@ -45,48 +46,161 @@ class CoverSelectorTest {
                 highDiamExpensive.cpq(), 100L,
                 lowDiamCheap.cpq(), 1L));
 
-        CoverSelector selector = new CoverSelector(1, CoverSelector.Order.DIAMETER, costFn);
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.MAX_COLLAPSE, costFn);
         List<Plan> covers = selector.select(fixture.query(), List.of(lowDiamCheap, highDiamExpensive)).toList();
 
-        assertEquals(1, covers.size());
+        assertFalse(covers.isEmpty());
         assertEquals("high-diam", covers.get(0).components().get(0).normalized());
     }
 
     @Test
-    void costOrderBreaksCostTiesByLargerMask() {
+    void costOrderUsesSummedCoverCostInsteadOfTraversalOrder() {
+        ThreeEdgePathQueryFixture fixture = threeEdgePathQuery();
+        Component singleLeft = component(
+                fixture.x(),
+                fixture.y(),
+                "single-left",
+                25,
+                1,
+                mask(0));
+        Component singleMiddle = component(
+                fixture.y(),
+                fixture.z(),
+                "single-middle",
+                26,
+                1,
+                mask(1));
+        Component singleRight = component(
+                fixture.z(),
+                fixture.w(),
+                "single-right",
+                27,
+                1,
+                mask(2));
+        Component leftPair = component(
+                fixture.x(),
+                fixture.z(),
+                "left-pair",
+                28,
+                2,
+                mask(0, 1));
+
+        ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
+                singleLeft.cpq(), 1L,
+                singleMiddle.cpq(), 10L,
+                singleRight.cpq(), 1L,
+                leftPair.cpq(), 5L));
+
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.COST, costFn);
+        List<Plan> covers = selector.select(
+                fixture.query(),
+                List.of(singleLeft, singleMiddle, singleRight, leftPair)).toList();
+
+        assertFalse(covers.isEmpty());
+        assertEquals(
+                Set.of("left-pair", "single-right"),
+                covers.get(0).components().stream().map(Component::normalized).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void maxCollapsePrefersFewerComponentsBeforeLowerCost() {
         PathQueryFixture fixture = twoEdgePathQuery();
         Component twoEdge = component(
                 fixture.x(),
                 fixture.z(),
                 "two-edge",
-                22,
+                29,
                 2,
                 mask(0, 1));
         Component left = component(
                 fixture.x(),
                 fixture.y(),
                 "left",
-                23,
+                30,
                 1,
                 mask(0));
         Component right = component(
                 fixture.y(),
                 fixture.z(),
                 "right",
-                24,
+                31,
                 1,
                 mask(1));
 
         ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
-                twoEdge.cpq(), 10L,
-                left.cpq(), 5L,
-                right.cpq(), 5L));
+                twoEdge.cpq(), 100L,
+                left.cpq(), 1L,
+                right.cpq(), 1L));
 
-        CoverSelector selector = new CoverSelector(1, CoverSelector.Order.COST, costFn);
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.MAX_COLLAPSE, costFn);
         List<Plan> covers = selector.select(fixture.query(), List.of(twoEdge, left, right)).toList();
 
-        assertEquals(1, covers.size());
+        assertFalse(covers.isEmpty());
         assertEquals("two-edge", covers.get(0).components().get(0).normalized());
+    }
+
+    @Test
+    void maxCollapsePrefersLargerComponentBeforeLowerCost() {
+        FourEdgePathQueryFixture fixture = fourEdgePathQuery();
+        Component triple = component(
+                fixture.x(),
+                fixture.w(),
+                "triple",
+                32,
+                3,
+                mask(0, 1, 2));
+        Component tail = component(
+                fixture.w(),
+                fixture.v(),
+                "tail",
+                33,
+                1,
+                mask(3));
+        Component leftPair = component(
+                fixture.x(),
+                fixture.z(),
+                "left-pair",
+                34,
+                2,
+                mask(0, 1));
+        Component rightPair = component(
+                fixture.z(),
+                fixture.v(),
+                "right-pair",
+                35,
+                2,
+                mask(2, 3));
+
+        ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
+                triple.cpq(), 100L,
+                tail.cpq(), 1L,
+                leftPair.cpq(), 1L,
+                rightPair.cpq(), 1L));
+
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.MAX_COLLAPSE, costFn);
+        List<Plan> covers = selector.select(fixture.query(), List.of(triple, tail, leftPair, rightPair)).toList();
+
+        assertFalse(covers.isEmpty());
+        assertEquals(
+                Set.of("triple", "tail"),
+                covers.get(0).components().stream().map(Component::normalized).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void maxCollapseBreaksExactStructuralTiesByLowerTotalCost() {
+        QueryFixture fixture = singleEdgeQuery();
+        Component expensive = component(fixture, "expensive", 36, 4);
+        Component cheap = component(fixture, "cheap", 37, 4);
+
+        ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
+                expensive.cpq(), 10L,
+                cheap.cpq(), 1L));
+
+        CoverSelector selector = new CoverSelector(0, CoverSelector.Order.MAX_COLLAPSE, costFn);
+        List<Plan> covers = selector.select(fixture.query(), List.of(expensive, cheap)).toList();
+
+        assertFalse(covers.isEmpty());
+        assertEquals("cheap", covers.get(0).components().get(0).normalized());
     }
 
     @Test
@@ -104,6 +218,23 @@ class CoverSelectorTest {
                 .map(cover -> cover.components().get(0).normalized())
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("dup", "alt"), labels);
+    }
+
+    @Test
+    void generatedCoverLimitAppliesBeforeRanking() {
+        QueryFixture fixture = singleEdgeQuery();
+        Component firstGenerated = component(fixture, "first", 50, 5);
+        Component cheaperAlternative = component(fixture, "cheaper", 51, 1);
+
+        ToLongFunction<CPQ> costFn = cpqCostFn(Map.of(
+                firstGenerated.cpq(), 100L,
+                cheaperAlternative.cpq(), 1L));
+
+        CoverSelector selector = new CoverSelector(1, CoverSelector.Order.COST, costFn);
+        List<Plan> covers = selector.select(fixture.query(), List.of(firstGenerated, cheaperAlternative)).toList();
+
+        assertEquals(1, covers.size());
+        assertEquals("first", covers.get(0).components().get(0).normalized());
     }
 
     @Test
@@ -135,6 +266,32 @@ class CoverSelectorTest {
         cq.addAtom(x, new Predicate(0, "0"), y);
         cq.addAtom(y, new Predicate(1, "1"), z);
         return new PathQueryFixture(ConjunctiveQuery.from(cq), x, y, z);
+    }
+
+    private static ThreeEdgePathQueryFixture threeEdgePathQuery() {
+        CQ cq = CQ.empty();
+        VarCQ x = cq.addBoundVariable("x");
+        VarCQ y = cq.addBoundVariable("y");
+        VarCQ z = cq.addBoundVariable("z");
+        VarCQ w = cq.addBoundVariable("w");
+        cq.addAtom(x, new Predicate(0, "0"), y);
+        cq.addAtom(y, new Predicate(1, "1"), z);
+        cq.addAtom(z, new Predicate(2, "2"), w);
+        return new ThreeEdgePathQueryFixture(ConjunctiveQuery.from(cq), x, y, z, w);
+    }
+
+    private static FourEdgePathQueryFixture fourEdgePathQuery() {
+        CQ cq = CQ.empty();
+        VarCQ x = cq.addBoundVariable("x");
+        VarCQ y = cq.addBoundVariable("y");
+        VarCQ z = cq.addBoundVariable("z");
+        VarCQ w = cq.addBoundVariable("w");
+        VarCQ v = cq.addBoundVariable("v");
+        cq.addAtom(x, new Predicate(0, "0"), y);
+        cq.addAtom(y, new Predicate(1, "1"), z);
+        cq.addAtom(z, new Predicate(2, "2"), w);
+        cq.addAtom(w, new Predicate(3, "3"), v);
+        return new FourEdgePathQueryFixture(ConjunctiveQuery.from(cq), x, y, z, w, v);
     }
 
     private static Component component(QueryFixture fixture, String normalized, int labelId, int diameter) {
@@ -171,5 +328,11 @@ class CoverSelectorTest {
     }
 
     private record PathQueryFixture(ConjunctiveQuery query, VarCQ x, VarCQ y, VarCQ z) {
+    }
+
+    private record ThreeEdgePathQueryFixture(ConjunctiveQuery query, VarCQ x, VarCQ y, VarCQ z, VarCQ w) {
+    }
+
+    private record FourEdgePathQueryFixture(ConjunctiveQuery query, VarCQ x, VarCQ y, VarCQ z, VarCQ w, VarCQ v) {
     }
 }

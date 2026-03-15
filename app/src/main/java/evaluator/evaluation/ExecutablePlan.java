@@ -15,6 +15,7 @@ import java.util.Objects;
 public final class ExecutablePlan {
     private static final int[] EMPTY_INT_ARRAY = new int[0];
     private static final int[][] EMPTY_INT_MATRIX = new int[0][];
+    private static final int DEADLINE_CHECK_STRIDE = 256;
 
     private final Plan plan;
     private final List<Relation> relations;
@@ -82,20 +83,10 @@ public final class ExecutablePlan {
         List<Relation> relations = new ArrayList<>(components.size());
         List<Long> componentCounts = new ArrayList<>(components.size());
         for (Component component : components) {
-            Deadline.check(deadlineNanos);
-            long queryStart = System.nanoTime();
-            List<CpqIndex.Edge> matches = index.query(component.cpq());
-            queryNanos += System.nanoTime() - queryStart;
-
-            long mappingStart = System.nanoTime();
-            CompiledComponent compiled;
-            try {
-                compiled = evaluateComponent(component, matches, deadlineNanos);
-            } finally {
-                mappingNanos += System.nanoTime() - mappingStart;
-            }
-
-            if (compiled == null) {
+            ComponentCompilation compiled = compileComponent(component, index, deadlineNanos);
+            queryNanos += compiled.queryNanos();
+            mappingNanos += compiled.mappingNanos();
+            if (compiled.isEmpty()) {
                 return new ExecutablePlan(
                         plan,
                         List.of(),
@@ -124,6 +115,27 @@ public final class ExecutablePlan {
                 false);
     }
 
+    /**
+     * Compiles a single component into an evaluator relation using the shared
+     * index access path used by full-plan compilation.
+     */
+    static ComponentCompilation compileComponent(Component component, CpqIndex index, long deadlineNanos) {
+        Objects.requireNonNull(component, "component");
+        Objects.requireNonNull(index, "index");
+        Deadline.check(deadlineNanos);
+        long queryStart = System.nanoTime();
+        List<CpqIndex.Edge> matches = index.query(component.cpq());
+        long queryNanos = System.nanoTime() - queryStart;
+
+        long mappingStart = System.nanoTime();
+        CompiledComponent compiled = evaluateComponent(component, matches, deadlineNanos);
+        long mappingNanos = System.nanoTime() - mappingStart;
+        if (compiled == null) {
+            return ComponentCompilation.empty(queryNanos, mappingNanos);
+        }
+        return new ComponentCompilation(compiled.binding(), compiled.count(), queryNanos, mappingNanos);
+    }
+
     public LeapfrogJoin.JoinResult join(
             List<String> variableOrder,
             LeapfrogJoin.JoinMode mode,
@@ -147,34 +159,6 @@ public final class ExecutablePlan {
                 deadlineNanos);
     }
 
-    public WanderJoinEstimator.Estimate estimateProjectedCount(
-            List<String> variableOrder,
-            List<String> projectedVars,
-            int walks,
-            long seed) {
-        return estimateProjectedCount(variableOrder, projectedVars, walks, seed, Long.MAX_VALUE);
-    }
-
-    public WanderJoinEstimator.Estimate estimateProjectedCount(
-            List<String> variableOrder,
-            List<String> projectedVars,
-            int walks,
-            long seed,
-            long deadlineNanos) {
-        Objects.requireNonNull(variableOrder, "variableOrder");
-        Objects.requireNonNull(projectedVars, "projectedVars");
-        if (empty) {
-            return new WanderJoinEstimator.Estimate(0.0, 0.0);
-        }
-        return WanderJoinEstimator.estimateProjectedCount(
-                relations,
-                variableOrder,
-                projectedVars,
-                walks,
-                seed,
-                deadlineNanos);
-    }
-
     private static CompiledComponent evaluateComponent(
             Component component,
             List<CpqIndex.Edge> matches,
@@ -195,9 +179,11 @@ public final class ExecutablePlan {
             List<CpqIndex.Edge> matches,
             long resultCount,
             long deadlineNanos) {
+        Deadline.check(deadlineNanos);
         IntAccumulator values = new IntAccumulator(matches.size());
+        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
         for (CpqIndex.Edge pair : matches) {
-            Deadline.check(deadlineNanos);
+            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
             values.add(pair.source());
         }
         int[] domain = values.toSortedDistinctArray();
@@ -214,10 +200,12 @@ public final class ExecutablePlan {
             List<CpqIndex.Edge> matches,
             long resultCount,
             long deadlineNanos) {
+        Deadline.check(deadlineNanos);
         IntAccumulatorMap forward = new IntAccumulatorMap();
         IntAccumulatorMap reverse = new IntAccumulatorMap();
+        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
         for (CpqIndex.Edge pair : matches) {
-            Deadline.check(deadlineNanos);
+            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
             forward.add(pair.source(), pair.target());
             reverse.add(pair.target(), pair.source());
         }
@@ -241,9 +229,35 @@ public final class ExecutablePlan {
         return new CompiledComponent(Relation.binary(left, right, description, projection), resultCount);
     }
 
+    /**
+     * Polls for cancellation at a fixed stride so mapping loops avoid a
+     * timestamp read on every emitted tuple.
+     */
+    private static int pollDeadline(int iterationsUntilDeadlineCheck, long deadlineNanos) {
+        if (--iterationsUntilDeadlineCheck > 0) {
+            return iterationsUntilDeadlineCheck;
+        }
+        Deadline.check(deadlineNanos);
+        return DEADLINE_CHECK_STRIDE;
+    }
+
     public record CompilationStats(long queryNanos, long mappingNanos) {
         public long totalNanos() {
             return queryNanos + mappingNanos;
+        }
+    }
+
+    static record ComponentCompilation(
+            Relation binding,
+            long count,
+            long queryNanos,
+            long mappingNanos) {
+        static ComponentCompilation empty(long queryNanos, long mappingNanos) {
+            return new ComponentCompilation(null, 0L, queryNanos, mappingNanos);
+        }
+
+        boolean isEmpty() {
+            return binding == null;
         }
     }
 

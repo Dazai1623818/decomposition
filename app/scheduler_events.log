@@ -1,0 +1,18 @@
+2026-03-14T15:43:42Z scheduler_start manifest=/workspace/app/local/tmp/compare_manifest_s60_repeat3_robots_baseline_cov32_warm1000_minishard10_nowarm_smoke2_seed20260314.csv total_rows=2 concurrency=2
+2026-03-14T15:43:42Z launch order=1 dataset=robots shard=1 run_dir=/workspace/app/local/tmp/minishard10_smoke_children/20260314_154342_topology_compare_full_plus_named_i50_repeat3rnd_robots_shard01_t10s_d10s_cover32
+2026-03-14T15:43:42Z launch order=2 dataset=robots shard=2 run_dir=/workspace/app/local/tmp/minishard10_smoke_children/20260314_154342_topology_compare_full_plus_named_i50_repeat3rnd_robots_shard02_t10s_d10s_cover32
+2026-03-14T15:43:52Z finish order=1 dataset=robots shard=1 exit_status=0 run_dir=/workspace/app/local/tmp/minishard10_smoke_children/20260314_154342_topology_compare_full_plus_named_i50_repeat3rnd_robots_shard01_t10s_d10s_cover32
+2026-03-14T15:43:52Z finish order=2 dataset=robots shard=2 exit_status=0 run_dir=/workspace/app/local/tmp/minishard10_smoke_children/20260314_154342_topology_compare_full_plus_named_i50_repeat3rnd_robots_shard02_t10s_d10s_cover32
+2026-03-14T15:43:52Z scheduler_done failures=0
+2026-03-14T16:23:18Z scheduler_start manifest=/workspace/app/local/tmp/compare_manifest_s60_repeat3_robots_baseline_cov32_warm1000_minishard10_nowarm_smoke2_seed20260314.csv total_rows=2 concurrency=2 child_log_layout=flat warmup_query_limit=10 warmup_runs=1 warmup_queries=10
+2026-03-14T16:23:18Z phase_start phase=warmup runs=1 queries=10
+2026-03-14T16:23:18Z launch phase=warmup order=1 dataset=robots shard=1 run_dir=/tmp/scheduler_flat_smoke/.child_state/warmup/warmup_order00001_shard00001_parent01_mini001 compare_log=/tmp/scheduler_flat_smoke/compare/warmup_order00001_shard00001_parent01_mini001.compare.log
+2026-03-14T16:23:28Z finish phase=warmup order=1 dataset=robots shard=1 exit_status=0 run_dir=/tmp/scheduler_flat_smoke/.child_state/warmup/warmup_order00001_shard00001_parent01_mini001
+2026-03-14T16:23:28Z phase_complete phase=warmup runs=1
+2026-03-14T16:23:28Z phase_start phase=measure runs=2 queries=20
+2026-03-14T16:23:28Z launch phase=measure order=2 dataset=robots shard=1 run_dir=/tmp/scheduler_flat_smoke/.child_state/measure/measure_order00002_shard00001_parent01_mini001 compare_log=/tmp/scheduler_flat_smoke/compare/measure_order00002_shard00001_parent01_mini001.compare.log
+2026-03-14T16:23:28Z launch phase=measure order=3 dataset=robots shard=2 run_dir=/tmp/scheduler_flat_smoke/.child_state/measure/measure_order00003_shard00002_parent01_mini002 compare_log=/tmp/scheduler_flat_smoke/compare/measure_order00003_shard00002_parent01_mini002.compare.log
+2026-03-14T16:23:38Z finish phase=measure order=2 dataset=robots shard=1 exit_status=0 run_dir=/tmp/scheduler_flat_smoke/.child_state/measure/measure_order00002_shard00001_parent01_mini001
+2026-03-14T16:23:38Z finish phase=measure order=3 dataset=robots shard=2 exit_status=0 run_dir=/tmp/scheduler_flat_smoke/.child_state/measure/measure_order00003_shard00002_parent01_mini002
+2026-03-14T16:23:38Z phase_complete phase=measure runs=2
+2026-03-14T16:23:38Z scheduler_done failures=0

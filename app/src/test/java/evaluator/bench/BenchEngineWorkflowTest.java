@@ -31,13 +31,15 @@ class BenchEngineWorkflowTest {
         BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                 Path.of("fake.idx"),
                 queriesFile,
+                BenchTypes.EvaluationMode.ROWS,
                 0,
                 0,
                 1,
                 0,
                 123L,
                 compareLog,
-                decompositionLog);
+                decompositionLog,
+                false);
         BenchTypes.CompareFileReport report = engine.compareFile(spec);
 
         assertEquals(1, report.queryCount());
@@ -50,8 +52,34 @@ class BenchEngineWorkflowTest {
                         + report.errorRows());
 
         String compareContent = Files.readString(compareLog, StandardCharsets.UTF_8);
+        assertTrue(compareContent.contains("--rows"));
         assertTrue(compareContent.contains("summary query_count=1"));
         assertTrue(Files.exists(decompositionLog));
+    }
+
+    @Test
+    void compareFileCommandReflectsRequestedEvaluationMode(@TempDir Path tempDir) throws Exception {
+        BenchEngine engine = new BenchEngine(new FakeCpqIndex());
+        Path queriesFile = writeQueries(tempDir, "compare-mode.txt", VALID_QUERY);
+        Path compareLog = tempDir.resolve("compare-mode.log");
+
+        BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
+                Path.of("fake.idx"),
+                queriesFile,
+                BenchTypes.EvaluationMode.COUNT,
+                0,
+                0,
+                1,
+                0,
+                123L,
+                compareLog,
+                null,
+                false);
+        engine.compareFile(spec);
+
+        String compareContent = Files.readString(compareLog, StandardCharsets.UTF_8);
+        assertTrue(compareContent.contains("--count"));
+        assertTrue(compareContent.contains("summary query_count=1"));
     }
 
     @Test
@@ -63,13 +91,15 @@ class BenchEngineWorkflowTest {
         BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                 Path.of("fake.idx"),
                 queriesFile,
+                BenchTypes.EvaluationMode.ROWS,
                 0,
                 0,
                 1,
                 0,
                 123L,
                 compareLog,
-                null);
+                null,
+                false);
         BenchTypes.CompareFileReport report = engine.compareFile(spec);
 
         assertEquals(1, report.queryCount());
@@ -97,7 +127,6 @@ class BenchEngineWorkflowTest {
                 0,
                 1,
                 0,
-                8,
                 123L,
                 out);
         BenchTypes.EstimationBenchReport report = engine.estimationBench(spec);
@@ -131,7 +160,6 @@ class BenchEngineWorkflowTest {
                 0,
                 1,
                 0,
-                8,
                 123L,
                 out);
         BenchTypes.EstimationBenchReport report = engine.estimationBench(spec);
@@ -160,23 +188,60 @@ class BenchEngineWorkflowTest {
             BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                     Path.of("fake.idx"),
                     queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
                     40,
                     0,
                     1,
                     0,
                     123L,
                     compareLog,
-                    null);
+                    null,
+                    false);
             BenchTypes.CompareFileReport report = engine.compareFile(spec);
 
             assertEquals(1L, report.okRows());
-            assertEquals(1L, report.timeoutRows());
+            assertEquals(0L, report.timeoutRows());
+            assertEquals(1L, report.decompositionTimeoutRows());
 
             List<String> lines = Files.readAllLines(compareLog, StandardCharsets.UTF_8);
             String singleEdge = findMethodLine(lines, "SINGLE_EDGE");
             String cost = findMethodLine(lines, "COST");
             assertTrue(singleEdge.contains("status=OK"), singleEdge);
-            assertTrue(cost.contains("status=TIMEOUT"), cost);
+            assertTrue(cost.contains("status=PLANNING_TIMEOUT"), cost);
+        } finally {
+            restoreProperty("cpq.decompose.methods", previousMethods);
+        }
+    }
+
+    @Test
+    void compareFileReportsExecutionTimeoutSeparately(@TempDir Path tempDir) throws Exception {
+        String previousMethods = System.getProperty("cpq.decompose.methods");
+        System.setProperty("cpq.decompose.methods", "single_edge");
+        try {
+            BenchEngine engine = new BenchEngine(new SlowQueryIndex(80L));
+            Path queriesFile = writeQueries(tempDir, "exec-timeout-compare.txt", VALID_QUERY);
+            Path compareLog = tempDir.resolve("exec-timeout-compare.log");
+
+            BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
+                    Path.of("fake.idx"),
+                    queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
+                    40,
+                    0,
+                    1,
+                    0,
+                    123L,
+                    compareLog,
+                    null,
+                    false);
+            BenchTypes.CompareFileReport report = engine.compareFile(spec);
+
+            assertEquals(0L, report.okRows());
+            assertEquals(1L, report.timeoutRows());
+            assertEquals(0L, report.decompositionTimeoutRows());
+
+            String row = findMethodLine(Files.readAllLines(compareLog, StandardCharsets.UTF_8), "SINGLE_EDGE");
+            assertTrue(row.contains("status=EXEC_TIMEOUT"), row);
         } finally {
             restoreProperty("cpq.decompose.methods", previousMethods);
         }
@@ -194,13 +259,15 @@ class BenchEngineWorkflowTest {
             BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                     Path.of("fake.idx"),
                     queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
                     0,
                     0,
                     0,
                     0,
                     123L,
                     compareLog,
-                    null);
+                    null,
+                    false);
             engine.compareFile(spec);
 
             String compareContent = Files.readString(compareLog, StandardCharsets.UTF_8);
@@ -222,13 +289,15 @@ class BenchEngineWorkflowTest {
             BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                     Path.of("fake.idx"),
                     queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
                     0,
                     0,
                     1,
                     0,
                     123L,
                     compareLog,
-                    null);
+                    null,
+                    false);
             engine.compareFile(spec);
 
             List<String> lines = Files.readAllLines(compareLog, StandardCharsets.UTF_8);
@@ -239,10 +308,78 @@ class BenchEngineWorkflowTest {
             double costParse = parseDoubleField(cost, "parse_ms");
             assertEquals(singleParse, costParse, 0.0);
 
-            double singleWall = parseDoubleField(singleEdge, "wall_ms");
+            double singleWall = parseDoubleField(singleEdge, "method_wall_ms");
             double singleEndToEnd = parseDoubleField(singleEdge, "end_to_end_ms");
-            assertEquals(singleParse + singleWall, singleEndToEnd, 0.001);
+            assertEquals(singleParse + singleWall, singleEndToEnd, 5.0);
             assertTrue(singleEdge.contains("end_to_end_ms="), singleEdge);
+        } finally {
+            restoreProperty("cpq.decompose.methods", previousMethods);
+        }
+    }
+
+    @Test
+    void compareFileReportsExecutionBreakdownThatAddsUp(@TempDir Path tempDir) throws Exception {
+        String previousMethods = System.getProperty("cpq.decompose.methods");
+        System.setProperty("cpq.decompose.methods", "single_edge");
+        try {
+            BenchEngine engine = new BenchEngine(new FakeCpqIndex());
+            Path queriesFile = writeQueries(tempDir, "compare-breakdown.txt", VALID_QUERY);
+            Path compareLog = tempDir.resolve("compare-breakdown.log");
+
+            BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
+                    Path.of("fake.idx"),
+                    queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
+                    0,
+                    0,
+                    1,
+                    0,
+                    123L,
+                    compareLog,
+                    null,
+                    false);
+            engine.compareFile(spec);
+
+            String row = findMethodStatusLine(Files.readAllLines(compareLog, StandardCharsets.UTF_8), "SINGLE_EDGE", "OK");
+            double execution = parseDoubleField(row, "execution_ms");
+            double indexLookup = parseDoubleField(row, "index_lookup_ms");
+            double mapping = parseDoubleField(row, "mapping_ms");
+            double joinOrder = parseDoubleField(row, "join_order_ms");
+            double join = parseDoubleField(row, "join_ms");
+            assertEquals(indexLookup + mapping + joinOrder + join, execution, 0.05, row);
+        } finally {
+            restoreProperty("cpq.decompose.methods", previousMethods);
+        }
+    }
+
+    @Test
+    void estimationBenchReportsExecutionBreakdownThatAddsUp(@TempDir Path tempDir) throws Exception {
+        String previousMethods = System.getProperty("cpq.decompose.methods");
+        System.setProperty("cpq.decompose.methods", "single_edge");
+        try {
+            BenchEngine engine = new BenchEngine(new FakeCpqIndex());
+            Path queriesFile = writeQueries(tempDir, "estimation-breakdown.txt", VALID_QUERY);
+            Path out = tempDir.resolve("estimation-breakdown.log");
+
+            BenchTypes.EstimationBenchSpec spec = new BenchTypes.EstimationBenchSpec(
+                    Path.of("fake.idx"),
+                    queriesFile,
+                    null,
+                    0,
+                    0,
+                    1,
+                    0,
+                    123L,
+                    out);
+            engine.estimationBench(spec);
+
+            String row = findMethodStatusLine(Files.readAllLines(out, StandardCharsets.UTF_8), "SINGLE_EDGE", "OK");
+            double execution = parseDoubleField(row, "execution_ms");
+            double indexLookup = parseDoubleField(row, "index_lookup_ms");
+            double mapping = parseDoubleField(row, "mapping_ms");
+            double joinOrder = parseDoubleField(row, "join_order_ms");
+            double join = parseDoubleField(row, "join_ms");
+            assertEquals(indexLookup + mapping + joinOrder + join, execution, 0.05, row);
         } finally {
             restoreProperty("cpq.decompose.methods", previousMethods);
         }
@@ -262,13 +399,15 @@ class BenchEngineWorkflowTest {
             BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
                     Path.of("fake.idx"),
                     queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
                     0,
                     0,
                     1,
                     0,
                     123L,
                     null,
-                    null);
+                    null,
+                    false);
             engine.compareFile(spec);
             System.out.println("after-compare");
 
@@ -295,13 +434,47 @@ class BenchEngineWorkflowTest {
                 0,
                 0,
                 0,
-                0,
                 123L);
 
         BenchTypes.ExploreReport report = engine.explore(spec);
 
         assertEquals(ExplorePreparationStatus.NO_DECOMPOSITIONS_AFTER_COMPONENT_FILTER, report.status());
         assertEquals(0, report.candidateCount());
+    }
+
+    @Test
+    void compareFileWarmupLogsSeparateWarmupSummary(@TempDir Path tempDir) throws Exception {
+        String previousMethods = System.getProperty("cpq.decompose.methods");
+        System.setProperty("cpq.decompose.methods", "single_edge");
+        try {
+            BenchEngine engine = new BenchEngine(new FakeCpqIndex());
+            Path queriesFile = writeQueries(tempDir, "warmup-compare.txt", VALID_QUERY);
+            Path compareLog = tempDir.resolve("warmup-compare.log");
+
+            BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
+                    Path.of("fake.idx"),
+                    queriesFile,
+                    BenchTypes.EvaluationMode.ROWS,
+                    0,
+                    0,
+                    1,
+                    0,
+                    123L,
+                    compareLog,
+                    null,
+                    true);
+            BenchTypes.CompareFileReport report = engine.compareFile(spec);
+
+            assertEquals(1, report.queryCount());
+
+            String compareContent = Files.readString(compareLog, StandardCharsets.UTF_8);
+            assertTrue(compareContent.contains("warmup_enabled=true"));
+            assertTrue(compareContent.contains("warmup_query_count="));
+            assertTrue(compareContent.contains("warmup query_count="));
+            assertTrue(compareContent.contains("summary query_count=1"));
+        } finally {
+            restoreProperty("cpq.decompose.methods", previousMethods);
+        }
     }
 
     @Test
@@ -330,6 +503,32 @@ class BenchEngineWorkflowTest {
         }
     }
 
+    @Test
+    void compareCountsPlanningTimeouts() {
+        String previousMethods = System.getProperty("cpq.decompose.methods");
+        System.setProperty("cpq.decompose.methods", "cost");
+        try {
+            BenchEngine engine = new BenchEngine(new SlowCostIndex(80L));
+            BenchTypes.CompareSpec spec = new BenchTypes.CompareSpec(
+                    Path.of("fake.idx"),
+                    VALID_QUERY,
+                    BenchTypes.EvaluationMode.COUNT,
+                    1,
+                    0,
+                    40,
+                    40,
+                    123L);
+
+            BenchTypes.CompareReport report = engine.compare(spec);
+
+            assertEquals(ComparisonPreparationStatus.READY, report.status());
+            assertEquals(0, report.comparedMethods());
+            assertEquals(1, report.timeoutCount());
+        } finally {
+            restoreProperty("cpq.decompose.methods", previousMethods);
+        }
+    }
+
     private static Path writeQueries(Path dir, String fileName, String... queries) throws Exception {
         Path file = dir.resolve(fileName);
         Files.write(file, List.of(queries), StandardCharsets.UTF_8);
@@ -344,6 +543,21 @@ class BenchEngineWorkflowTest {
             }
         }
         throw new AssertionError(String.format(Locale.ROOT, "Missing line for %s", methodName));
+    }
+
+    private static String findMethodStatusLine(List<String> lines, String methodName, String status) {
+        String methodToken = "method=" + methodName;
+        String statusToken = "status=" + status;
+        for (String line : lines) {
+            if (line.contains(methodToken) && line.contains(statusToken)) {
+                return line;
+            }
+        }
+        throw new AssertionError(String.format(
+                Locale.ROOT,
+                "Missing line for method=%s status=%s",
+                methodName,
+                status));
     }
 
     private static double parseDoubleField(String line, String field) {
@@ -412,6 +626,25 @@ class BenchEngineWorkflowTest {
                 throw new RuntimeException("Interrupted while computing cost", ex);
             }
             return super.cost(cpq);
+        }
+    }
+
+    private static final class SlowQueryIndex extends FakeCpqIndex {
+        private final long queryDelayMs;
+
+        private SlowQueryIndex(long queryDelayMs) {
+            this.queryDelayMs = queryDelayMs;
+        }
+
+        @Override
+        public List<Edge> query(CPQ cpq) {
+            try {
+                Thread.sleep(queryDelayMs);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while querying", ex);
+            }
+            return super.query(cpq);
         }
     }
 

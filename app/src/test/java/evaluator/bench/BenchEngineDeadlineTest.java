@@ -1,5 +1,6 @@
 package evaluator.bench;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import dev.roanh.gmark.lang.cpq.CPQ;
@@ -8,6 +9,7 @@ import evaluator.cpq.Plan;
 import evaluator.index.CpqIndex;
 import evaluator.util.Deadline;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class BenchEngineDeadlineTest {
@@ -24,7 +26,7 @@ class BenchEngineDeadlineTest {
     void estimateCountRejectsExpiredDeadline() {
         BenchEngine engine = new BenchEngine(new FakeCpqIndex());
 
-        assertThrows(Deadline.Exceeded.class, () -> engine.estimateCount(plan(), 8, 7L, System.nanoTime() - 1));
+        assertThrows(Deadline.Exceeded.class, () -> engine.estimateCount(plan(), System.nanoTime() - 1));
     }
 
     @Test
@@ -32,6 +34,28 @@ class BenchEngineDeadlineTest {
         BenchEngine engine = new BenchEngine(new FakeCpqIndex());
 
         assertThrows(Deadline.Exceeded.class, () -> engine.profileOrders(plan(), 2, 7L, System.nanoTime() - 1));
+    }
+
+    @Test
+    void rowResultRejectsExpiredDeadlineDuringFinalMaterialization() {
+        List<Map<String, Integer>> rows = List.of(
+                Map.of("x", 1, "y", 2),
+                Map.of("x", 1, "y", 2),
+                Map.of("x", 2, "y", 3));
+
+        assertThrows(Deadline.Exceeded.class, () -> BenchTypes.RowResult.fromRows(rows, System.nanoTime() - 1));
+    }
+
+    @Test
+    void rowResultDeduplicatesRowsWhenDeadlineAllows() {
+        List<Map<String, Integer>> rows = List.of(
+                Map.of("x", 1, "y", 2),
+                Map.of("x", 1, "y", 2),
+                Map.of("x", 2, "y", 3));
+
+        BenchTypes.RowResult result = BenchTypes.RowResult.fromRows(rows, Long.MAX_VALUE);
+
+        assertEquals(2, result.rows().size());
     }
 
     private static Plan plan() {

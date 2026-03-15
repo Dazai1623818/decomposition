@@ -15,6 +15,7 @@ import java.util.Set;
 public final class LeapfrogJoin {
     private static final int FIRST = 0;
     private static final boolean DEFAULT_SAFE_DISTINCT_FAST_PATH = true;
+    private static final int DEADLINE_CHECK_STRIDE = 256;
 
     private LeapfrogJoin() {
     }
@@ -476,6 +477,18 @@ public final class LeapfrogJoin {
         boolean handle(int[] assignment, boolean[] bound);
     }
 
+    /**
+     * Polls deadlines at a fixed stride so recursive join enumeration avoids a
+     * timestamp read on every visited tuple candidate.
+     */
+    private static int pollDeadline(int iterationsUntilDeadlineCheck, long deadlineNanos) {
+        if (--iterationsUntilDeadlineCheck > 0) {
+            return iterationsUntilDeadlineCheck;
+        }
+        Deadline.check(deadlineNanos);
+        return DEADLINE_CHECK_STRIDE;
+    }
+
     private static boolean searchPrefix(
             List<String> order,
             int depth,
@@ -498,8 +511,9 @@ public final class LeapfrogJoin {
         }
         if (constraints.length == 1) {
             int[] domain = constraints[FIRST].domain(assignment, bound);
+            int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
             for (int value : domain) {
-                Deadline.check(deadlineNanos);
+                iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
                 assignment[variableIndex] = value;
                 bound[variableIndex] = true;
                 if (!searchPrefix(
@@ -527,8 +541,9 @@ public final class LeapfrogJoin {
 
         LeapfrogIterator iterator = workspace.iterator();
         iterator.init(deadlineNanos);
+        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
         while (!iterator.atEnd()) {
-            Deadline.check(deadlineNanos);
+            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
             assignment[variableIndex] = iterator.key();
             bound[variableIndex] = true;
             if (!searchPrefix(
@@ -571,8 +586,9 @@ public final class LeapfrogJoin {
         }
         if (constraints.length == 1) {
             int[] domain = constraints[FIRST].domain(assignment, bound);
+            int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
             for (int value : domain) {
-                Deadline.check(deadlineNanos);
+                iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
                 assignment[variableIndex] = value;
                 bound[variableIndex] = true;
                 if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces, deadlineNanos)) {
@@ -591,8 +607,9 @@ public final class LeapfrogJoin {
 
         LeapfrogIterator iterator = workspace.iterator();
         iterator.init(deadlineNanos);
+        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
         while (!iterator.atEnd()) {
-            Deadline.check(deadlineNanos);
+            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
             assignment[variableIndex] = iterator.key();
             bound[variableIndex] = true;
             if (existsExtension(order, depth + 1, constraintsByDepth, assignment, bound, workspaces, deadlineNanos)) {
@@ -861,8 +878,9 @@ public final class LeapfrogJoin {
         }
 
         private void leapfrogSearch(long deadlineNanos) {
+            int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
             while (true) {
-                Deadline.check(deadlineNanos);
+                iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
                 if (anyCursorAtEnd()) {
                     atEnd = true;
                     return;

@@ -54,3 +54,17 @@ tasks.register('runCompareFile', JavaExec) {
         }
     }
 }
+
+tasks.register('runTopologyBuilder', JavaExec) {
+    group = 'application'
+    description = 'Builds topology-bench workloads with unique validated label injections.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'evaluator.tools.TopologyDiverseWorkloadBuilder'
+}
+
+tasks.register('runTopologyMerge', JavaExec) {
+    group = 'application'
+    description = 'Merges sharded topology-bench workload outputs.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'evaluator.tools.TopologyDiverseWorkloadMerger'
+}

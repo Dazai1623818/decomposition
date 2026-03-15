@@ -27,6 +27,7 @@ class CliOutputSchemaTest {
                 "eval-file",
                 "--index", INDEX_PATH.toString(),
                 "--queries-file", SMOKE_QUERIES.toString(),
+                "--method", "single_edge",
                 "--output-dir", tempDir.toString(),
                 "--count"
         });
@@ -107,6 +108,7 @@ class CliOutputSchemaTest {
         Main.main(new String[] {
                 "profile",
                 "--index", INDEX_PATH.toString(),
+                "--method", "single_edge",
                 SIMPLE_QUERY,
                 "--output-dir", tempDir.toString(),
                 "--profile-orders", "2",
@@ -125,9 +127,9 @@ class CliOutputSchemaTest {
         Main.main(new String[] {
                 "estimate",
                 "--index", INDEX_PATH.toString(),
+                "--method", "single_edge",
                 SIMPLE_QUERY,
                 "--output-dir", tempDir.toString(),
-                "--estimate-walks", "8",
                 "--seed", "123"
         });
 
@@ -136,8 +138,6 @@ class CliOutputSchemaTest {
         String json = Files.readString(jsonl, StandardCharsets.UTF_8);
         assertTrue(json.contains("\"estimate\""));
         assertTrue(json.contains("\"standard_error\""));
-        assertTrue(json.contains("\"seed\""));
-        assertTrue(json.contains("\"walks\""));
         assertTrue(json.contains("\"status\""));
     }
 

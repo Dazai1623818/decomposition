@@ -2,7 +2,10 @@ package evaluator.bench;
 
 import evaluator.cpq.Plan;
 import evaluator.evaluation.DecompositionMethod;
+import evaluator.util.Deadline;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -120,7 +123,51 @@ public final class BenchTypes {
     public sealed interface EvaluationResult permits RowResult, CountResult {
     }
 
-    public record RowResult(List<Map<String, Integer>> rows) implements EvaluationResult {
+    public record RowResult(Set<Map<String, Integer>> rows) implements EvaluationResult {
+        public RowResult(List<Map<String, Integer>> rows) {
+            this(distinctRows(rows));
+        }
+
+        /**
+         * Builds an immutable distinct row set while enforcing the method deadline
+         * during the final materialization phase.
+         */
+        public static RowResult fromRows(List<Map<String, Integer>> rows, long deadlineNanos) {
+            Deadline.check(deadlineNanos);
+            TrustedDistinctRows distinct = new TrustedDistinctRows(distinctCapacity(rows.size()));
+            for (Map<String, Integer> row : rows) {
+                Deadline.check(deadlineNanos);
+                distinct.add(row);
+            }
+            Deadline.check(deadlineNanos);
+            return new RowResult(distinct);
+        }
+
+        public RowResult {
+            rows = rows instanceof TrustedDistinctRows trusted
+                    ? Collections.unmodifiableSet(trusted)
+                    : freezeRows(rows);
+        }
+
+        private static Set<Map<String, Integer>> freezeRows(Set<Map<String, Integer>> rows) {
+            return Collections.unmodifiableSet(new LinkedHashSet<>(rows));
+        }
+
+        private static int distinctCapacity(int rowCount) {
+            return Math.max(16, (int) (rowCount / 0.75f) + 1);
+        }
+
+        private static TrustedDistinctRows distinctRows(List<Map<String, Integer>> rows) {
+            TrustedDistinctRows distinct = new TrustedDistinctRows(distinctCapacity(rows.size()));
+            distinct.addAll(rows);
+            return distinct;
+        }
+
+        private static final class TrustedDistinctRows extends LinkedHashSet<Map<String, Integer>> {
+            private TrustedDistinctRows(int capacity) {
+                super(capacity);
+            }
+        }
     }
 
     public record CountResult(long count) implements EvaluationResult {
@@ -176,8 +223,6 @@ public final class BenchTypes {
     public record CardinalityEstimate(
             double estimatedCount,
             double standardError,
-            int walks,
-            long seed,
             long queryNanos,
             long mappingNanos,
             long estimateNanos) {
@@ -244,19 +289,10 @@ public final class BenchTypes {
             Path indexPath,
             Path queriesFile,
             EvaluationMode evaluationMode,
+            DecompositionMethod method,
             int coverLimit,
             int kOverride,
-            int candidateLimit,
-            int warmupRounds,
-            int repeats,
-            int methodTimeoutMs,
-            int decompositionTimeoutMs,
-            int profileTimeoutMs,
-            int estimateWalks,
-            int minComponents,
-            int maxComponents,
-            long seed,
-            Path outputDir,
+            int timeoutMs,
             EvalFileProgressSink progressSink) {
     }
 
@@ -272,7 +308,6 @@ public final class BenchTypes {
             int methodTimeoutMs,
             int profileTimeoutMs,
             int profileOrders,
-            int estimateWalks,
             long seed) {
     }
 
@@ -290,32 +325,64 @@ public final class BenchTypes {
     public record ProfileSpec(
             Path indexPath,
             String queryText,
+            DecompositionMethod method,
+            int coverLimit,
+            int k,
             int profileOrders,
             long seed,
-            int profileTimeoutMs) {
+            int timeoutMs) {
     }
 
     public record EstimateSpec(
             Path indexPath,
             String queryText,
+            DecompositionMethod method,
             int coverLimit,
             int k,
-            int decompositionTimeoutMs,
-            int methodTimeoutMs,
-            int walks,
-            long seed) {
+            int timeoutMs) {
     }
 
     public record CompareFileSpec(
             Path indexPath,
             Path queriesFile,
+            Path warmupQueriesFile,
+            int warmupQueryLimit,
+            EvaluationMode mode,
             int methodTimeoutMs,
             int decompositionTimeoutMs,
             int coverLimit,
             int kOverride,
             long seed,
             Path compareLogPath,
-            Path decompositionLogPath) {
+            Path decompositionLogPath,
+            boolean warmup) {
+        public CompareFileSpec(
+                Path indexPath,
+                Path queriesFile,
+                EvaluationMode mode,
+                int methodTimeoutMs,
+                int decompositionTimeoutMs,
+                int coverLimit,
+                int kOverride,
+                long seed,
+                Path compareLogPath,
+                Path decompositionLogPath,
+                boolean warmup) {
+            this(
+                    indexPath,
+                    queriesFile,
+                    null,
+                    0,
+                    mode,
+                    methodTimeoutMs,
+                    decompositionTimeoutMs,
+                    coverLimit,
+                    kOverride,
+                    seed,
+                    compareLogPath,
+                    decompositionLogPath,
+                    warmup);
+        }
     }
 
     public record EstimationBenchSpec(
@@ -326,7 +393,6 @@ public final class BenchTypes {
             int decompositionTimeoutMs,
             int coverLimit,
             int kOverride,
-            int walks,
             long seed,
             Path outputPath) {
     }

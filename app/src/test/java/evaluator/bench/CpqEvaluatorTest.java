@@ -35,7 +35,7 @@ class CpqEvaluatorTest {
 
         BenchEngine evaluator = new BenchEngine(index);
         ConjunctiveQuery query = buildSingleEdgeQuery(labelQuery.predicate(), true, true);
-        Plan decomposition = evaluator.decompose(query);
+        Plan decomposition = query.decomposeSingleEdge();
         Component component = decomposition.components().get(0);
 
         List<Edge> pairs = index.query(component.cpq());
@@ -58,7 +58,7 @@ class CpqEvaluatorTest {
 
         BenchEngine evaluator = new BenchEngine(index);
         ConjunctiveQuery query = buildSingleEdgeQuery(labelQuery.predicate(), true, false);
-        Plan decomposition = evaluator.decompose(query);
+        Plan decomposition = query.decomposeSingleEdge();
         Component component = decomposition.components().get(0);
 
         List<Edge> pairs = index.query(component.cpq());
@@ -101,7 +101,7 @@ class CpqEvaluatorTest {
         return out;
     }
 
-    private static Set<IntPair> toPairSet(List<Map<String, Integer>> rows, Component component) {
+    private static Set<IntPair> toPairSet(Iterable<Map<String, Integer>> rows, Component component) {
         String sourceVar = Plan.varName(component.s());
         String targetVar = Plan.varName(component.t());
         Set<IntPair> out = new HashSet<>();

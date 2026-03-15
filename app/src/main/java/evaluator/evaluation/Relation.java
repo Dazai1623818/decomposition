@@ -124,6 +124,27 @@ public final class Relation {
     }
 
     /**
+     * Returns the full exact domain for the requested variable.
+     * Callers must treat the returned array as read-only.
+     */
+    int[] allValues(String variable) {
+        Objects.requireNonNull(variable, "variable");
+        if (isUnary()) {
+            if (sourceVar.equals(variable)) {
+                return unaryDomain;
+            }
+            throw new IllegalArgumentException("Variable " + variable + " not part of relation " + description);
+        }
+        if (sourceVar.equals(variable)) {
+            return projection.allSources();
+        }
+        if (targetVar.equals(variable)) {
+            return projection.allTargets();
+        }
+        throw new IllegalArgumentException("Variable " + variable + " not part of relation " + description);
+    }
+
+    /**
      * Returns relation variable names in stable order.
      */
     public List<String> variables() {

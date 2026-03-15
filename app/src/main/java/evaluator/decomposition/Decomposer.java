@@ -7,7 +7,6 @@ import evaluator.cpq.ConjunctiveQuery;
 import evaluator.cpq.Plan;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.ToDoubleFunction;
 import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
@@ -68,15 +67,25 @@ public interface Decomposer {
         };
     }
 
-    static Decomposer cpqkCoverDiameter(int k, int limit) {
-        return cpqkCoverDiameter(k, limit, null);
+    /**
+     * Exhaustive bounded-component cover search that only emits terminal
+     * series/parallel leaf covers. Terminality is checked on completed exact
+     * covers using the same free-variable-preserving reduction rules as the
+     * legacy leaf search.
+     */
+    static Decomposer cpqkCoverTerminalLeaves(
+            int k,
+            int limit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter) {
+        return cpqkCoverTerminalLeaves(k, limit, costFn, componentFilter, Long.MAX_VALUE);
     }
 
-    static Decomposer cpqkCoverDiameter(int k, int limit, java.util.function.Predicate<CPQ> componentFilter) {
-        return cpqkCoverDiameter(k, limit, componentFilter, Long.MAX_VALUE);
-    }
-
-    static Decomposer cpqkCoverDiameter(int k, int limit, java.util.function.Predicate<CPQ> componentFilter,
+    static Decomposer cpqkCoverTerminalLeaves(
+            int k,
+            int limit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter,
             long deadlineNanos) {
         if (k < 0) {
             throw new IllegalArgumentException("k must be >= 0");
@@ -84,14 +93,78 @@ public interface Decomposer {
         if (limit < 0) {
             throw new IllegalArgumentException("limit must be >= 0");
         }
-        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, componentFilter, deadlineNanos);
-        CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.DIAMETER, null, deadlineNanos);
+        Objects.requireNonNull(costFn, "costFn");
+        java.util.function.Predicate<CPQ> mergedFilter = cpq -> cpq.getDiameter() <= k
+                && (componentFilter == null || componentFilter.test(cpq));
+        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, mergedFilter, deadlineNanos);
+        CoverSelector selector = new CoverSelector(
+                limit,
+                CoverSelector.Order.COST,
+                costFn,
+                plan -> TerminalLeafFilter.isTerminalLeaf(plan, mergedFilter),
+                deadlineNanos);
         return cq -> {
             Objects.requireNonNull(cq, "cq");
             ConjunctiveQuery query = ConjunctiveQuery.from(cq);
             List<Component> components = enumerator.enumerate(query);
             return selector.select(query, components).sequential();
         };
+    }
+
+    /**
+     * Exhaustive bounded-component cover search ranked by collapse-first structure:
+     * fewer components first, with the provided count signal used only to break
+     * ties among covers with the same number of components.
+     */
+    static Decomposer cpqkCoverMaxCollapse(int k, int limit, ToLongFunction<CPQ> costFn) {
+        return cpqkCoverMaxCollapse(k, limit, costFn, null);
+    }
+
+    static Decomposer cpqkCoverMaxCollapse(
+            int k,
+            int limit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter) {
+        return cpqkCoverMaxCollapse(k, limit, costFn, componentFilter, Long.MAX_VALUE);
+    }
+
+    static Decomposer cpqkCoverMaxCollapse(
+            int k,
+            int limit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos) {
+        if (k < 0) {
+            throw new IllegalArgumentException("k must be >= 0");
+        }
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be >= 0");
+        }
+        Objects.requireNonNull(costFn, "costFn");
+        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, componentFilter, deadlineNanos);
+        CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.MAX_COLLAPSE, costFn, deadlineNanos);
+        return cq -> {
+            Objects.requireNonNull(cq, "cq");
+            ConjunctiveQuery query = ConjunctiveQuery.from(cq);
+            List<Component> components = enumerator.enumerate(query);
+            return selector.select(query, components).sequential();
+        };
+    }
+
+    @Deprecated
+    static Decomposer cpqkCoverDiameter(int k, int limit) {
+        return cpqkCoverDiameter(k, limit, null);
+    }
+
+    @Deprecated
+    static Decomposer cpqkCoverDiameter(int k, int limit, java.util.function.Predicate<CPQ> componentFilter) {
+        return cpqkCoverDiameter(k, limit, componentFilter, Long.MAX_VALUE);
+    }
+
+    @Deprecated
+    static Decomposer cpqkCoverDiameter(int k, int limit, java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos) {
+        return cpqkCoverMaxCollapse(k, limit, cpq -> 0L, componentFilter, deadlineNanos);
     }
 
     @Deprecated
@@ -114,58 +187,45 @@ public interface Decomposer {
 
     /**
      * Generates multiple randomized series/parallel greedy decompositions over
-     * the full CQ graph and returns the best unique plans by structural score.
+     * the full CQ graph and returns deduplicated plans ranked by total collapsed
+     * edges, with cumulative component cost used as a tie-break. A zero restart
+     * budget falls back to the single-edge decomposition.
      */
-    static Decomposer seriesParallelCandidates(int restarts, int maxPlans, long seed) {
-        return seriesParallelCandidates(restarts, maxPlans, seed, null);
+    static Decomposer seriesParallelCandidates(int restarts, long seed) {
+        return seriesParallelCandidates(restarts, seed, cpq -> 0L, null);
     }
 
     static Decomposer seriesParallelCandidates(
             int restarts,
-            int maxPlans,
+            long seed,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter) {
+        return seriesParallelCandidates(restarts, seed, costFn, componentFilter, Long.MAX_VALUE);
+    }
+
+    static Decomposer seriesParallelCandidates(
+            int restarts,
             long seed,
             java.util.function.Predicate<CPQ> componentFilter) {
-        return seriesParallelCandidates(restarts, maxPlans, seed, componentFilter, Long.MAX_VALUE);
+        return seriesParallelCandidates(restarts, seed, cpq -> 0L, componentFilter, Long.MAX_VALUE);
     }
 
     static Decomposer seriesParallelCandidates(
             int restarts,
-            int maxPlans,
             long seed,
+            ToLongFunction<CPQ> costFn,
             java.util.function.Predicate<CPQ> componentFilter,
             long deadlineNanos) {
-        if (restarts < 1) {
-            throw new IllegalArgumentException("restarts must be >= 1");
+        if (restarts < 0) {
+            throw new IllegalArgumentException("restarts must be >= 0");
         }
-        if (maxPlans < 1) {
-            throw new IllegalArgumentException("maxPlans must be >= 1");
-        }
+        Objects.requireNonNull(costFn, "costFn");
         return cq -> SeriesParallelDecomposer.decomposeCandidates(
                 cq,
                 componentFilter,
-                restarts,
-                maxPlans,
-                seed,
-                deadlineNanos);
-    }
-
-    /**
-     * Deterministic overlap-guided series/parallel reduction.
-     * Uses index-visible score and exact component cardinalities while
-     * selecting each reduction step (no random restarts).
-     */
-    static Decomposer seriesParallelOverlapGuided(
-            ToLongFunction<CPQ> costFn,
-            ToDoubleFunction<Plan> overlapScoreFn,
-            java.util.function.Predicate<CPQ> componentFilter,
-            long deadlineNanos) {
-        Objects.requireNonNull(costFn, "costFn");
-        Objects.requireNonNull(overlapScoreFn, "overlapScoreFn");
-        return cq -> SeriesParallelDecomposer.decomposeGuided(
-                cq,
-                componentFilter,
                 costFn,
-                overlapScoreFn,
+                restarts,
+                seed,
                 deadlineNanos);
     }
 

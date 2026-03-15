@@ -3,13 +3,10 @@ package evaluator.bench;
 import static evaluator.bench.BenchTypes.*;
 
 import evaluator.cpq.ConjunctiveQuery;
-import evaluator.cpq.Plan.Component;
 import evaluator.evaluation.Planner;
 import evaluator.evaluation.DecompositionMethod;
 import evaluator.evaluation.LeapfrogJoin;
-import evaluator.evaluation.WanderJoinEstimator;
 import evaluator.cpq.Plan;
-import evaluator.evaluation.Relation;
 import evaluator.evaluation.ExecutablePlan;
 import evaluator.index.CpqIndex;
 import evaluator.util.Deadline;
@@ -24,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,11 +29,22 @@ import java.util.Set;
 
 final class BenchEngine {
     private static final int COMPARE_FILE_PROGRESS_EVERY = 25;
+    private static final Planner.CandidateSelectionPolicy NATIVE_SELECTION =
+            Planner.CandidateSelectionPolicy.METHOD_NATIVE;
+    private static final Path COMPARE_FILE_WARMUP_SOURCE = Path.of(
+            "local",
+            "queries",
+            "topology-bench",
+            "workloads",
+            "combination_queries",
+            "viz",
+            "queries.by_category.10_combinations.cq");
+    private static final int COMPARE_FILE_WARMUP_QUERY_LIMIT = 100;
 
     private final CpqIndex index;
     private final Planner planner;
     private final EngineConfig config;
-    private final JoinOrderSelector joinOrderSelector;
+    private final EstimatorDiagnostics estimatorDiagnostics;
 
     BenchEngine(CpqIndex index) {
         this(index, EngineConfig.defaults());
@@ -49,8 +56,8 @@ final class BenchEngine {
         if (index.k() < 1) {
             throw new IllegalArgumentException("index k must be >= 1");
         }
-        this.planner = new Planner(index, config.estimationSeed());
-        this.joinOrderSelector = new JoinOrderSelector();
+        this.planner = new Planner(index, config.estimationSeed(), config.systemRMaxCandidateOrders());
+        this.estimatorDiagnostics = new EstimatorDiagnostics(planner, config);
     }
 
     ConjunctiveQuery parseCQ(String text) {
@@ -63,10 +70,13 @@ final class BenchEngine {
     public BenchTypes.EvalFileReport evalFile(BenchTypes.EvalFileSpec spec) {
         Objects.requireNonNull(spec, "spec");
         EvaluationMode mode = Objects.requireNonNull(spec.evaluationMode(), "evaluationMode");
-        int coverLimit = spec.coverLimit();
-        int k = spec.kOverride() > 0 ? spec.kOverride() : index.k();
-        int decompositionTimeoutMs = Math.max(0, spec.decompositionTimeoutMs());
-        int methodTimeoutMs = Math.max(0, spec.methodTimeoutMs());
+        DecompositionMethod method = Objects.requireNonNull(spec.method(), "method");
+        QueryRunConfig runConfig = normalizeRunConfig(
+                spec.kOverride(),
+                spec.coverLimit(),
+                spec.timeoutMs(),
+                spec.timeoutMs(),
+                index.k());
         BenchTypes.EvalFileProgressSink progressSink = spec.progressSink() == null
                 ? BenchTypes.EvalFileProgressSink.NOOP
                 : spec.progressSink();
@@ -98,27 +108,30 @@ final class BenchEngine {
                     long parseStart = System.nanoTime();
                     ConjunctiveQuery cq = parseCQ(query);
                     parseNanos = System.nanoTime() - parseStart;
-                    long decomposeStart = System.nanoTime();
-                    PreparedCandidateSelection candidates = selectBestPreparedCandidatesWithTimeoutInfo(
+                    MethodDeadlines deadlines = MethodDeadlines.fromRunConfig(runConfig);
+                    PreparedMethodSelection selection = selectPreparedCandidateForMethod(
                             cq,
-                            coverLimit,
-                            k,
-                            decompositionTimeoutMs,
-                            Long.MAX_VALUE);
-                    decomposeNanos = System.nanoTime() - decomposeStart;
-                    if (candidates.candidates().isEmpty()) {
+                            method,
+                            runConfig,
+                            deadlines);
+                    decomposeNanos = selection.decomposeNanos();
+                    if (selection.candidate() == null) {
                         failures++;
-                        status = BenchTypes.EvalFileStatus.NO_DECOMPOSITIONS;
+                        if (selection.timedOutWithoutCandidate()) {
+                            timeouts++;
+                            status = BenchTypes.EvalFileStatus.TIMEOUT;
+                        } else {
+                            status = BenchTypes.EvalFileStatus.NO_DECOMPOSITIONS;
+                        }
                         continue;
                     }
-                    PreparedCandidate selected = candidates.candidates().get(0);
+                    PreparedCandidate selected = selection.candidate();
                     methodId = selected.candidate().method().id();
                     components = selected.candidate().decomposition().size();
                     maxDiameter = selected.candidate().decomposition().maxDiameter();
-                    long deadlineNanos = Deadline.afterMillis(methodTimeoutMs);
                     EvaluationWithStats evaluation;
                     try {
-                        evaluation = evaluateWithStats(selected.executable(), mode, deadlineNanos);
+                        evaluation = evaluateWithStats(selected.executable(), mode, deadlines.methodDeadlineNanos());
                     } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
                         failures++;
                         timeouts++;
@@ -129,7 +142,7 @@ final class BenchEngine {
                     mappingNanos = evaluation.stats().mappingNanos();
                     estimateNanos = evaluation.stats().estimateNanos();
                     joinNanos = evaluation.stats().joinNanos();
-                    answers = answerCount(evaluation.result());
+                    answers = BenchLogEmitter.answerCount(evaluation.result());
                     status = BenchTypes.EvalFileStatus.OK;
                 } catch (Exception ex) {
                     failures++;
@@ -161,16 +174,6 @@ final class BenchEngine {
         return new BenchTypes.EvalFileReport(queryCount, failures, timeouts);
     }
 
-    private static long answerCount(EvaluationResult result) {
-        if (result instanceof CountResult count) {
-            return count.count();
-        }
-        if (result instanceof RowResult rows) {
-            return rows.rows().size();
-        }
-        throw new IllegalArgumentException("Unsupported evaluation result type: " + result.getClass().getName());
-    }
-
     private static List<DecompositionCandidate> toBenchCandidates(List<Planner.Candidate> candidates) {
         List<DecompositionCandidate> mapped = new ArrayList<>(candidates.size());
         for (Planner.Candidate candidate : candidates) {
@@ -185,6 +188,23 @@ final class BenchEngine {
                 candidate.ordinal(),
                 candidate.plan(),
                 candidate.decomposeNanos());
+    }
+
+    private static List<DecompositionCandidate> toBenchSelectedCandidates(List<Planner.SelectedCandidate> candidates) {
+        List<DecompositionCandidate> mapped = new ArrayList<>(candidates.size());
+        for (Planner.SelectedCandidate candidate : candidates) {
+            mapped.add(toBenchSelectedCandidate(candidate));
+        }
+        return List.copyOf(mapped);
+    }
+
+    private static DecompositionCandidate toBenchSelectedCandidate(Planner.SelectedCandidate candidate) {
+        return new DecompositionCandidate(
+                candidate.method(),
+                candidate.ordinal(),
+                candidate.plan(),
+                candidate.decomposeNanos(),
+                candidate.selectionEstimateNanos());
     }
 
     private PreparedCandidate prepareCandidate(DecompositionCandidate candidate, long deadlineNanos) {
@@ -230,7 +250,12 @@ final class BenchEngine {
         Objects.requireNonNull(spec, "spec");
         ConjunctiveQuery cq = parseCQ(spec.queryText());
         EvaluationMode mode = Objects.requireNonNull(spec.evaluationMode(), "evaluationMode");
-        int methodTimeoutMs = Math.max(0, spec.methodTimeoutMs());
+        QueryRunConfig runConfig = normalizeRunConfig(
+                spec.k(),
+                spec.coverLimit(),
+                spec.decompositionTimeoutMs(),
+                spec.methodTimeoutMs(),
+                index.k());
         ParsedQuery parsed = new ParsedQuery(cq, 0L, null);
         ComparisonPreparationStatus status = ComparisonPreparationStatus.NO_DECOMPOSITIONS;
         int completed = 0;
@@ -239,10 +264,7 @@ final class BenchEngine {
             MethodOutcome<EvaluationWithStats> outcome = executeMethodRun(
                     parsed,
                     method,
-                    spec.coverLimit(),
-                    spec.k() > 0 ? spec.k() : index.k(),
-                    Math.max(0, spec.decompositionTimeoutMs()),
-                    methodTimeoutMs,
+                    runConfig,
                     (candidate, deadlineNanos) -> evaluateWithStats(candidate.executable(), mode, deadlineNanos));
             switch (outcome.type()) {
                 case SUCCESS -> {
@@ -254,8 +276,9 @@ final class BenchEngine {
                     timeouts++;
                 }
                 case MISSING_CANDIDATE -> {
-                    if ("DECOMP_TIMEOUT".equals(outcome.status())) {
+                    if ("PLANNING_TIMEOUT".equals(outcome.status())) {
                         status = ComparisonPreparationStatus.READY;
+                        timeouts++;
                     }
                 }
                 case PARSE_ERROR -> throw new IllegalStateException("compare parses the query before method execution");
@@ -270,6 +293,16 @@ final class BenchEngine {
     public BenchTypes.CompareFileReport compareFile(BenchTypes.CompareFileSpec spec) throws Exception {
         Objects.requireNonNull(spec, "spec");
         List<String> queries = loadQueries(spec.queriesFile());
+        Path warmupSource = spec.warmupQueriesFile() == null
+                ? COMPARE_FILE_WARMUP_SOURCE
+                : spec.warmupQueriesFile();
+        int warmupLimit = spec.warmupQueryLimit() > 0
+                ? spec.warmupQueryLimit()
+                : COMPARE_FILE_WARMUP_QUERY_LIMIT;
+        List<String> warmupQueries = spec.warmup()
+                ? loadCompareFileWarmupQueries(warmupSource, warmupLimit)
+                : List.of();
+        EvaluationMode evaluationMode = spec.mode();
         QueryRunConfig runConfig = normalizeRunConfig(
                 spec.kOverride(),
                 spec.coverLimit(),
@@ -287,23 +320,60 @@ final class BenchEngine {
         try (PrintWriter decompositionOut = openDecompositionWriter(spec.decompositionLogPath())) {
             String command = "compare-file --index " + spec.indexPath()
                     + " --queries-file " + spec.queriesFile()
-                    + " --method-timeout-ms " + methodTimeoutMs
-                    + " --decomposition-timeout-ms " + decompositionTimeoutMs
+                    + (evaluationMode == EvaluationMode.ROWS ? " --rows" : " --count")
+                    + " --per-method-timeout-ms " + methodTimeoutMs
+                    + " --planning-timeout-ms " + decompositionTimeoutMs
+                    + " --join-order-budget " + config.systemRMaxCandidateOrders()
                     + " --cover-limit " + coverLimit
                     + " --k " + k
                     + " --seed " + spec.seed();
-            printCompareFileHeader(
+            if (spec.warmup()) {
+                command += " --warmup";
+                if (spec.warmupQueriesFile() != null) {
+                    command += " --warmup-queries-file " + spec.warmupQueriesFile();
+                }
+                if (spec.warmupQueryLimit() > 0) {
+                    command += " --warmup-query-limit " + spec.warmupQueryLimit();
+                }
+            }
+            BenchLogEmitter.printCompareFileHeader(
                     compareOut,
                     spec,
                     queries.size(),
+                    warmupQueries.size(),
+                    warmupSource.toString(),
+                    warmupLimit,
                     methodTimeoutMs,
                     decompositionTimeoutMs,
+                    config.systemRMaxCandidateOrders(),
                     coverLimit,
                     k,
                     command,
                     config.estimationSeed());
             if (decompositionOut != null) {
                 decompositionOut.println("# " + command);
+            }
+
+            long warmupElapsedNanos = 0L;
+            long warmupMethodRows = 0L;
+            if (!warmupQueries.isEmpty()) {
+                long warmupStartedNanos = System.nanoTime();
+                warmupMethodRows = runCompareFileWarmup(
+                        warmupQueries,
+                        methods,
+                        runConfig,
+                        evaluationMode);
+                warmupElapsedNanos = System.nanoTime() - warmupStartedNanos;
+            }
+            compareOut.println(String.format(
+                    Locale.ROOT,
+                    "warmup query_count=%d method_rows=%d elapsed_ms=%.3f",
+                    warmupQueries.size(),
+                    warmupMethodRows,
+                    BenchLogEmitter.nanosToMillis(warmupElapsedNanos)));
+            compareOut.flush();
+            if (decompositionOut != null) {
+                decompositionOut.flush();
             }
 
             long startedNanos = System.nanoTime();
@@ -320,24 +390,24 @@ final class BenchEngine {
                 List<MethodOutcome<EvaluationWithStats>> outcomes = evaluateQueryAcrossMethods(
                         queryText,
                         methods,
-                        coverLimit,
-                        k,
-                        decompositionTimeoutMs,
-                        methodTimeoutMs,
+                        runConfig,
+                        // Compare-file logs counts only, but row-backed evaluation is a
+                        // valid workload model when the caller wants timings that include
+                        // distinct answer-set materialization without tuple printing.
                         (candidate, deadlineNanos) -> evaluateWithStats(
                                 candidate.executable(),
-                                EvaluationMode.COUNT,
+                                evaluationMode,
                                 deadlineNanos));
 
                 for (MethodOutcome<EvaluationWithStats> outcome : outcomes) {
                     methodRows++;
                     DecompositionCandidate candidate = outcome.candidate();
                     if (candidate != null && decompositionOut != null) {
-                        decompositionOut.println(formatDecompositionLine(queryNumber, candidate));
+                        decompositionOut.println(BenchLogEmitter.formatDecompositionLine(queryNumber, candidate));
                     }
                     switch (outcome.type()) {
                         case PARSE_ERROR -> {
-                            emitCompareFileRow(compareOut, CompareFileRow.parseError(
+                            BenchLogEmitter.emitCompareFileRow(compareOut, BenchLogEmitter.CompareFileRow.parseError(
                                     queryNumber,
                                     outcome.method(),
                                     outcome.parseNanos(),
@@ -346,38 +416,34 @@ final class BenchEngine {
                             errorRows++;
                         }
                         case MISSING_CANDIDATE -> {
-                            emitCompareFileRow(compareOut, CompareFileRow.withoutCandidate(
+                            BenchLogEmitter.emitCompareFileRow(compareOut, BenchLogEmitter.CompareFileRow.withoutCandidate(
                                     queryNumber,
                                     outcome.method(),
                                     outcome.parseNanos(),
                                     outcome.decomposeNanos(),
                                     outcome.wallNanos(),
                                     outcome.status()));
-                            if ("DECOMP_TIMEOUT".equals(outcome.status())) {
+                            if ("PLANNING_TIMEOUT".equals(outcome.status())) {
                                 decompTimeoutRows++;
                             } else {
                                 noCandidateRows++;
                             }
                         }
                         case TIMEOUT -> {
-                            int edgesCollapsed = candidate == null ? 0 : edgesCollapsed(candidate.decomposition());
-                            emitCompareFileRow(compareOut, CompareFileRow.timeout(
+                            BenchLogEmitter.emitCompareFileRow(compareOut, BenchLogEmitter.CompareFileRow.timeout(
                                     queryNumber,
                                     outcome.method(),
                                     candidate,
-                                    edgesCollapsed,
                                     outcome.parseNanos(),
                                     outcome.decomposeNanos(),
                                     outcome.wallNanos()));
                             timeoutRows++;
                         }
                         case SUCCESS -> {
-                            int edgesCollapsed = edgesCollapsed(candidate.decomposition());
-                            emitCompareFileRow(compareOut, CompareFileRow.ok(
+                            BenchLogEmitter.emitCompareFileRow(compareOut, BenchLogEmitter.CompareFileRow.ok(
                                     queryNumber,
                                     outcome.method(),
                                     candidate,
-                                    edgesCollapsed,
                                     outcome.parseNanos(),
                                     outcome.wallNanos(),
                                     outcome.evaluation()));
@@ -405,7 +471,7 @@ final class BenchEngine {
             long elapsedNanos = System.nanoTime() - startedNanos;
             compareOut.println(String.format(
                     Locale.ROOT,
-                    "summary query_count=%d method_rows=%d ok=%d timeout=%d decomp_timeout=%d no_candidate=%d error=%d elapsed_ms=%.3f",
+                    "summary query_count=%d method_rows=%d ok=%d exec_timeout=%d planning_timeout=%d no_candidate=%d error=%d elapsed_ms=%.3f",
                     queries.size(),
                     methodRows,
                     okRows,
@@ -413,7 +479,7 @@ final class BenchEngine {
                     decompTimeoutRows,
                     noCandidateRows,
                     errorRows,
-                    nanosToMillis(elapsedNanos)));
+                    BenchLogEmitter.nanosToMillis(elapsedNanos)));
             compareOut.flush();
             if (decompositionOut != null) {
                 decompositionOut.flush();
@@ -435,9 +501,6 @@ final class BenchEngine {
 
     public BenchTypes.EstimationBenchReport estimationBench(BenchTypes.EstimationBenchSpec spec) throws Exception {
         Objects.requireNonNull(spec, "spec");
-        if (spec.walks() < 1) {
-            throw new IllegalArgumentException("walks must be >= 1");
-        }
         List<String> queries = loadQueries(spec.queriesFile());
         List<String> warmupQueries = spec.warmupQueriesFile() == null
                 ? List.of()
@@ -459,27 +522,26 @@ final class BenchEngine {
         try {
             String command = "estimationbench --index " + spec.indexPath()
                     + " --queries-file " + spec.queriesFile()
-                    + " --method-timeout-ms " + methodTimeoutMs
-                    + " --decomposition-timeout-ms " + decompositionTimeoutMs
+                    + " --per-method-timeout-ms " + methodTimeoutMs
+                    + " --planning-timeout-ms " + decompositionTimeoutMs
+                    + " --join-order-budget " + config.systemRMaxCandidateOrders()
                     + " --cover-limit " + coverLimit
                     + " --k " + k
-                    + " --estimate-walks " + spec.walks()
                     + " --seed " + spec.seed();
             if (spec.warmupQueriesFile() != null) {
                 command += " --warmup-queries-file " + spec.warmupQueriesFile();
             }
-            printEstimationBenchHeader(
+            BenchLogEmitter.printEstimationBenchHeader(
                     out,
                     spec,
                     queries.size(),
                     warmupQueries.size(),
                     methodTimeoutMs,
                     decompositionTimeoutMs,
+                    config.systemRMaxCandidateOrders(),
                     coverLimit,
                     k,
                     command,
-                    config.estimatorType(),
-                    config.wanderJoinRequireExtension(),
                     spec.seed(),
                     config.estimationSeed());
             long warmupElapsedNanos = 0L;
@@ -489,11 +551,7 @@ final class BenchEngine {
                 warmupMethodRows = runEstimationBenchWarmup(
                         warmupQueries,
                         methods,
-                        coverLimit,
-                        k,
-                        decompositionTimeoutMs,
-                        methodTimeoutMs,
-                        spec.walks());
+                        runConfig);
                 warmupElapsedNanos = System.nanoTime() - warmupStartedNanos;
             }
             out.println(String.format(
@@ -501,7 +559,7 @@ final class BenchEngine {
                     "warmup query_count=%d method_rows=%d elapsed_ms=%.3f",
                     warmupQueries.size(),
                     warmupMethodRows,
-                    nanosToMillis(warmupElapsedNanos)));
+                    BenchLogEmitter.nanosToMillis(warmupElapsedNanos)));
             out.flush();
 
             long startedNanos = System.nanoTime();
@@ -519,11 +577,8 @@ final class BenchEngine {
                 List<MethodOutcome<EstimationBenchEvaluation>> outcomes = evaluateQueryAcrossMethods(
                         queryText,
                         methods,
-                        coverLimit,
-                        k,
-                        decompositionTimeoutMs,
-                        methodTimeoutMs,
-                        (candidate, deadlineNanos) -> evaluateForEstimationBench(candidate, spec.walks(), deadlineNanos));
+                        runConfig,
+                        this::evaluateForEstimationBench);
 
                 for (MethodOutcome<EstimationBenchEvaluation> outcome : outcomes) {
                     methodRows++;
@@ -531,7 +586,7 @@ final class BenchEngine {
                     switch (outcome.type()) {
                         case PARSE_ERROR -> {
                             stepRows++;
-                            emitEstimationBenchRow(out, EstimationBenchRow.parseError(
+                            BenchLogEmitter.emitEstimationBenchRow(out, BenchLogEmitter.EstimationBenchRow.parseError(
                                     queryNumber,
                                     outcome.method(),
                                     outcome.parseNanos(),
@@ -541,14 +596,14 @@ final class BenchEngine {
                         }
                         case MISSING_CANDIDATE -> {
                             stepRows++;
-                            emitEstimationBenchRow(out, EstimationBenchRow.withoutCandidate(
+                            BenchLogEmitter.emitEstimationBenchRow(out, BenchLogEmitter.EstimationBenchRow.withoutCandidate(
                                     queryNumber,
                                     outcome.method(),
                                     outcome.parseNanos(),
                                     outcome.decomposeNanos(),
                                     outcome.wallNanos(),
                                     outcome.status()));
-                            if ("DECOMP_TIMEOUT".equals(outcome.status())) {
+                            if ("PLANNING_TIMEOUT".equals(outcome.status())) {
                                 decompTimeoutRows++;
                             } else {
                                 noCandidateRows++;
@@ -556,7 +611,7 @@ final class BenchEngine {
                         }
                         case TIMEOUT -> {
                             stepRows++;
-                            emitEstimationBenchRow(out, EstimationBenchRow.timeout(
+                            BenchLogEmitter.emitEstimationBenchRow(out, BenchLogEmitter.EstimationBenchRow.timeout(
                                     queryNumber,
                                     outcome.method(),
                                     candidate,
@@ -567,34 +622,27 @@ final class BenchEngine {
                         }
                         case SUCCESS -> {
                             EvaluationWithStats evaluation = outcome.evaluation().evaluation();
-                            long queryNanos = evaluation.stats().queryNanos();
-                            long mappingNanos = evaluation.stats().mappingNanos();
-                            long estimateNanos = evaluation.stats().estimateNanos();
-                            long joinNanos = evaluation.stats().joinNanos();
-                            long totalNanos = queryNanos + mappingNanos + estimateNanos + joinNanos;
-                            List<PrefixEstimationStep> steps = outcome.evaluation().steps();
+                            List<EstimatorDiagnostics.PrefixEstimationStep> steps = outcome.evaluation().steps();
                             if (steps.isEmpty()) {
                                 stepRows++;
-                                emitEstimationBenchRow(out, EstimationBenchRow.okWithoutSteps(
+                                BenchLogEmitter.emitEstimationBenchRow(out, BenchLogEmitter.EstimationBenchRow.okWithoutSteps(
                                         queryNumber,
                                         outcome.method(),
                                         candidate,
                                         evaluation,
                                         outcome.parseNanos(),
-                                        outcome.wallNanos(),
-                                        totalNanos));
+                                        outcome.wallNanos()));
                             } else {
-                                for (PrefixEstimationStep step : steps) {
+                                for (EstimatorDiagnostics.PrefixEstimationStep step : steps) {
                                     stepRows++;
-                                    emitEstimationBenchRow(out, EstimationBenchRow.okStep(
+                                    BenchLogEmitter.emitEstimationBenchRow(out, BenchLogEmitter.EstimationBenchRow.okStep(
                                             queryNumber,
                                             outcome.method(),
                                             candidate,
                                             evaluation,
                                             step,
                                             outcome.parseNanos(),
-                                            outcome.wallNanos(),
-                                            totalNanos));
+                                            outcome.wallNanos()));
                                 }
                             }
                             okRows++;
@@ -619,7 +667,7 @@ final class BenchEngine {
             long elapsedNanos = System.nanoTime() - startedNanos;
             out.println(String.format(
                     Locale.ROOT,
-                    "summary query_count=%d method_rows=%d step_rows=%d ok=%d timeout=%d decomp_timeout=%d no_candidate=%d error=%d elapsed_ms=%.3f",
+                    "summary query_count=%d method_rows=%d step_rows=%d ok=%d exec_timeout=%d planning_timeout=%d no_candidate=%d error=%d elapsed_ms=%.3f",
                     queries.size(),
                     methodRows,
                     stepRows,
@@ -628,7 +676,7 @@ final class BenchEngine {
                     decompTimeoutRows,
                     noCandidateRows,
                     errorRows,
-                    nanosToMillis(elapsedNanos)));
+                    BenchLogEmitter.nanosToMillis(elapsedNanos)));
             out.flush();
 
             return new BenchTypes.EstimationBenchReport(
@@ -658,12 +706,39 @@ final class BenchEngine {
         T evaluate(PreparedCandidate candidate, long deadlineNanos);
     }
 
+    private record MethodDeadlines(
+            long startedNanos,
+            long planningDeadlineNanos,
+            long methodDeadlineNanos) {
+        private static MethodDeadlines fromRunConfig(QueryRunConfig runConfig) {
+            long startedNanos = System.nanoTime();
+            long methodDeadlineNanos = deadlineFromStart(startedNanos, runConfig.methodTimeoutMs());
+            long planningDeadlineNanos = runConfig.decompositionTimeoutMs() <= 0
+                    ? methodDeadlineNanos
+                    : Math.min(methodDeadlineNanos, deadlineFromStart(startedNanos, runConfig.decompositionTimeoutMs()));
+            return new MethodDeadlines(startedNanos, planningDeadlineNanos, methodDeadlineNanos);
+        }
+
+        private long elapsedNanos() {
+            return System.nanoTime() - startedNanos;
+        }
+    }
+
+    private record MethodCandidateSelection(
+            DecompositionCandidate candidate,
+            boolean planningTimedOut,
+            long planningNanos) {
+        private String missingStatus() {
+            return planningTimedOut ? "PLANNING_TIMEOUT" : "NO_CANDIDATE";
+        }
+    }
+
     private record PreparedMethodSelection(
             PreparedCandidate candidate,
             boolean timedOutWithoutCandidate,
             long decomposeNanos) {
         private String missingStatus() {
-            return timedOutWithoutCandidate ? "DECOMP_TIMEOUT" : "NO_CANDIDATE";
+            return timedOutWithoutCandidate ? "PLANNING_TIMEOUT" : "NO_CANDIDATE";
         }
     }
 
@@ -689,10 +764,7 @@ final class BenchEngine {
     private <T> List<MethodOutcome<T>> evaluateQueryAcrossMethods(
             String queryText,
             List<DecompositionMethod> methods,
-            int coverLimit,
-            int k,
-            int decompositionTimeoutMs,
-            int methodTimeoutMs,
+            QueryRunConfig runConfig,
             CandidateEvaluator<T> evaluator) {
         ParsedQuery parsed = parseQueryTimed(queryText);
         List<MethodOutcome<T>> outcomes = new ArrayList<>(methods.size());
@@ -715,10 +787,7 @@ final class BenchEngine {
             outcomes.add(executeMethodRun(
                     parsed,
                     method,
-                    coverLimit,
-                    k,
-                    decompositionTimeoutMs,
-                    methodTimeoutMs,
+                    runConfig,
                     evaluator));
         }
         return List.copyOf(outcomes);
@@ -727,43 +796,38 @@ final class BenchEngine {
     private <T> MethodOutcome<T> executeMethodRun(
             ParsedQuery parsed,
             DecompositionMethod method,
-            int coverLimit,
-            int k,
-            int decompositionTimeoutMs,
-            int methodTimeoutMs,
+            QueryRunConfig runConfig,
             CandidateEvaluator<T> evaluator) {
-        long deadlineNanos = Deadline.afterMillis(methodTimeoutMs);
-        long methodStartNanos = System.nanoTime();
-        PreparedMethodSelection selection = null;
+        MethodDeadlines deadlines = MethodDeadlines.fromRunConfig(runConfig);
+        MethodCandidateSelection selection = null;
         try {
-            selection = selectPreparedCandidateForMethod(
+            selection = selectCandidateForMethod(
                     parsed.cq(),
                     method,
-                    coverLimit,
-                    k,
-                    decompositionTimeoutMs,
-                    deadlineNanos);
+                    runConfig,
+                    deadlines.planningDeadlineNanos());
             if (selection.candidate() == null) {
                 return new MethodOutcome<>(
                         MethodOutcomeType.MISSING_CANDIDATE,
                         method,
                         null,
                         parsed.parseNanos(),
-                        selection.decomposeNanos(),
-                        System.nanoTime() - methodStartNanos,
+                        selection.planningNanos(),
+                        deadlines.elapsedNanos(),
                         selection.missingStatus(),
                         null,
                         null);
             }
 
-            T evaluation = evaluator.evaluate(selection.candidate(), deadlineNanos);
+            PreparedCandidate prepared = prepareCandidate(selection.candidate(), deadlines.methodDeadlineNanos());
+            T evaluation = evaluator.evaluate(prepared, deadlines.methodDeadlineNanos());
             return new MethodOutcome<>(
                     MethodOutcomeType.SUCCESS,
                     method,
-                    selection.candidate().candidate(),
+                    selection.candidate(),
                     parsed.parseNanos(),
-                    selection.decomposeNanos(),
-                    System.nanoTime() - methodStartNanos,
+                    selection.planningNanos(),
+                    deadlines.elapsedNanos(),
                     "OK",
                     null,
                     evaluation);
@@ -771,83 +835,83 @@ final class BenchEngine {
             return new MethodOutcome<>(
                     MethodOutcomeType.TIMEOUT,
                     method,
-                    selection == null || selection.candidate() == null ? null : selection.candidate().candidate(),
+                    selection == null ? null : selection.candidate(),
                     parsed.parseNanos(),
-                    selection == null ? 0L : selection.decomposeNanos(),
-                    System.nanoTime() - methodStartNanos,
-                    "TIMEOUT",
+                    selection == null ? 0L : selection.planningNanos(),
+                    deadlines.elapsedNanos(),
+                    "EXEC_TIMEOUT",
                     null,
                     null);
+        }
+    }
+
+    private MethodCandidateSelection selectCandidateForMethod(
+            ConjunctiveQuery cq,
+            DecompositionMethod method,
+            QueryRunConfig runConfig,
+            long planningDeadlineNanos) {
+        long planningStartNanos = System.nanoTime();
+        try {
+            Planner.MethodSelection planned = planner.planMethod(
+                    cq,
+                    method,
+                    runConfig.coverLimit(),
+                    runConfig.k(),
+                    planningDeadlineNanos,
+                    planningDeadlineNanos);
+            Planner.SelectedMethodSelection selected = planner.selectBestCandidate(
+                    planned,
+                    NATIVE_SELECTION,
+                    planningDeadlineNanos);
+            if (selected.candidate() == null) {
+                return new MethodCandidateSelection(null, planned.timedOut(), planned.decomposeNanos());
+            }
+            return new MethodCandidateSelection(
+                    toBenchSelectedCandidate(selected.candidate()),
+                    planned.timedOut(),
+                    planned.decomposeNanos());
+        } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
+            return new MethodCandidateSelection(null, true, System.nanoTime() - planningStartNanos);
         }
     }
 
     private PreparedMethodSelection selectPreparedCandidateForMethod(
             ConjunctiveQuery cq,
             DecompositionMethod method,
-            int coverLimit,
-            int k,
-            int decompositionTimeoutMs,
-            long deadlineNanos) {
-        Planner.MethodSelection planned = planner.planMethod(cq, method, coverLimit, k, decompositionTimeoutMs);
-        List<DecompositionCandidate> candidates = toBenchCandidates(planned.candidates());
-        if (candidates.isEmpty()) {
-            return new PreparedMethodSelection(null, planned.timedOut(), planned.decomposeNanos());
+            QueryRunConfig runConfig,
+            MethodDeadlines deadlines) {
+        MethodCandidateSelection selection = selectCandidateForMethod(
+                cq,
+                method,
+                runConfig,
+                deadlines.planningDeadlineNanos());
+        if (selection.candidate() == null) {
+            return new PreparedMethodSelection(null, selection.planningTimedOut(), selection.planningNanos());
         }
-        PreparedCandidate selected = pickBestPreparedCandidate(
-                candidates,
-                config.defaultDecomposeSelectionWalks(),
-                config.defaultDecomposeSelectionRandomOrders(),
-                1,
-                deadlineNanos);
-        return new PreparedMethodSelection(selected, planned.timedOut(), planned.decomposeNanos());
+        PreparedCandidate prepared = prepareCandidate(selection.candidate(), deadlines.methodDeadlineNanos());
+        return new PreparedMethodSelection(prepared, selection.planningTimedOut(), selection.planningNanos());
     }
 
-    private static void printEstimationBenchHeader(
-            PrintWriter out,
-            BenchTypes.EstimationBenchSpec spec,
-            int totalQueries,
-            int warmupQueries,
-            int methodTimeoutMs,
-            int decompositionTimeoutMs,
-            int coverLimit,
-            int k,
-            String command,
-            EngineConfig.EstimatorType estimatorType,
-            boolean wanderJoinRequireExtension,
-            long runSeed,
-            long estimationSeed) {
-        out.println("started=" + Instant.now());
-        out.println("index=" + spec.indexPath());
-        out.println("queries=" + spec.queriesFile());
-        out.println("total_queries=" + totalQueries);
-        out.println("warmup_queries=" + (spec.warmupQueriesFile() == null ? "-" : spec.warmupQueriesFile()));
-        out.println("warmup_query_count=" + warmupQueries);
-        out.println("method_timeout_ms=" + methodTimeoutMs);
-        out.println("decomposition_timeout_ms=" + decompositionTimeoutMs);
-        out.println("cover_limit=" + coverLimit);
-        out.println("k=" + k);
-        out.println("seed=" + runSeed);
-        out.println("selection_seed=" + estimationSeed);
-        out.println("series_parallel_seed=" + estimationSeed);
-        out.println("estimator_type=" + estimatorType);
-        out.println("estimation_seed=" + estimationSeed);
-        out.println("estimate_walks=" + spec.walks());
-        out.println("estimate_budget_policy=absolute_n_per_query_method");
-        out.println("wanderjoin_require_extension=" + wanderJoinRequireExtension);
-        out.println("command=" + command);
-        out.println(
-                "# columns: query method ord step variable prefix_order full_order estimate stderr actual prefix_estimate_ms prefix_eval_ms prefix_total_ms prefix_cum_estimate_ms prefix_cum_eval_ms prefix_cum_total_ms q_error rel_error cum_q_error cum_rel_error final_answers final_estimate final_stderr parse_ms decompose_ms decomp_estimate_ms wall_ms end_to_end_ms total_ms query_ms mapping_ms estimate_ms join_ms status [error]");
-        out.flush();
+    private PreparedCandidate requirePreparedCandidateForMethod(
+            ConjunctiveQuery cq,
+            DecompositionMethod method,
+            QueryRunConfig runConfig,
+            MethodDeadlines deadlines) {
+        PreparedMethodSelection selection = selectPreparedCandidateForMethod(cq, method, runConfig, deadlines);
+        if (selection.candidate() != null) {
+            return selection.candidate();
+        }
+        if (selection.timedOutWithoutCandidate()) {
+            throw new Deadline.Exceeded();
+        }
+        throw new IllegalStateException("No decomposition candidate for method " + method.id());
     }
 
-    private long runEstimationBenchWarmup(
+    private long runCompareFileWarmup(
             List<String> warmupQueries,
             List<DecompositionMethod> methods,
-            int coverLimit,
-            int k,
-            int decompositionTimeoutMs,
-            int methodTimeoutMs,
-            int walks) {
+            QueryRunConfig runConfig,
+            EvaluationMode evaluationMode) {
         long warmedMethodRows = 0L;
         for (String queryText : warmupQueries) {
             ConjunctiveQuery cq;
@@ -856,11 +920,18 @@ final class BenchEngine {
             } catch (Exception ignored) {
                 continue;
             }
-            ComparisonCandidates comparison = prepareComparisonCandidates(
-                    cq,
-                    coverLimit,
-                    k,
-                    decompositionTimeoutMs);
+            ComparisonCandidates comparison;
+            try {
+                comparison = prepareComparisonCandidates(
+                        cq,
+                        runConfig.coverLimit(),
+                        runConfig.k(),
+                        runConfig.decompositionTimeoutMs(),
+                        runConfig.methodTimeoutMs());
+            } catch (RuntimeException ignored) {
+                // Warmup is best-effort and should not fail the measured run.
+                continue;
+            }
             Map<DecompositionMethod, DecompositionCandidate> byMethod = new EnumMap<>(DecompositionMethod.class);
             for (DecompositionCandidate candidate : comparison.candidates()) {
                 byMethod.put(candidate.method(), candidate);
@@ -872,9 +943,9 @@ final class BenchEngine {
                 }
                 warmedMethodRows++;
                 try {
-                    long deadlineNanos = Deadline.afterMillis(methodTimeoutMs);
+                    long deadlineNanos = Deadline.afterMillis(runConfig.methodTimeoutMs());
                     PreparedCandidate prepared = prepareCandidate(candidate, deadlineNanos);
-                    evaluateForEstimationBench(prepared, walks, deadlineNanos);
+                    evaluateWithStats(prepared.executable(), evaluationMode, deadlineNanos);
                 } catch (RuntimeException ignored) {
                     // Warmup is best-effort and should not fail the measured run.
                 }
@@ -883,575 +954,60 @@ final class BenchEngine {
         return warmedMethodRows;
     }
 
-    private static void printCompareFileHeader(
-            PrintWriter compareOut,
-            BenchTypes.CompareFileSpec spec,
-            int totalQueries,
-            int methodTimeoutMs,
-            int decompositionTimeoutMs,
-            int coverLimit,
-            int k,
-            String command,
-            long estimationSeed) {
-        compareOut.println("started=" + Instant.now());
-        compareOut.println("index=" + spec.indexPath());
-        compareOut.println("queries=" + spec.queriesFile());
-        compareOut.println("total_queries=" + totalQueries);
-        compareOut.println("method_timeout_ms=" + methodTimeoutMs);
-        compareOut.println("decomposition_timeout_ms=" + decompositionTimeoutMs);
-        compareOut.println("cover_limit=" + coverLimit);
-        compareOut.println("k=" + k);
-        compareOut.println("seed=" + spec.seed());
-        compareOut.println("selection_seed=" + estimationSeed);
-        compareOut.println("series_parallel_seed=" + estimationSeed);
-        compareOut.println("estimation_seed=" + estimationSeed);
-        compareOut.println("command=" + command);
-        compareOut.flush();
-    }
-
-    private static String formatDecompositionLine(
-            int queryNumber,
-            DecompositionCandidate candidate) {
-        return String.format(
-                Locale.ROOT,
-                "query=%d method=%s ord=%d decomposition=\"%s\"",
-                queryNumber,
-                candidate.method().name(),
-                candidate.ordinal(),
-                sanitize(formatDecomposition(candidate.decomposition())));
-    }
-
-    private static String formatDecomposition(Plan decomposition) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("projected=").append(decomposition.projectedVariableNames());
-        builder.append(" components=[");
-        List<Component> components = decomposition.components();
-        for (int i = 0; i < components.size(); i++) {
-            if (i > 0) {
-                builder.append(" | ");
+    private long runEstimationBenchWarmup(
+            List<String> warmupQueries,
+            List<DecompositionMethod> methods,
+            QueryRunConfig runConfig) {
+        long warmedMethodRows = 0L;
+        for (String queryText : warmupQueries) {
+            ConjunctiveQuery cq;
+            try {
+                cq = parseCQ(queryText);
+            } catch (Exception ignored) {
+                continue;
             }
-            Component component = components.get(i);
-            builder.append(component.sourceVarName())
-                    .append("->")
-                    .append(component.targetVarName())
-                    .append(" d=")
-                    .append(component.diameter())
-                    .append(" cpq=")
-                    .append(component.cpq())
-                    .append(" mask=")
-                    .append(component.maskUnsafe());
+            ComparisonCandidates comparison;
+            try {
+                comparison = prepareComparisonCandidates(
+                        cq,
+                        runConfig.coverLimit(),
+                        runConfig.k(),
+                        runConfig.decompositionTimeoutMs(),
+                        runConfig.methodTimeoutMs());
+            } catch (RuntimeException ignored) {
+                // Warmup is best-effort and should not fail the measured run.
+                continue;
+            }
+            Map<DecompositionMethod, DecompositionCandidate> byMethod = new EnumMap<>(DecompositionMethod.class);
+            for (DecompositionCandidate candidate : comparison.candidates()) {
+                byMethod.put(candidate.method(), candidate);
+            }
+            for (DecompositionMethod method : methods) {
+                DecompositionCandidate candidate = byMethod.get(method);
+                if (candidate == null) {
+                    continue;
+                }
+                warmedMethodRows++;
+                try {
+                    long deadlineNanos = Deadline.afterMillis(runConfig.methodTimeoutMs());
+                    PreparedCandidate prepared = prepareCandidate(candidate, deadlineNanos);
+                    evaluateForEstimationBench(prepared, deadlineNanos);
+                } catch (RuntimeException ignored) {
+                    // Warmup is best-effort and should not fail the measured run.
+                }
+            }
         }
-        builder.append("]");
-        return builder.toString();
+        return warmedMethodRows;
     }
 
-    private record CompareFileRow(
-            int queryNumber,
-            DecompositionMethod method,
-            int ordinal,
-            int components,
-            int maxDiameter,
-            int edgesCollapsed,
-            long answers,
-            double estimatedCount,
-            double estimateStdError,
-            long parseNanos,
-            long decomposeNanos,
-            long decompEstimateNanos,
-            long wallNanos,
-            long totalNanos,
-            long queryNanos,
-            long mappingNanos,
-            long estimateNanos,
-            long joinNanos,
-            List<String> variableOrder,
-            String status,
-            String errorMessage) {
-        private static final long UNKNOWN_ANSWER_COUNT = -1L;
-
-        private static CompareFileRow parseError(
-                int queryNumber,
-                DecompositionMethod method,
-                long parseNanos,
-                long wallNanos,
-                String errorMessage) {
-            return new CompareFileRow(
-                    queryNumber,
-                    method,
-                    -1,
-                    0,
-                    0,
-                    0,
-                    UNKNOWN_ANSWER_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    0L,
-                    0L,
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    List.of(),
-                    "ERROR",
-                    errorMessage);
-        }
-
-        private static CompareFileRow withoutCandidate(
-                int queryNumber,
-                DecompositionMethod method,
-                long parseNanos,
-                long decomposeNanos,
-                long wallNanos,
-                String status) {
-            return new CompareFileRow(
-                    queryNumber,
-                    method,
-                    -1,
-                    0,
-                    0,
-                    0,
-                    UNKNOWN_ANSWER_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    decomposeNanos,
-                    0L,
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    List.of(),
-                    status,
-                    null);
-        }
-
-        private static CompareFileRow timeout(
-                int queryNumber,
-                DecompositionMethod method,
-                DecompositionCandidate candidate,
-                int edgesCollapsed,
-                long parseNanos,
-                long decomposeNanos,
-                long wallNanos) {
-            return new CompareFileRow(
-                    queryNumber,
-                    method,
-                    candidate == null ? -1 : candidate.ordinal(),
-                    candidate == null ? 0 : candidate.decomposition().size(),
-                    candidate == null ? 0 : candidate.decomposition().maxDiameter(),
-                    edgesCollapsed,
-                    UNKNOWN_ANSWER_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    decomposeNanos,
-                    candidate == null ? 0L : candidate.selectionEstimateNanos(),
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    List.of(),
-                    "TIMEOUT",
-                    null);
-        }
-
-        private static CompareFileRow ok(
-                int queryNumber,
-                DecompositionMethod method,
-                DecompositionCandidate candidate,
-                int edgesCollapsed,
-                long parseNanos,
-                long wallNanos,
-                EvaluationWithStats evaluation) {
-            long queryNanos = evaluation.stats().queryNanos();
-            long mappingNanos = evaluation.stats().mappingNanos();
-            long estimateNanos = evaluation.stats().estimateNanos();
-            long joinNanos = evaluation.stats().joinNanos();
-            return new CompareFileRow(
-                    queryNumber,
-                    method,
-                    candidate.ordinal(),
-                    candidate.decomposition().size(),
-                    candidate.decomposition().maxDiameter(),
-                    edgesCollapsed,
-                    answerCount(evaluation.result()),
-                    evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
-                    parseNanos,
-                    candidate.decomposeNanos(),
-                    candidate.selectionEstimateNanos(),
-                    wallNanos,
-                    queryNanos + mappingNanos + estimateNanos + joinNanos,
-                    queryNanos,
-                    mappingNanos,
-                    estimateNanos,
-                    joinNanos,
-                    evaluation.variableOrder(),
-                    "OK",
-                    null);
-        }
-    }
-
-    private static void emitCompareFileRow(
-            PrintWriter out,
-            CompareFileRow row) {
-        String errorSegment = row.errorMessage() == null || row.errorMessage().isBlank()
-                ? ""
-                : String.format(Locale.ROOT, " error=\"%s\"", sanitize(row.errorMessage()));
-        out.println(String.format(
-                Locale.ROOT,
-                "query=%d method=%s ord=%d var_order=%s comps=%d max_diam=%d edges_collapsed=%d answers=%d estimate=%.6f stderr=%.6f parse_ms=%.3f decompose_ms=%.3f decomp_estimate_ms=%.3f wall_ms=%.3f end_to_end_ms=%.3f total_ms=%.3f query_ms=%.3f mapping_ms=%.3f estimate_ms=%.3f join_ms=%.3f status=%s%s",
-                row.queryNumber(),
-                row.method().name(),
-                row.ordinal(),
-                formatVariableOrder(row.variableOrder()),
-                row.components(),
-                row.maxDiameter(),
-                row.edgesCollapsed(),
-                row.answers(),
-                row.estimatedCount(),
-                row.estimateStdError(),
-                nanosToMillis(row.parseNanos()),
-                nanosToMillis(row.decomposeNanos()),
-                nanosToMillis(row.decompEstimateNanos()),
-                nanosToMillis(row.wallNanos()),
-                nanosToMillis(row.parseNanos() + row.wallNanos()),
-                nanosToMillis(row.totalNanos()),
-                nanosToMillis(row.queryNanos()),
-                nanosToMillis(row.mappingNanos()),
-                nanosToMillis(row.estimateNanos()),
-                nanosToMillis(row.joinNanos()),
-                row.status(),
-                errorSegment));
-    }
-
-    private record EstimationBenchRow(
-            int queryNumber,
-            DecompositionMethod method,
-            int ordinal,
-            int step,
-            String variable,
-            List<String> prefixOrder,
-            List<String> fullOrder,
-            double estimate,
-            double standardError,
-            long actual,
-            long prefixEstimateNanos,
-            long prefixEvalNanos,
-            long prefixTotalNanos,
-            long prefixCumulativeEstimateNanos,
-            long prefixCumulativeEvalNanos,
-            long prefixCumulativeTotalNanos,
-            double qError,
-            double relativeError,
-            double cumulativeQError,
-            double cumulativeRelativeError,
-            long finalAnswers,
-            double finalEstimate,
-            double finalStdError,
-            long parseNanos,
-            long decomposeNanos,
-            long decompEstimateNanos,
-            long wallNanos,
-            long totalNanos,
-            long queryNanos,
-            long mappingNanos,
-            long estimateNanos,
-            long joinNanos,
-            String status,
-            String errorMessage) {
-        private static final long UNKNOWN_COUNT = -1L;
-
-        private static EstimationBenchRow parseError(
-                int queryNumber,
-                DecompositionMethod method,
-                long parseNanos,
-                long wallNanos,
-                String errorMessage) {
-            return new EstimationBenchRow(
-                    queryNumber,
-                    method,
-                    -1,
-                    0,
-                    null,
-                    List.of(),
-                    List.of(),
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    0L,
-                    0L,
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    "ERROR",
-                    errorMessage);
-        }
-
-        private static EstimationBenchRow withoutCandidate(
-                int queryNumber,
-                DecompositionMethod method,
-                long parseNanos,
-                long decomposeNanos,
-                long wallNanos,
-                String status) {
-            return new EstimationBenchRow(
-                    queryNumber,
-                    method,
-                    -1,
-                    0,
-                    null,
-                    List.of(),
-                    List.of(),
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    decomposeNanos,
-                    0L,
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    status,
-                    null);
-        }
-
-        private static EstimationBenchRow timeout(
-                int queryNumber,
-                DecompositionMethod method,
-                DecompositionCandidate candidate,
-                long parseNanos,
-                long decomposeNanos,
-                long wallNanos) {
-            return new EstimationBenchRow(
-                    queryNumber,
-                    method,
-                    candidate == null ? -1 : candidate.ordinal(),
-                    0,
-                    null,
-                    List.of(),
-                    List.of(),
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    Double.NaN,
-                    Double.NaN,
-                    parseNanos,
-                    decomposeNanos,
-                    candidate == null ? 0L : candidate.selectionEstimateNanos(),
-                    wallNanos,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    "TIMEOUT",
-                    null);
-        }
-
-        private static EstimationBenchRow okWithoutSteps(
-                int queryNumber,
-                DecompositionMethod method,
-                DecompositionCandidate candidate,
-                EvaluationWithStats evaluation,
-                long parseNanos,
-                long wallNanos,
-                long totalNanos) {
-            return new EstimationBenchRow(
-                    queryNumber,
-                    method,
-                    candidate.ordinal(),
-                    0,
-                    null,
-                    List.of(),
-                    evaluation.variableOrder(),
-                    Double.NaN,
-                    Double.NaN,
-                    UNKNOWN_COUNT,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    answerCount(evaluation.result()),
-                    evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
-                    parseNanos,
-                    candidate.decomposeNanos(),
-                    candidate.selectionEstimateNanos(),
-                    wallNanos,
-                    totalNanos,
-                    evaluation.stats().queryNanos(),
-                    evaluation.stats().mappingNanos(),
-                    evaluation.stats().estimateNanos(),
-                    evaluation.stats().joinNanos(),
-                    "OK",
-                    null);
-        }
-
-        private static EstimationBenchRow okStep(
-                int queryNumber,
-                DecompositionMethod method,
-                DecompositionCandidate candidate,
-                EvaluationWithStats evaluation,
-                PrefixEstimationStep step,
-                long parseNanos,
-                long wallNanos,
-                long totalNanos) {
-            return new EstimationBenchRow(
-                    queryNumber,
-                    method,
-                    candidate.ordinal(),
-                    step.step(),
-                    step.variable(),
-                    step.prefixOrder(),
-                    evaluation.variableOrder(),
-                    step.estimate(),
-                    step.standardError(),
-                    step.actual(),
-                    step.estimateNanos(),
-                    step.evalNanos(),
-                    step.prefixNanos(),
-                    step.cumulativeEstimateNanos(),
-                    step.cumulativeEvalNanos(),
-                    step.cumulativePrefixNanos(),
-                    step.qError(),
-                    step.relativeError(),
-                    step.cumulativeQError(),
-                    step.cumulativeRelativeError(),
-                    answerCount(evaluation.result()),
-                    evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
-                    parseNanos,
-                    candidate.decomposeNanos(),
-                    candidate.selectionEstimateNanos(),
-                    wallNanos,
-                    totalNanos,
-                    evaluation.stats().queryNanos(),
-                    evaluation.stats().mappingNanos(),
-                    evaluation.stats().estimateNanos(),
-                    evaluation.stats().joinNanos(),
-                    "OK",
-                    null);
-        }
-    }
-
-    private static void emitEstimationBenchRow(
-            PrintWriter out,
-            EstimationBenchRow row) {
-        String safeVariable = row.variable() == null ? "-" : row.variable();
-        String errorSegment = row.errorMessage() == null || row.errorMessage().isBlank()
-                ? ""
-                : String.format(Locale.ROOT, " error=\"%s\"", sanitize(row.errorMessage()));
-        out.println(String.format(
-                Locale.ROOT,
-                "query=%d method=%s ord=%d step=%d variable=%s prefix_order=%s full_order=%s estimate=%.6f stderr=%.6f actual=%d prefix_estimate_ms=%.3f prefix_eval_ms=%.3f prefix_total_ms=%.3f prefix_cum_estimate_ms=%.3f prefix_cum_eval_ms=%.3f prefix_cum_total_ms=%.3f q_error=%.6f rel_error=%.6f cum_q_error=%.6f cum_rel_error=%.6f final_answers=%d final_estimate=%.6f final_stderr=%.6f parse_ms=%.3f decompose_ms=%.3f decomp_estimate_ms=%.3f wall_ms=%.3f end_to_end_ms=%.3f total_ms=%.3f query_ms=%.3f mapping_ms=%.3f estimate_ms=%.3f join_ms=%.3f status=%s%s",
-                row.queryNumber(),
-                row.method().name(),
-                row.ordinal(),
-                row.step(),
-                safeVariable,
-                formatVariableOrder(row.prefixOrder()),
-                formatVariableOrder(row.fullOrder()),
-                row.estimate(),
-                row.standardError(),
-                row.actual(),
-                nanosToMillis(row.prefixEstimateNanos()),
-                nanosToMillis(row.prefixEvalNanos()),
-                nanosToMillis(row.prefixTotalNanos()),
-                nanosToMillis(row.prefixCumulativeEstimateNanos()),
-                nanosToMillis(row.prefixCumulativeEvalNanos()),
-                nanosToMillis(row.prefixCumulativeTotalNanos()),
-                row.qError(),
-                row.relativeError(),
-                row.cumulativeQError(),
-                row.cumulativeRelativeError(),
-                row.finalAnswers(),
-                row.finalEstimate(),
-                row.finalStdError(),
-                nanosToMillis(row.parseNanos()),
-                nanosToMillis(row.decomposeNanos()),
-                nanosToMillis(row.decompEstimateNanos()),
-                nanosToMillis(row.wallNanos()),
-                nanosToMillis(row.parseNanos() + row.wallNanos()),
-                nanosToMillis(row.totalNanos()),
-                nanosToMillis(row.queryNanos()),
-                nanosToMillis(row.mappingNanos()),
-                nanosToMillis(row.estimateNanos()),
-                nanosToMillis(row.joinNanos()),
-                row.status(),
-                errorSegment));
-    }
-
-    private static String formatVariableOrder(List<String> variableOrder) {
-        if (variableOrder == null || variableOrder.isEmpty()) {
-            return "[]";
-        }
-        return "[" + String.join(",", variableOrder) + "]";
-    }
-
-    private static int edgesCollapsed(Plan decomposition) {
-        int collapsed = 0;
-        for (Component component : decomposition.components()) {
-            collapsed += Math.max(0, component.maskUnsafe().cardinality() - 1);
-        }
-        return collapsed;
+    /**
+     * Loads the fixed compare-file warmup workload and truncates it to the
+     * first configured query rows after comment/blank filtering.
+     */
+    private static List<String> loadCompareFileWarmupQueries(Path warmupSource, int warmupQueryLimit) throws Exception {
+        List<String> queries = loadQueries(warmupSource);
+        int warmupQueryCount = Math.min(Math.max(0, warmupQueryLimit), queries.size());
+        return List.copyOf(queries.subList(0, warmupQueryCount));
     }
 
     private static List<String> loadQueries(Path queriesFile) throws Exception {
@@ -1502,12 +1058,13 @@ final class BenchEngine {
         return new PrintWriter(writer, true);
     }
 
-    private static String sanitize(String text) {
-        return text.replace('\"', '\'');
-    }
-
-    private static double nanosToMillis(long nanos) {
-        return nanos / 1_000_000.0d;
+    private static long deadlineFromStart(long startedNanos, int timeoutMs) {
+        if (timeoutMs <= 0) {
+            return Long.MAX_VALUE;
+        }
+        long timeoutNanos = timeoutMs * 1_000_000L;
+        long deadlineNanos = startedNanos + timeoutNanos;
+        return deadlineNanos < 0L ? Long.MAX_VALUE : deadlineNanos;
     }
 
     private static QueryRunConfig normalizeRunConfig(
@@ -1531,18 +1088,29 @@ final class BenchEngine {
     }
 
     /**
-     * Runs the profile workflow on the default decomposition.
+     * Runs the profile workflow on one explicit decomposition method.
      */
     public BenchTypes.ProfileReport profile(BenchTypes.ProfileSpec spec) {
         Objects.requireNonNull(spec, "spec");
         ConjunctiveQuery cq = parseCQ(spec.queryText());
-        Plan decomposition = decompose(cq);
+        QueryRunConfig runConfig = normalizeRunConfig(
+                spec.k(),
+                spec.coverLimit(),
+                spec.timeoutMs(),
+                spec.timeoutMs(),
+                index.k());
         try {
-            OrderProfileSummary summary = profileOrders(
-                    decomposition,
+            MethodDeadlines deadlines = MethodDeadlines.fromRunConfig(runConfig);
+            PreparedCandidate candidate = requirePreparedCandidateForMethod(
+                    cq,
+                    spec.method(),
+                    runConfig,
+                    deadlines);
+            OrderProfileSummary summary = estimatorDiagnostics.profileOrders(
+                    candidate.executable(),
                     Math.max(0, spec.profileOrders()),
                     spec.seed(),
-                    Deadline.afterMillis(Math.max(0, spec.profileTimeoutMs())));
+                    deadlines.methodDeadlineNanos());
             return new BenchTypes.ProfileReport(summary.profiles().size(), false);
         } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
             return new BenchTypes.ProfileReport(0, true);
@@ -1550,18 +1118,27 @@ final class BenchEngine {
     }
 
     /**
-     * Runs the estimate workflow on the default decomposition.
+     * Runs the estimate workflow on one explicit decomposition method.
      */
     public BenchTypes.EstimateReport estimate(BenchTypes.EstimateSpec spec) {
         Objects.requireNonNull(spec, "spec");
         ConjunctiveQuery cq = parseCQ(spec.queryText());
-        Plan decomposition = decompose(cq);
+        QueryRunConfig runConfig = normalizeRunConfig(
+                spec.k(),
+                spec.coverLimit(),
+                spec.timeoutMs(),
+                spec.timeoutMs(),
+                index.k());
         try {
-            CardinalityEstimate estimate = estimateCount(
-                    decomposition,
-                    Math.max(1, spec.walks()),
-                    spec.seed(),
-                    Deadline.afterMillis(Math.max(0, spec.methodTimeoutMs())));
+            MethodDeadlines deadlines = MethodDeadlines.fromRunConfig(runConfig);
+            PreparedCandidate candidate = requirePreparedCandidateForMethod(
+                    cq,
+                    spec.method(),
+                    runConfig,
+                    deadlines);
+            CardinalityEstimate estimate = estimatorDiagnostics.estimateCount(
+                    candidate.executable(),
+                    deadlines.methodDeadlineNanos());
             return new BenchTypes.EstimateReport(
                     estimate.estimatedCount(),
                     estimate.standardError(),
@@ -1569,23 +1146,6 @@ final class BenchEngine {
         } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
             return new BenchTypes.EstimateReport(Double.NaN, Double.NaN, true);
         }
-    }
-
-    Plan decompose(ConjunctiveQuery cq) {
-        Objects.requireNonNull(cq, "cq");
-        if (!config.defaultDecomposeUseBest()) {
-            return planner.decompose(cq);
-        }
-
-        List<DecompositionCandidate> candidates = selectBestCandidates(
-                cq,
-                config.defaultDecomposeCoverLimit(),
-                index.k(),
-                0);
-        if (candidates.isEmpty()) {
-            return planner.decompose(cq);
-        }
-        return pickBestDefaultCandidate(candidates).decomposition();
     }
 
     List<DecompositionCandidate> decomposeAll(ConjunctiveQuery cq, int coverLimit) {
@@ -1689,12 +1249,12 @@ final class BenchEngine {
     }
 
     /**
-     * Selects one indexable decomposition candidate per method by estimating
-     * each candidate with the same Wander Join budget.
+     * Selects one indexable decomposition candidate per method by reranking
+     * candidates with the shared projected-count scorer when enabled.
      *
-     * @param cq         Query to decompose.
+     * @param cq Query to decompose.
      * @param coverLimit Maximum number of exact covers to consider per method.
-     * @param k          Maximum CPQ diameter to allow when decomposing.
+     * @param k Maximum CPQ diameter to allow when decomposing.
      * @return Selected candidates, one per method when available.
      */
     List<DecompositionCandidate> selectBestCandidates(
@@ -1717,13 +1277,31 @@ final class BenchEngine {
             int coverLimit,
             int k,
             int decompositionTimeoutMs) {
-        Planner.Selection planned = planner.planAll(cq, coverLimit, k, decompositionTimeoutMs);
-        List<DecompositionCandidate> allCandidates = toBenchCandidates(planned.candidates());
-        List<DecompositionCandidate> selected = pickBestByMethodWithEstimation(allCandidates);
+        return selectBestCandidatesWithTimeoutInfo(
+                cq,
+                coverLimit,
+                k,
+                decompositionTimeoutMs,
+                decompositionTimeoutMs);
+    }
+
+    CandidateSelection selectBestCandidatesWithTimeoutInfo(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs,
+            int methodTimeoutMs) {
+        Planner.SelectedSelection selected = planner.selectBestCandidates(
+                cq,
+                coverLimit,
+                k,
+                decompositionTimeoutMs,
+                methodTimeoutMs,
+                NATIVE_SELECTION);
         return new CandidateSelection(
-                selected,
-                Set.copyOf(planned.timedOutMethods()),
-                Map.copyOf(planned.decompositionNanosByMethod()));
+                toBenchSelectedCandidates(selected.candidates()),
+                Set.copyOf(selected.timedOutMethods()),
+                Map.copyOf(selected.decompositionNanosByMethod()));
     }
 
     private PreparedCandidateSelection selectBestPreparedCandidatesWithTimeoutInfo(
@@ -1733,12 +1311,14 @@ final class BenchEngine {
             int decompositionTimeoutMs,
             long deadlineNanos) {
         Planner.Selection planned = planner.planAll(cq, coverLimit, k, decompositionTimeoutMs);
-        List<DecompositionCandidate> allCandidates = toBenchCandidates(planned.candidates());
-        List<PreparedCandidate> selected = pickBestPreparedByMethodWithEstimation(allCandidates, deadlineNanos);
+        Planner.SelectedSelection selected = planner.selectBestCandidates(
+                planned,
+                NATIVE_SELECTION,
+                deadlineNanos);
         return new PreparedCandidateSelection(
-                selected,
-                Set.copyOf(planned.timedOutMethods()),
-                Map.copyOf(planned.decompositionNanosByMethod()));
+                prepareCandidates(toBenchSelectedCandidates(selected.candidates()), deadlineNanos),
+                Set.copyOf(selected.timedOutMethods()),
+                Map.copyOf(selected.decompositionNanosByMethod()));
     }
 
     private record ParsedQuery(
@@ -1764,7 +1344,21 @@ final class BenchEngine {
             int coverLimit,
             int k,
             int decompositionTimeoutMs) {
-        CandidateSelection selection = selectBestCandidatesWithTimeoutInfo(cq, coverLimit, k, decompositionTimeoutMs);
+        return prepareComparisonCandidates(cq, coverLimit, k, decompositionTimeoutMs, decompositionTimeoutMs);
+    }
+
+    ComparisonCandidates prepareComparisonCandidates(
+            ConjunctiveQuery cq,
+            int coverLimit,
+            int k,
+            int decompositionTimeoutMs,
+            int methodTimeoutMs) {
+        CandidateSelection selection = selectBestCandidatesWithTimeoutInfo(
+                cq,
+                coverLimit,
+                k,
+                decompositionTimeoutMs,
+                methodTimeoutMs);
         EnumSet<DecompositionMethod> emittedMethods = EnumSet.noneOf(DecompositionMethod.class);
         for (DecompositionCandidate candidate : selection.candidates()) {
             emittedMethods.add(candidate.method());
@@ -1822,293 +1416,25 @@ final class BenchEngine {
             ExecutablePlan executable) {
     }
 
-    private record CandidateContext(
-            PreparedCandidate candidate,
-            List<String> projected) {
-    }
-
-    private record CandidateEstimate(double conservativeCount) {
-    }
-
-    private record CandidateCost(long totalCost, int components, int maxDiameter) {
-    }
-
-    private record OrderEstimate(
-            List<String> order,
-            double conservativeCount,
-            double estimatedCount,
-            double standardError) {
-    }
-
-    private record PrefixEstimationStep(
-            int step,
-            String variable,
-            List<String> prefixOrder,
-            double estimate,
-            double standardError,
-            long actual,
-            long estimateNanos,
-            long evalNanos,
-            long prefixNanos,
-            long cumulativeEstimateNanos,
-            long cumulativeEvalNanos,
-            long cumulativePrefixNanos,
-            double qError,
-            double relativeError,
-            double cumulativeQError,
-            double cumulativeRelativeError) {
+    private List<PreparedCandidate> prepareCandidates(
+            List<DecompositionCandidate> candidates,
+            long deadlineNanos) {
+        List<PreparedCandidate> prepared = new ArrayList<>(candidates.size());
+        for (DecompositionCandidate candidate : candidates) {
+            prepared.add(prepareCandidate(candidate, deadlineNanos));
+        }
+        return List.copyOf(prepared);
     }
 
     private record EstimationBenchEvaluation(
             EvaluationWithStats evaluation,
-            List<PrefixEstimationStep> steps) {
+            List<EstimatorDiagnostics.PrefixEstimationStep> steps) {
     }
 
     private record PreparedCandidateSelection(
             List<PreparedCandidate> candidates,
             Set<DecompositionMethod> timedOutMethods,
             Map<DecompositionMethod, Long> decompositionNanosByMethod) {
-    }
-
-    private List<DecompositionCandidate> pickBestByMethodWithEstimation(List<DecompositionCandidate> candidates) {
-        Map<DecompositionMethod, List<DecompositionCandidate>> byMethod = new EnumMap<>(DecompositionMethod.class);
-        for (DecompositionCandidate candidate : candidates) {
-            byMethod.computeIfAbsent(candidate.method(), ignored -> new java.util.ArrayList<>()).add(candidate);
-        }
-
-        List<DecompositionCandidate> selected = new java.util.ArrayList<>(byMethod.size());
-        for (List<DecompositionCandidate> methodCandidates : byMethod.values()) {
-            selected.add(pickBestCandidate(
-                    methodCandidates,
-                    config.defaultDecomposeSelectionWalks(),
-                    config.defaultDecomposeSelectionRandomOrders(),
-                    1));
-        }
-        return selected;
-    }
-
-    private List<PreparedCandidate> pickBestPreparedByMethodWithEstimation(
-            List<DecompositionCandidate> candidates,
-            long deadlineNanos) {
-        Map<DecompositionMethod, List<DecompositionCandidate>> byMethod = new EnumMap<>(DecompositionMethod.class);
-        for (DecompositionCandidate candidate : candidates) {
-            byMethod.computeIfAbsent(candidate.method(), ignored -> new java.util.ArrayList<>()).add(candidate);
-        }
-
-        List<PreparedCandidate> selected = new java.util.ArrayList<>(byMethod.size());
-        for (List<DecompositionCandidate> methodCandidates : byMethod.values()) {
-            selected.add(pickBestPreparedCandidate(
-                    methodCandidates,
-                    config.defaultDecomposeSelectionWalks(),
-                    config.defaultDecomposeSelectionRandomOrders(),
-                    1,
-                    deadlineNanos));
-        }
-        return List.copyOf(selected);
-    }
-
-    private DecompositionCandidate pickBestDefaultCandidate(List<DecompositionCandidate> candidates) {
-        return pickBestCandidate(
-                candidates,
-                config.defaultDecomposeSelectionWalks(),
-                config.defaultDecomposeSelectionRandomOrders(),
-                2);
-    }
-
-    private DecompositionCandidate pickBestCandidate(
-            List<DecompositionCandidate> candidates,
-            int walks,
-            int randomOrders,
-            int phase) {
-        if (walks < 1) {
-            return pickHeuristicCandidate(candidates);
-        }
-        return pickBestEstimatedCandidate(candidates, walks, randomOrders, phase);
-    }
-
-    private PreparedCandidate pickBestPreparedCandidate(
-            List<DecompositionCandidate> candidates,
-            int walks,
-            int randomOrders,
-            int phase,
-            long deadlineNanos) {
-        if (candidates.isEmpty()) {
-            throw new IllegalArgumentException("candidates must not be empty");
-        }
-        if (walks < 1 || candidates.size() == 1) {
-            return prepareCandidate(pickHeuristicCandidate(candidates), deadlineNanos);
-        }
-        return pickBestPreparedEstimatedCandidate(candidates, walks, randomOrders, phase, deadlineNanos);
-    }
-
-    private DecompositionCandidate pickBestEstimatedCandidate(
-            List<DecompositionCandidate> candidates,
-            int walks,
-            int randomOrders,
-            int phase) {
-        if (candidates.isEmpty()) {
-            throw new IllegalArgumentException("candidates must not be empty");
-        }
-        if (candidates.size() == 1) {
-            return candidates.get(0).withSelectionEstimateNanos(0L);
-        }
-
-        long selectionEstimateStart = System.nanoTime();
-        List<CandidateContext> contexts = new java.util.ArrayList<>(candidates.size());
-        for (DecompositionCandidate candidate : candidates) {
-            PreparedCandidate prepared = prepareCandidate(candidate, Long.MAX_VALUE);
-            List<String> projected = prepared.executable().plan().projectedVariableNames();
-            contexts.add(new CandidateContext(prepared, projected));
-        }
-
-        DecompositionCandidate best = null;
-        CandidateEstimate bestEstimate = null;
-        for (int i = 0; i < contexts.size(); i++) {
-            CandidateContext context = contexts.get(i);
-            CandidateEstimate estimate = estimateCandidate(context, walks, randomOrders, phase, i, Long.MAX_VALUE);
-            if (best == null) {
-                best = context.candidate().candidate();
-                bestEstimate = estimate;
-                continue;
-            }
-            int cmp = compareCandidateEstimate(estimate, bestEstimate);
-            if (cmp < 0 || (cmp == 0 && compareCandidateIdentity(context.candidate().candidate(), best) < 0)) {
-                best = context.candidate().candidate();
-                bestEstimate = estimate;
-            }
-        }
-        long selectionEstimateNanos = System.nanoTime() - selectionEstimateStart;
-        return best.withSelectionEstimateNanos(selectionEstimateNanos);
-    }
-
-    private PreparedCandidate pickBestPreparedEstimatedCandidate(
-            List<DecompositionCandidate> candidates,
-            int walks,
-            int randomOrders,
-            int phase,
-            long deadlineNanos) {
-        long selectionEstimateStart = System.nanoTime();
-        List<CandidateContext> contexts = new java.util.ArrayList<>(candidates.size());
-        for (DecompositionCandidate candidate : candidates) {
-            PreparedCandidate prepared = prepareCandidate(candidate, deadlineNanos);
-            List<String> projected = prepared.executable().plan().projectedVariableNames();
-            contexts.add(new CandidateContext(prepared, projected));
-        }
-
-        CandidateContext best = null;
-        CandidateEstimate bestEstimate = null;
-        for (int i = 0; i < contexts.size(); i++) {
-            CandidateContext context = contexts.get(i);
-            CandidateEstimate estimate = estimateCandidate(context, walks, randomOrders, phase, i, deadlineNanos);
-            if (best == null) {
-                best = context;
-                bestEstimate = estimate;
-                continue;
-            }
-            int cmp = compareCandidateEstimate(estimate, bestEstimate);
-            if (cmp < 0 || (cmp == 0 && compareCandidateIdentity(context.candidate().candidate(), best.candidate().candidate()) < 0)) {
-                best = context;
-                bestEstimate = estimate;
-            }
-        }
-
-        long selectionEstimateNanos = System.nanoTime() - selectionEstimateStart;
-        DecompositionCandidate selected = best.candidate().candidate().withSelectionEstimateNanos(selectionEstimateNanos);
-        return new PreparedCandidate(selected, best.candidate().executable());
-    }
-
-    /**
-     * Keeps the method-native heuristic order when CE-based reranking is disabled.
-     * Candidate ordinals are assigned in generation order inside each method.
-     */
-    private DecompositionCandidate pickHeuristicCandidate(List<DecompositionCandidate> candidates) {
-        if (candidates.isEmpty()) {
-            throw new IllegalArgumentException("candidates must not be empty");
-        }
-        DecompositionCandidate best = candidates.get(0);
-        for (int i = 1; i < candidates.size(); i++) {
-            DecompositionCandidate candidate = candidates.get(i);
-            if (compareCandidateIdentity(candidate, best) < 0) {
-                best = candidate;
-            }
-        }
-        return best.withSelectionEstimateNanos(0L);
-    }
-
-    private CandidateEstimate estimateCandidate(
-            CandidateContext context,
-            int walks,
-            int randomOrders,
-            int phase,
-            int position,
-            long deadlineNanos) {
-        if (context.candidate().executable().isEmpty()) {
-            return new CandidateEstimate(0.0);
-        }
-
-        long seed = mixSeed(
-                config.estimationSeed(),
-                context.candidate().candidate().method().ordinal(),
-                context.candidate().candidate().ordinal(),
-                phase,
-                position);
-        OrderEstimate orderEstimate = joinOrderSelector.estimateBestJoinOrder(
-                context.candidate().candidate().decomposition(),
-                context.candidate().executable().plan().components(),
-                context.candidate().executable().componentCounts(),
-                context.candidate().executable().relations(),
-                context.projected(),
-                walks,
-                randomOrders,
-                seed,
-                deadlineNanos);
-        return new CandidateEstimate(orderEstimate.conservativeCount());
-    }
-
-    private static int compareCandidateEstimate(CandidateEstimate left, CandidateEstimate right) {
-        return Double.compare(left.conservativeCount(), right.conservativeCount());
-    }
-
-    private CandidateCost candidateCost(Plan decomposition) {
-        long totalCost = 0L;
-        for (Component component : decomposition.components()) {
-            totalCost = safeAddCost(totalCost, normalizeCost(index.cost(component.cpq())));
-        }
-        return new CandidateCost(totalCost, decomposition.size(), decomposition.maxDiameter());
-    }
-
-    private static int compareCandidateCost(CandidateCost left, CandidateCost right) {
-        int cmp = Long.compare(left.totalCost(), right.totalCost());
-        if (cmp != 0) {
-            return cmp;
-        }
-        cmp = Integer.compare(left.components(), right.components());
-        if (cmp != 0) {
-            return cmp;
-        }
-        return Integer.compare(left.maxDiameter(), right.maxDiameter());
-    }
-
-    private static long normalizeCost(long rawCost) {
-        return rawCost < 0L ? 0L : rawCost;
-    }
-
-    private static long safeAddCost(long left, long right) {
-        if (left >= Long.MAX_VALUE || right >= Long.MAX_VALUE) {
-            return Long.MAX_VALUE;
-        }
-        if (left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
-    }
-
-    private static int compareCandidateIdentity(DecompositionCandidate left, DecompositionCandidate right) {
-        int cmp = Integer.compare(left.method().ordinal(), right.method().ordinal());
-        if (cmp != 0) {
-            return cmp;
-        }
-        return Integer.compare(left.ordinal(), right.ordinal());
     }
 
     private static EvaluationResult emptyResult(EvaluationMode mode) {
@@ -2151,34 +1477,14 @@ final class BenchEngine {
             return emptyWithStats(mode, stats);
         }
 
-        List<Component> components = executable.plan().components();
-        List<Long> resultCounts = executable.componentCounts();
-        int orderWalks = config.orderEstimationWalks();
-        List<String> order;
-        double estimatedCount = Double.NaN;
-        double estimateStdError = Double.NaN;
-        if (orderWalks > 0) {
-            int randomOrders = config.orderEstimationRandomOrders();
-            List<Relation> relations = executable.relations();
-            List<String> projected = executable.plan().projectedVariableNames();
-            long estimateStart = System.nanoTime();
-            OrderEstimate orderEstimate = joinOrderSelector.estimateBestJoinOrder(
-                    executable.plan(),
-                    components,
-                    resultCounts,
-                    relations,
-                    projected,
-                    orderWalks,
-                    randomOrders,
-                    config.estimationSeed(),
-                    deadlineNanos);
-            stats.addEstimateNanos(System.nanoTime() - estimateStart);
-            order = orderEstimate.order();
-            estimatedCount = orderEstimate.estimatedCount();
-            estimateStdError = orderEstimate.standardError();
-        } else {
-            order = orderByComponentCounts(components, resultCounts);
-        }
+        Planner.JoinOrderPlan orderPlan = planner.selectJoinOrder(
+                executable,
+                false,
+                deadlineNanos);
+        stats.addEstimateNanos(orderPlan.estimateNanos());
+        List<String> order = orderPlan.order();
+        double estimatedCount = orderPlan.estimatedCount();
+        double estimateStdError = orderPlan.estimateStdError();
         Deadline.check(deadlineNanos);
         long joinStart = System.nanoTime();
         EvaluationResult result = switch (mode) {
@@ -2188,7 +1494,7 @@ final class BenchEngine {
                         LeapfrogJoin.JoinMode.PROJECTED_ROWS,
                         config.joinSafeDistinctFastPath(),
                         deadlineNanos);
-                yield new RowResult(rows.rows());
+                yield RowResult.fromRows(rows.rows(), deadlineNanos);
             }
             case COUNT -> {
                 LeapfrogJoin.JoinResult.Count count = (LeapfrogJoin.JoinResult.Count) executable.join(
@@ -2205,539 +1511,28 @@ final class BenchEngine {
 
     private EstimationBenchEvaluation evaluateForEstimationBench(
             PreparedCandidate candidate,
-            int walks,
             long deadlineNanos) {
         EvaluationWithStats evaluation = evaluateWithStats(candidate.executable(), EvaluationMode.COUNT, deadlineNanos);
         if (evaluation.result() instanceof CountResult count && count.count() <= 0L) {
             return new EstimationBenchEvaluation(evaluation, List.of());
         }
-        List<PrefixEstimationStep> steps = tracePrefixEstimationSteps(
-                candidate,
+        List<EstimatorDiagnostics.PrefixEstimationStep> steps = estimatorDiagnostics.tracePrefixEstimationSteps(
+                candidate.executable(),
                 evaluation.variableOrder(),
-                Math.max(1, walks),
                 deadlineNanos);
         return new EstimationBenchEvaluation(evaluation, steps);
     }
 
-    private List<PrefixEstimationStep> tracePrefixEstimationSteps(
-            PreparedCandidate candidate,
-            List<String> variableOrder,
-            int walks) {
-        return tracePrefixEstimationSteps(candidate, variableOrder, walks, Long.MAX_VALUE);
-    }
-
-    private List<PrefixEstimationStep> tracePrefixEstimationSteps(
-            PreparedCandidate candidate,
-            List<String> variableOrder,
-            int walks,
-            long deadlineNanos) {
-        if (variableOrder.isEmpty()) {
-            return List.of();
-        }
-        ExecutablePlan executable = candidate.executable();
-        if (executable.isEmpty()) {
-            return List.of();
-        }
-
-        List<Relation> relations = executable.relations();
-        List<PrefixEstimationStep> steps = new ArrayList<>(variableOrder.size());
-        long seedBase = mixSeed(
-                config.estimationSeed(),
-                candidate.candidate().method().ordinal(),
-                candidate.candidate().ordinal(),
-                walks,
-                variableOrder.hashCode());
-        List<WanderJoinEstimator.PrefixEstimate> prefixEstimates = estimatePrefixProjectedCounts(
-                relations,
-                variableOrder,
-                walks,
-                seedBase,
-                deadlineNanos);
-        long cumulativeEstimateNanos = 0L;
-        long cumulativeEvalNanos = 0L;
-        long cumulativePrefixNanos = 0L;
-        double cumulativeQ = 0.0D;
-        double cumulativeRelative = 0.0D;
-        for (int i = 0; i < variableOrder.size(); i++) {
-            Deadline.check(deadlineNanos);
-            List<String> prefix = List.copyOf(variableOrder.subList(0, i + 1));
-            WanderJoinEstimator.PrefixEstimate prefixEstimate = prefixEstimates.get(i);
-            long estimateNanos = prefixEstimate.estimateNanos();
-            long actualStart = System.nanoTime();
-            long actual = evalProjectedCount(relations, variableOrder, prefix, deadlineNanos);
-            long evalNanos = System.nanoTime() - actualStart;
-            long prefixNanos = estimateNanos + evalNanos;
-            cumulativeEstimateNanos += estimateNanos;
-            cumulativeEvalNanos += evalNanos;
-            cumulativePrefixNanos += prefixNanos;
-            double qError = qError(prefixEstimate.estimatedCount(), actual);
-            double relativeError = relativeError(prefixEstimate.estimatedCount(), actual);
-            cumulativeQ += qError;
-            cumulativeRelative += relativeError;
-            double stepCount = i + 1.0D;
-            steps.add(new PrefixEstimationStep(
-                    i + 1,
-                    variableOrder.get(i),
-                    prefix,
-                    prefixEstimate.estimatedCount(),
-                    prefixEstimate.standardError(),
-                    actual,
-                    estimateNanos,
-                    evalNanos,
-                    prefixNanos,
-                    cumulativeEstimateNanos,
-                    cumulativeEvalNanos,
-                    cumulativePrefixNanos,
-                    qError,
-                    relativeError,
-                    cumulativeQ / stepCount,
-                    cumulativeRelative / stepCount));
-        }
-        return List.copyOf(steps);
-    }
-
-    /**
-     * Computes prefix estimates under a fixed absolute estimation budget.
-     * WanderJoin uses one shared trial budget across all prefixes; deterministic
-     * estimators are evaluated per-prefix.
-     */
-    private List<WanderJoinEstimator.PrefixEstimate> estimatePrefixProjectedCounts(
-            List<Relation> relations,
-            List<String> variableOrder,
-            int walks,
-            long seedBase,
-            long deadlineNanos) {
-        if (config.estimatorType() == EngineConfig.EstimatorType.WANDERJOIN) {
-            return WanderJoinEstimator.estimateProjectedCountPrefixes(
-                    relations,
-                    variableOrder,
-                    walks,
-                    seedBase,
-                    config.wanderJoinRequireExtension(),
-                    deadlineNanos);
-        }
-
-        List<WanderJoinEstimator.PrefixEstimate> estimates = new ArrayList<>(variableOrder.size());
-        for (int i = 0; i < variableOrder.size(); i++) {
-            Deadline.check(deadlineNanos);
-            List<String> prefix = List.copyOf(variableOrder.subList(0, i + 1));
-            long seed = mixSeed(seedBase, i + 1, prefix.hashCode());
-            long estimateStart = System.nanoTime();
-            WanderJoinEstimator.Estimate estimate = estimateProjectedCount(
-                    relations,
-                    variableOrder,
-                    prefix,
-                    walks,
-                    seed,
-                    deadlineNanos);
-            long estimateNanos = System.nanoTime() - estimateStart;
-            estimates.add(new WanderJoinEstimator.PrefixEstimate(
-                    estimate.estimatedCount(),
-                    estimate.standardError(),
-                    estimateNanos));
-        }
-        return List.copyOf(estimates);
-    }
-
-    private long evalProjectedCount(
-            List<Relation> relations,
-            List<String> variableOrder,
-            List<String> projected,
-            long deadlineNanos) {
-        LeapfrogJoin.JoinResult.Count count = (LeapfrogJoin.JoinResult.Count) LeapfrogJoin.join(
-                relations,
-                variableOrder,
-                projected,
-                LeapfrogJoin.JoinMode.PROJECTED_COUNT,
-                config.joinSafeDistinctFastPath(),
-                deadlineNanos);
-        return count.count();
-    }
-
-    private static double qError(double estimate, long actual) {
-        double smoothedEstimate = Math.max(1.0D, estimate);
-        double smoothedActual = Math.max(1.0D, (double) actual);
-        return Math.max(smoothedEstimate / smoothedActual, smoothedActual / smoothedEstimate);
-    }
-
-    private static double relativeError(double estimate, long actual) {
-        return Math.abs(Math.max(0.0D, estimate) - Math.max(0L, actual)) / Math.max(1.0D, actual);
-    }
-
-    CardinalityEstimate estimateCount(Plan decomposition, int walks) {
-        return estimateCount(decomposition, walks, 0xC0FFEE);
-    }
-
-    /**
-     * Estimates projected answer cardinality for a prepared decomposition
-     * candidate using a stable candidate-derived seed.
-     *
-     * @param candidate Candidate to estimate.
-     * @param walks     Number of random walks to run.
-     * @return Estimate with standard error and phase timings.
-     */
-    CardinalityEstimate estimateCandidateCount(DecompositionCandidate candidate, int walks) {
-        Objects.requireNonNull(candidate, "candidate");
-        return estimateCount(candidate.decomposition(), walks, candidateSeed(candidate));
-    }
-
-    /**
-     * Estimates projected answer cardinality via configured estimator.
-     *
-     * @param decomposition Decomposition to estimate.
-     * @param walks         Number of random walks to run.
-     * @param seed          Random seed for reproducibility.
-     * @return Estimate with standard error and phase timings.
-     */
-    CardinalityEstimate estimateCount(Plan decomposition, int walks, long seed) {
-        return estimateCount(decomposition, walks, seed, Long.MAX_VALUE);
-    }
-
-    CardinalityEstimate estimateCount(Plan decomposition, int walks, long seed, long deadlineNanos) {
+    CardinalityEstimate estimateCount(Plan decomposition, long deadlineNanos) {
         Objects.requireNonNull(decomposition, "decomposition");
-        if (walks < 1) {
-            throw new IllegalArgumentException("walks must be >= 1");
-        }
-
         ExecutablePlan executable = ExecutablePlan.compile(decomposition, index, deadlineNanos);
-        EvaluationStats stats = fromCompilationStats(executable.compilationStats());
-        if (executable.isEmpty()) {
-            return new CardinalityEstimate(0.0, 0.0, walks, seed, stats.queryNanos(), stats.mappingNanos(), 0L);
-        }
-
-        List<Component> components = executable.plan().components();
-        List<Long> resultCounts = executable.componentCounts();
-        List<String> order = orderByComponentCounts(components, resultCounts);
-        List<String> projected = decomposition.projectedVariableNames();
-        List<Relation> relations = executable.relations();
-
-        Deadline.check(deadlineNanos);
-        long estimateStart = System.nanoTime();
-        WanderJoinEstimator.Estimate estimate = estimateProjectedCount(relations, order, projected, walks, seed, deadlineNanos);
-        long estimateNanos = System.nanoTime() - estimateStart;
-
-        return new CardinalityEstimate(
-                estimate.estimatedCount(),
-                estimate.standardError(),
-                walks,
-                seed,
-                stats.queryNanos(),
-                stats.mappingNanos(),
-                estimateNanos);
-    }
-
-    OrderProfileSummary profileOrders(Plan decomposition, int randomOrders, long seed) {
-        return profileOrders(decomposition, randomOrders, seed, Long.MAX_VALUE);
+        return estimatorDiagnostics.estimateCount(executable, deadlineNanos);
     }
 
     OrderProfileSummary profileOrders(Plan decomposition, int randomOrders, long seed, long deadlineNanos) {
         Objects.requireNonNull(decomposition, "decomposition");
-        if (randomOrders < 0) {
-            throw new IllegalArgumentException("randomOrders must be >= 0");
-        }
-
         ExecutablePlan executable = ExecutablePlan.compile(decomposition, index, deadlineNanos);
-        EvaluationStats stats = fromCompilationStats(executable.compilationStats());
-        if (executable.isEmpty()) {
-            return new OrderProfileSummary(stats.queryNanos(), stats.mappingNanos(), List.of());
-        }
-
-        List<Component> components = executable.plan().components();
-        List<Long> resultCounts = executable.componentCounts();
-        List<String> defaultOrder = orderByComponentCounts(components, resultCounts);
-
-        List<List<String>> orders = joinOrderSelector.sampleOrders(defaultOrder, randomOrders, seed);
-
-        List<OrderProfile> profiles = new java.util.ArrayList<>(orders.size());
-        for (List<String> order : orders) {
-            Deadline.check(deadlineNanos);
-            long start = System.nanoTime();
-            LeapfrogJoin.JoinResult.Count count = (LeapfrogJoin.JoinResult.Count) executable.join(
-                    order,
-                    LeapfrogJoin.JoinMode.PROJECTED_COUNT,
-                    config.joinSafeDistinctFastPath(),
-                    deadlineNanos);
-            long joinNanos = System.nanoTime() - start;
-            profiles.add(new OrderProfile(order, joinNanos, count.count()));
-        }
-
-        return new OrderProfileSummary(stats.queryNanos(), stats.mappingNanos(), profiles);
-    }
-
-    /**
-     * Profiles join orders for a prepared decomposition candidate using a
-     * stable candidate-derived seed.
-     *
-     * @param candidate    Candidate to profile.
-     * @param randomOrders Number of random orders to sample.
-     * @return Order profile summary.
-     */
-    OrderProfileSummary profileCandidateOrders(DecompositionCandidate candidate, int randomOrders) {
-        Objects.requireNonNull(candidate, "candidate");
-        return profileOrders(candidate.decomposition(), randomOrders, candidateSeed(candidate));
-    }
-
-    private final class JoinOrderSelector {
-        List<List<String>> sampleOrders(List<String> baseOrder, int randomOrders, long seed) {
-            List<List<String>> orders = new java.util.ArrayList<>();
-            List<String> frozenBase = List.copyOf(baseOrder);
-            orders.add(frozenBase);
-            if (randomOrders <= 0 || baseOrder.size() <= 1) {
-                return orders;
-            }
-            java.util.Random random = new java.util.Random(seed);
-            java.util.Set<List<String>> seen = new java.util.HashSet<>();
-            seen.add(frozenBase);
-
-            int attempts = 0;
-            int targetSize = 1 + randomOrders;
-            while (orders.size() < targetSize && attempts < randomOrders * 50) {
-                List<String> shuffled = new java.util.ArrayList<>(baseOrder);
-                java.util.Collections.shuffle(shuffled, random);
-                if (seen.add(shuffled)) {
-                    orders.add(shuffled);
-                }
-                attempts++;
-            }
-            return orders;
-        }
-
-        OrderEstimate estimateBestJoinOrder(
-                Plan decomposition,
-                List<Component> components,
-                List<Long> resultCounts,
-                List<Relation> relations,
-                List<String> projected,
-                int walks,
-                int randomOrders,
-                long seed,
-                long deadlineNanos) {
-            if (walks < 1) {
-                throw new IllegalArgumentException("walks must be >= 1");
-            }
-            List<String> defaultOrder = orderByComponentCounts(components, resultCounts);
-            if (defaultOrder.isEmpty()) {
-                return new OrderEstimate(defaultOrder, 0.0, 0.0, 0.0);
-            }
-
-            List<String> estimateProjected = projected.isEmpty() ? defaultOrder : projected;
-            long orderSeed = mixSeed(
-                    seedForDecomposition(decomposition),
-                    (int) seed,
-                    (int) (seed >>> 32),
-                    walks,
-                    randomOrders);
-            List<List<String>> orders = sampleOrders(defaultOrder, randomOrders, orderSeed);
-
-            List<String> bestOrder = defaultOrder;
-            double bestScore = Double.POSITIVE_INFINITY;
-            int bestProjectionDepth = projectedDepth(defaultOrder, projected);
-            double bestEstimatedCount = Double.NaN;
-            double bestStandardError = Double.NaN;
-            for (int i = 0; i < orders.size(); i++) {
-                Deadline.check(deadlineNanos);
-                List<String> order = orders.get(i);
-                long walkSeed = mixSeed(orderSeed, i, order.hashCode(), walks);
-                WanderJoinEstimator.Estimate estimate = estimateProjectedCount(
-                        relations,
-                        order,
-                        estimateProjected,
-                        walks,
-                        walkSeed,
-                        deadlineNanos);
-                double score = conservativeEstimate(estimate.estimatedCount());
-                int projectionDepth = projectedDepth(order, projected);
-                if (score < bestScore
-                        || (score == bestScore && projectionDepth < bestProjectionDepth)
-                || (score == bestScore
-                                && projectionDepth == bestProjectionDepth
-                                && compareOrders(order, bestOrder) < 0)) {
-                    bestScore = score;
-                    bestProjectionDepth = projectionDepth;
-                    bestOrder = order;
-                    bestEstimatedCount = estimate.estimatedCount();
-                    bestStandardError = estimate.standardError();
-                }
-            }
-            return new OrderEstimate(bestOrder, bestScore, bestEstimatedCount, bestStandardError);
-        }
-
-        private int projectedDepth(List<String> order, List<String> projected) {
-            if (projected.isEmpty()) {
-                return order.size();
-            }
-            int depth = -1;
-            for (String projectedVariable : projected) {
-                int index = order.indexOf(projectedVariable);
-                if (index > depth) {
-                    depth = index;
-                }
-            }
-            return depth < 0 ? order.size() : depth;
-        }
-
-        private int compareOrders(List<String> left, List<String> right) {
-            int size = Math.min(left.size(), right.size());
-            for (int i = 0; i < size; i++) {
-                int cmp = left.get(i).compareTo(right.get(i));
-                if (cmp != 0) {
-                    return cmp;
-                }
-            }
-            return Integer.compare(left.size(), right.size());
-        }
-    }
-
-    private WanderJoinEstimator.Estimate estimateProjectedCount(
-            List<Relation> relations,
-            List<String> variableOrder,
-            List<String> projected,
-            int walks,
-            long seed,
-            long deadlineNanos) {
-        return switch (config.estimatorType()) {
-            case WANDERJOIN -> WanderJoinEstimator.estimateProjectedCount(
-                    relations,
-                    variableOrder,
-                    projected,
-                    walks,
-                    seed,
-                    config.wanderJoinRequireExtension(),
-                    deadlineNanos);
-            case SYSTEM_R -> estimateProjectedCountSystemR(relations, variableOrder, projected, deadlineNanos);
-        };
-    }
-
-    private WanderJoinEstimator.Estimate estimateProjectedCountSystemR(
-            List<Relation> relations,
-            List<String> variableOrder,
-            List<String> projected,
-            long deadlineNanos) {
-        if (relations.isEmpty()) {
-            return new WanderJoinEstimator.Estimate(0.0, 0.0);
-        }
-
-        List<String> normalizedOrder = normalizeOrder(variableOrder, relations);
-        java.util.Set<Relation> included = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-        java.util.Set<String> bound = new java.util.HashSet<>();
-        Map<String, Double> ndv = new HashMap<>();
-
-        double outputCardinality = 1.0D;
-        boolean initialized = false;
-        for (String variable : normalizedOrder) {
-            Deadline.check(deadlineNanos);
-            bound.add(variable);
-            for (Relation relation : relations) {
-                Deadline.check(deadlineNanos);
-                if (included.contains(relation)) {
-                    continue;
-                }
-                List<String> variables = relation.variables();
-                if (!bound.containsAll(variables)) {
-                    continue;
-                }
-
-                double relationCardinality = normalizeCardinality(relation.tupleCount());
-                if (!initialized) {
-                    outputCardinality = relationCardinality;
-                    initialized = true;
-                } else {
-                    double selectivity = 1.0D;
-                    boolean joined = false;
-                    for (String joinVar : variables) {
-                        Double left = ndv.get(joinVar);
-                        if (left == null || left <= 0.0D) {
-                            continue;
-                        }
-                        double right = normalizeCardinality(relation.ndv(joinVar));
-                        if (right <= 0.0D) {
-                            continue;
-                        }
-                        joined = true;
-                        selectivity /= Math.max(left, right);
-                    }
-                    outputCardinality *= relationCardinality;
-                    if (joined) {
-                        outputCardinality *= selectivity;
-                    }
-                    outputCardinality = normalizeCardinality(outputCardinality);
-                }
-
-                for (String relationVar : variables) {
-                    double relationNdv = normalizeCardinality(relation.ndv(relationVar));
-                    Double current = ndv.get(relationVar);
-                    if (current == null) {
-                        ndv.put(relationVar, Math.min(relationNdv, outputCardinality));
-                    } else {
-                        ndv.put(relationVar, Math.min(Math.min(current, relationNdv), outputCardinality));
-                    }
-                }
-                included.add(relation);
-            }
-        }
-
-        for (Relation relation : relations) {
-            if (included.contains(relation)) {
-                continue;
-            }
-            double relationCardinality = normalizeCardinality(relation.tupleCount());
-            outputCardinality = normalizeCardinality(outputCardinality * relationCardinality);
-            for (String variable : relation.variables()) {
-                double relationNdv = normalizeCardinality(relation.ndv(variable));
-                Double current = ndv.get(variable);
-                if (current == null) {
-                    ndv.put(variable, Math.min(relationNdv, outputCardinality));
-                } else {
-                    ndv.put(variable, Math.min(Math.min(current, relationNdv), outputCardinality));
-                }
-            }
-        }
-
-        if (!initialized) {
-            return new WanderJoinEstimator.Estimate(0.0, 0.0);
-        }
-
-        double projectedCardinality = outputCardinality;
-        if (!projected.isEmpty()) {
-            double projectedNdvProduct = 1.0D;
-            for (String variable : projected) {
-                Double value = ndv.get(variable);
-                if (value == null) {
-                    continue;
-                }
-                projectedNdvProduct = safeMultiply(projectedNdvProduct, value);
-            }
-            projectedCardinality = Math.min(projectedCardinality, projectedNdvProduct);
-        }
-        return new WanderJoinEstimator.Estimate(normalizeCardinality(projectedCardinality), 0.0);
-    }
-
-    private static List<String> normalizeOrder(List<String> variableOrder, List<Relation> relations) {
-        java.util.LinkedHashSet<String> variables = new java.util.LinkedHashSet<>(variableOrder);
-        for (Relation relation : relations) {
-            variables.addAll(relation.variables());
-        }
-        return List.copyOf(variables);
-    }
-
-    private static double safeMultiply(double left, double right) {
-        if (!Double.isFinite(left) || !Double.isFinite(right)) {
-            return Double.POSITIVE_INFINITY;
-        }
-        if (left <= 0.0D || right <= 0.0D) {
-            return 0.0D;
-        }
-        if (left > Double.MAX_VALUE / right) {
-            return Double.POSITIVE_INFINITY;
-        }
-        return left * right;
-    }
-
-    private static double normalizeCardinality(double cardinality) {
-        if (!Double.isFinite(cardinality)) {
-            return Double.POSITIVE_INFINITY;
-        }
-        return Math.max(1.0D, cardinality);
+        return estimatorDiagnostics.profileOrders(executable, randomOrders, seed, deadlineNanos);
     }
 
     private double conservativeEstimate(double estimatedCount) {
@@ -2745,54 +1540,4 @@ final class BenchEngine {
         return Double.isFinite(clampedCount) ? clampedCount : Double.POSITIVE_INFINITY;
     }
 
-    private long seedForDecomposition(Plan decomposition) {
-        long seed = mixSeed(config.estimationSeed(), decomposition.size(), decomposition.maxDiameter());
-        for (Component component : decomposition.components()) {
-            seed = mixSeed(
-                    seed,
-                    component.s().getName().hashCode(),
-                    component.t().getName().hashCode(),
-                    component.normalized().hashCode(),
-                    component.mask().hashCode());
-        }
-        return seed;
-    }
-
-    private static long mixSeed(long seed, int... values) {
-        long mixed = seed;
-        for (int value : values) {
-            mixed ^= value + 0x9E3779B97F4A7C15L + (mixed << 6) + (mixed >>> 2);
-        }
-        return mixed;
-    }
-
-    private static long candidateSeed(DecompositionCandidate candidate) {
-        long method = candidate.method().ordinal();
-        long ordinal = candidate.ordinal();
-        return 0xC0FFEE ^ (method * 0x9E3779B97F4A7C15L) ^ (ordinal * 0xD6E8FEB86659FD93L);
-    }
-
-    private static List<String> orderByComponentCounts(List<Component> components, List<Long> resultCounts) {
-        Map<String, Long> minCountByVar = new HashMap<>();
-        Map<String, Integer> participationByVar = new HashMap<>();
-        for (int i = 0; i < components.size(); i++) {
-            long count = resultCounts.get(i);
-            Component component = components.get(i);
-            String left = component.sourceVarName();
-            String right = component.targetVarName();
-            minCountByVar.merge(left, count, Math::min);
-            participationByVar.merge(left, 1, Integer::sum);
-            if (!left.equals(right)) {
-                minCountByVar.merge(right, count, Math::min);
-                participationByVar.merge(right, 1, Integer::sum);
-            }
-        }
-        return minCountByVar.keySet().stream()
-                .sorted(Comparator
-                        .comparingInt((String v) -> participationByVar.getOrDefault(v, 0))
-                        .reversed()
-                        .thenComparingLong((String v) -> minCountByVar.getOrDefault(v, Long.MAX_VALUE))
-                        .thenComparing(Comparator.naturalOrder()))
-                .toList();
-    }
 }
