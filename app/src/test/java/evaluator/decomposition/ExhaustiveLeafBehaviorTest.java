@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.roanh.gmark.lang.cq.CQ;
+import dev.roanh.gmark.lang.cpq.CPQ;
 import evaluator.cpq.ConjunctiveQuery;
 import evaluator.cpq.Plan;
+import evaluator.cpq.Plan.Component;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -49,10 +52,40 @@ class ExhaustiveLeafBehaviorTest {
         assertTrue(plans.stream().allMatch(plan -> componentSizes(plan).equals(List.of(4))));
     }
 
+    @Test
+    void precomputedTerminalLeafFilterMatchesLegacyCheck() {
+        assertPrecomputedMatchesLegacy(PATH_FOUR_EDGES, cpq -> cpq.getDiameter() <= 2, 2);
+        assertPrecomputedMatchesLegacy(
+                "(x0,x1) \u2190 0(x0,gen0), 1(gen0,x1), 2(x0,gen1), 3(gen1,x1)",
+                cpq -> cpq.getDiameter() <= 2,
+                2);
+    }
+
     private static List<Integer> componentSizes(Plan plan) {
         return plan.components().stream()
                 .map(component -> component.maskUnsafe().cardinality())
                 .sorted()
                 .toList();
+    }
+
+    private static void assertPrecomputedMatchesLegacy(
+            String queryText,
+            java.util.function.Predicate<CPQ> componentFilter,
+            int k) {
+        ConjunctiveQuery query = ConjunctiveQuery.parse(queryText);
+        List<Component> components = new ExhaustiveComponentEnumerator(k, componentFilter, Long.MAX_VALUE)
+                .enumerate(query);
+        java.util.function.Predicate<Plan> precomputed = TerminalLeafFilter.precomputed(
+                components,
+                query.freeVariables(),
+                componentFilter);
+        List<Plan> covers = new ArrayList<>(new CoverSelector(0, CoverSelector.Order.COST, cpq -> 0L)
+                .select(query, components)
+                .toList());
+
+        covers.add(query.decomposeSingleEdge());
+        assertTrue(covers.stream().allMatch(plan -> precomputed.test(plan) == TerminalLeafFilter.isTerminalLeaf(
+                plan,
+                componentFilter)));
     }
 }

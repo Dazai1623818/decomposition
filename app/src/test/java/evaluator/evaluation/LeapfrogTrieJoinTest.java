@@ -78,6 +78,30 @@ class LeapfrogTrieJoinTest {
     }
 
     @Test
+    void projectedExistsStopsAtFirstDistinctProjectedAnswer() {
+        Relation r1 = relation("?x", "?y", new int[][] { { 1, 2 }, { 1, 3 }, { 2, 3 } });
+        Relation r2 = relation("?y", "?z", new int[][] { { 2, 5 }, { 3, 6 } });
+
+        List<Relation> relations = List.of(r1, r2);
+        List<String> order = List.of("?x", "?y", "?z");
+        List<String> projected = List.of("?x", "?z");
+
+        JoinResult.Count existsResult = (JoinResult.Count) LeapfrogJoin.join(
+                relations,
+                order,
+                projected,
+                JoinMode.PROJECTED_EXISTS);
+        JoinResult.Count countResult = (JoinResult.Count) LeapfrogJoin.join(
+                relations,
+                order,
+                projected,
+                JoinMode.PROJECTED_COUNT);
+
+        assertEquals(1L, existsResult.count());
+        assertTrue(countResult.count() > existsResult.count());
+    }
+
+    @Test
     void projectedEmptyVarsReturnsEmptyEvenWhenExtensionsExist() {
         Relation relation = Relation.unary("?x", "u", new int[] { 1 });
 

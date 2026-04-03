@@ -3,6 +3,7 @@ package evaluator.cli;
 import evaluator.bench.BenchRunner;
 import evaluator.bench.BenchTypes;
 import evaluator.bench.EngineConfig;
+import evaluator.bench.MemoryDiagnostics;
 import evaluator.evaluation.DecompositionMethod;
 import evaluator.index.NativeCpqIndex;
 import java.io.BufferedReader;
@@ -50,15 +51,25 @@ public final class Main {
     }
 
     private static void run(ParsedArgs args) throws Exception {
+        MemoryDiagnostics.ProcessSnapshot beforeLoad = MemoryDiagnostics.captureSnapshot();
+        long indexLoadStartedNanos = System.nanoTime();
         NativeCpqIndex index = NativeCpqIndex.load(args.indexPath());
+        long indexLoadNanos = System.nanoTime() - indexLoadStartedNanos;
+        MemoryDiagnostics.ProcessSnapshot afterLoad = MemoryDiagnostics.captureSnapshot();
+        MemoryDiagnostics.IndexLoadStats indexLoadStats = MemoryDiagnostics.completeIndexLoad(
+                args.indexPath(),
+                index,
+                indexLoadNanos,
+                beforeLoad,
+                afterLoad);
         if (args.command() == Command.COMPARE_FILE_WORKER) {
-            runCompareFileWorker(index, args);
+            runCompareFileWorker(index, args, indexLoadStats);
             return;
         }
         EngineConfig runConfig = SYSTEM_CONFIG
                 .withEstimationSeed(args.seed())
                 .withSystemRMaxCandidateOrders(args.joinOrderBudget());
-        BenchRunner runner = new BenchRunner(index, runConfig);
+        BenchRunner runner = new BenchRunner(index, runConfig, indexLoadStats);
 
         switch (args.command()) {
             case EVAL_FILE -> runEvalFile(runner, args);
@@ -253,7 +264,10 @@ public final class Main {
                 status));
     }
 
-    private static void runCompareFileWorker(NativeCpqIndex index, ParsedArgs args) throws Exception {
+    private static void runCompareFileWorker(
+            NativeCpqIndex index,
+            ParsedArgs args,
+            MemoryDiagnostics.IndexLoadStats indexLoadStats) throws Exception {
         WorkerRunnerState runnerState = null;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
             String line;
@@ -267,7 +281,7 @@ public final class Main {
                 }
 
                 WorkerJob job = WorkerJob.load(Path.of(command));
-                runnerState = ensureWorkerRunner(index, job, runnerState);
+                runnerState = ensureWorkerRunner(index, job, runnerState, indexLoadStats);
                 runWorkerJob(runnerState.runner(), job);
                 System.out.println("DONE");
                 System.out.flush();
@@ -278,7 +292,8 @@ public final class Main {
     private static WorkerRunnerState ensureWorkerRunner(
             NativeCpqIndex index,
             WorkerJob job,
-            WorkerRunnerState current) {
+            WorkerRunnerState current,
+            MemoryDiagnostics.IndexLoadStats indexLoadStats) {
         if (current != null
                 && Objects.equals(current.methodsProperty(), job.methodsProperty())
                 && current.seed() == job.seed()
@@ -298,7 +313,7 @@ public final class Main {
                 job.methodsProperty(),
                 job.seed(),
                 job.joinOrderBudget(),
-                new BenchRunner(index, runConfig));
+                new BenchRunner(index, runConfig, indexLoadStats));
     }
 
     private static void runWorkerJob(BenchRunner runner, WorkerJob job) throws Exception {
@@ -414,9 +429,8 @@ public final class Main {
         String status = report.timedOut() ? "TIMEOUT" : "OK";
         System.out.println(String.format(
                 Locale.ROOT,
-                "command=estimate estimate=%.6f stderr=%.6f status=%s",
+                "command=estimate estimate=%.6f status=%s",
                 report.estimate(),
-                report.standardError(),
                 status));
         if (args.outputDir() != null) {
             writeEstimateOutputs(args.outputDir(), report);
@@ -505,9 +519,8 @@ public final class Main {
                 outputDir.resolve("estimate.jsonl"),
                 String.format(
                         Locale.ROOT,
-                        "{\"estimate\":%.6f,\"standard_error\":%.6f,\"status\":\"%s\"}%n",
+                        "{\"estimate\":%.6f,\"status\":\"%s\"}%n",
                         report.estimate(),
-                        report.standardError(),
                         report.timedOut() ? "TIMEOUT" : "OK"),
                 StandardCharsets.UTF_8);
     }

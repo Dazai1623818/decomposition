@@ -1,5 +1,7 @@
 package evaluator.index;
 
+import dev.roanh.cpqindex.CanonForm;
+import dev.roanh.cpqindex.CanonForm.CoreHash;
 import dev.roanh.cpqindex.Index;
 import dev.roanh.cpqindex.Main;
 import dev.roanh.cpqindex.Pair;
@@ -8,7 +10,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,7 +33,7 @@ public final class NativeCpqIndex implements CpqIndex {
 
     private NativeCpqIndex(Index index, int k, int maxIntersections) {
         this.index = Objects.requireNonNull(index, "index");
-        this.stats = new EntryStats();
+        this.stats = new EntryStats(index);
         this.k = k;
         this.maxIntersections = maxIntersections;
     }
@@ -82,15 +87,9 @@ public final class NativeCpqIndex implements CpqIndex {
     }
 
     @Override
-    public ComponentStats componentStats(CPQ cpq) {
-        Objects.requireNonNull(cpq, "cpq");
-        return stats.componentStats(index, cpq);
-    }
-
-    @Override
     public RelationSynopsis componentSynopsis(CPQ cpq) {
         Objects.requireNonNull(cpq, "cpq");
-        return stats.componentSynopsis(index, cpq);
+        return stats.componentSynopsis(cpq);
     }
 
     /**
@@ -105,31 +104,84 @@ public final class NativeCpqIndex implements CpqIndex {
     }
 
     private static final class EntryStats {
-        private final ConcurrentHashMap<String, ComponentStats> componentStatsByQuery = new ConcurrentHashMap<>();
-        private final ConcurrentHashMap<String, RelationSynopsis> componentSynopsisByQuery = new ConcurrentHashMap<>();
+        private final Map<CoreHash, RelationSynopsis> synopsisByCore;
+        private final ConcurrentHashMap<String, CoreHash> coreHashByQuery = new ConcurrentHashMap<>();
 
-        private ComponentStats componentStats(Index index, CPQ cpq) {
-            return componentStatsByQuery.computeIfAbsent(cpq.toString(), ignored -> aggregate(index.query(cpq)));
+        private EntryStats(Index index) {
+            Objects.requireNonNull(index, "index");
+            Map<CoreHash, RelationSynopsis> synopses = new HashMap<>();
+
+            for (CoreHash core : index.getCoreHashes()) {
+                synopses.put(core, aggregate(index.getBlocksForCoreHash(core)));
+            }
+
+            synopsisByCore = Map.copyOf(synopses);
         }
 
-        private RelationSynopsis componentSynopsis(Index index, CPQ cpq) {
-            return componentSynopsisByQuery.computeIfAbsent(
+        private RelationSynopsis componentSynopsis(CPQ cpq) {
+            return synopsisByCore.getOrDefault(coreHash(cpq), RelationSynopsis.empty());
+        }
+
+        private CoreHash coreHash(CPQ cpq) {
+            return coreHashByQuery.computeIfAbsent(
                     cpq.toString(),
-                    ignored -> componentStats(index, cpq).toSynopsis());
+                    ignored -> CanonForm.computeCanon(cpq, false).toHashCanon());
         }
 
-        private ComponentStats aggregate(List<Pair> pairs) {
-            if (pairs.isEmpty()) {
-                return ComponentStats.empty();
+        private static RelationSynopsis aggregate(List<Index.Block> blocks) {
+            Objects.requireNonNull(blocks, "blocks");
+            if (blocks.isEmpty()) {
+                return RelationSynopsis.empty();
             }
-            int[] sources = new int[pairs.size()];
-            int[] targets = new int[pairs.size()];
-            for (int i = 0; i < pairs.size(); i++) {
-                Pair pair = pairs.get(i);
-                sources[i] = pair.getSource();
-                targets[i] = pair.getTarget();
+
+            int totalPairs = 0;
+            for (Index.Block block : blocks) {
+                totalPairs = Math.addExact(totalPairs, block.getPathCount());
             }
-            return new ComponentStats(pairs.size(), sources, targets);
+
+            int[] sources = new int[totalPairs];
+            int[] targets = new int[totalPairs];
+            int offset = 0;
+            for (Index.Block block : blocks) {
+                for (Pair pair : block.getPaths()) {
+                    sources[offset] = pair.getSource();
+                    targets[offset] = pair.getTarget();
+                    offset++;
+                }
+            }
+            int[] distinctSources = distinctValues(sources);
+            int[] distinctTargets = distinctValues(targets);
+            if (distinctSources.length == 0 || distinctTargets.length == 0) {
+                return RelationSynopsis.empty();
+            }
+
+            long tupleCount = totalPairs;
+            return new RelationSynopsis(
+                    tupleCount,
+                    endpointSummary(tupleCount, distinctSources.length),
+                    endpointSummary(tupleCount, distinctTargets.length));
         }
+
+        private static CpqIndex.EndpointSummary endpointSummary(long tupleCount, int distinctCount) {
+            if (tupleCount <= 0L || distinctCount <= 0) {
+                return CpqIndex.EndpointSummary.empty();
+            }
+            return new CpqIndex.EndpointSummary(distinctCount, (double) tupleCount / (double) distinctCount);
+        }
+
+        private static int[] distinctValues(int[] values) {
+            if (values.length == 0) {
+                return values;
+            }
+            Arrays.sort(values);
+            int unique = 1;
+            for (int i = 1; i < values.length; i++) {
+                if (values[i] != values[unique - 1]) {
+                    values[unique++] = values[i];
+                }
+            }
+            return Arrays.copyOf(values, unique);
+        }
+
     }
 }

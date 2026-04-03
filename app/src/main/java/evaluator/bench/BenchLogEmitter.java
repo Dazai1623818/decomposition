@@ -38,6 +38,7 @@ final class BenchLogEmitter {
     static void printCompareFileHeader(
             PrintWriter out,
             CompareFileSpec spec,
+            MemoryDiagnostics.IndexLoadStats indexLoadStats,
             int totalQueries,
             int warmupQueryCount,
             String warmupSource,
@@ -66,6 +67,7 @@ final class BenchLogEmitter {
         out.println("selection_seed=" + estimationSeed);
         out.println("series_parallel_seed=" + estimationSeed);
         out.println("estimation_seed=" + estimationSeed);
+        printIndexLoadDiagnostics(out, indexLoadStats);
         out.println("command=" + command);
         out.flush();
     }
@@ -73,6 +75,7 @@ final class BenchLogEmitter {
     static void printEstimationBenchHeader(
             PrintWriter out,
             EstimationBenchSpec spec,
+            MemoryDiagnostics.IndexLoadStats indexLoadStats,
             int totalQueries,
             int warmupQueries,
             int methodTimeoutMs,
@@ -98,9 +101,10 @@ final class BenchLogEmitter {
         out.println("selection_seed=" + estimationSeed);
         out.println("series_parallel_seed=" + estimationSeed);
         out.println("estimation_seed=" + estimationSeed);
+        printIndexLoadDiagnostics(out, indexLoadStats);
         out.println("command=" + command);
         out.println(
-                "# columns: query method ord step variable prefix_order full_order estimate stderr actual prefix_estimate_ms prefix_eval_ms prefix_total_ms prefix_cum_estimate_ms prefix_cum_eval_ms prefix_cum_total_ms q_error rel_error cum_q_error cum_rel_error final_answers final_estimate final_stderr parse_ms planning_ms planning_selection_ms method_wall_ms end_to_end_ms execution_ms index_lookup_ms mapping_ms join_order_ms join_ms status [error]");
+                "# columns: query method ord step variable prefix_order full_order estimate actual prefix_estimate_ms prefix_eval_ms prefix_total_ms prefix_cum_estimate_ms prefix_cum_eval_ms prefix_cum_total_ms q_error rel_error cum_q_error cum_rel_error final_answers final_estimate parse_ms planning_ms planning_selection_ms method_wall_ms end_to_end_ms execution_ms index_lookup_ms mapping_ms join_order_ms join_ms eval_heap_before_bytes eval_heap_after_bytes eval_heap_peak_bytes eval_non_heap_peak_bytes eval_rss_before_bytes eval_rss_after_bytes process_rss_peak_bytes status [error]");
         out.flush();
     }
 
@@ -124,7 +128,7 @@ final class BenchLogEmitter {
                 : String.format(Locale.ROOT, " error=\"%s\"", sanitize(row.errorMessage()));
         out.println(String.format(
                 Locale.ROOT,
-                "query=%d method=%s ord=%d var_order=%s comps=%d max_diam=%d edges_collapsed=%d answers=%d estimate=%.6f stderr=%.6f parse_ms=%.3f planning_ms=%.3f planning_selection_ms=%.3f method_wall_ms=%.3f end_to_end_ms=%.3f execution_ms=%.3f index_lookup_ms=%.3f mapping_ms=%.3f join_order_ms=%.3f join_ms=%.3f status=%s%s",
+                "query=%d method=%s ord=%d var_order=%s comps=%d max_diam=%d edges_collapsed=%d answers=%d estimate=%.6f parse_ms=%.3f planning_ms=%.3f planning_selection_ms=%.3f method_wall_ms=%.3f end_to_end_ms=%.3f execution_ms=%.3f index_lookup_ms=%.3f mapping_ms=%.3f join_order_ms=%.3f join_ms=%.3f eval_heap_before_bytes=%d eval_heap_after_bytes=%d eval_heap_peak_bytes=%d eval_non_heap_peak_bytes=%d eval_rss_before_bytes=%d eval_rss_after_bytes=%d process_rss_peak_bytes=%d status=%s%s",
                 row.queryNumber(),
                 row.method().name(),
                 row.ordinal(),
@@ -134,7 +138,6 @@ final class BenchLogEmitter {
                 row.edgesCollapsed(),
                 row.answers(),
                 row.estimatedCount(),
-                row.estimateStdError(),
                 nanosToMillis(row.timings().parseNanos()),
                 nanosToMillis(row.timings().planningNanos()),
                 nanosToMillis(row.timings().planningSelectionNanos()),
@@ -145,6 +148,13 @@ final class BenchLogEmitter {
                 nanosToMillis(row.timings().mappingNanos()),
                 nanosToMillis(row.timings().joinOrderNanos()),
                 nanosToMillis(row.timings().joinNanos()),
+                row.timings().evalHeapBeforeBytes(),
+                row.timings().evalHeapAfterBytes(),
+                row.timings().evalHeapPeakBytes(),
+                row.timings().evalNonHeapPeakBytes(),
+                row.timings().evalRssBeforeBytes(),
+                row.timings().evalRssAfterBytes(),
+                row.timings().processRssPeakBytes(),
                 row.status(),
                 errorSegment));
     }
@@ -158,7 +168,7 @@ final class BenchLogEmitter {
                 : String.format(Locale.ROOT, " error=\"%s\"", sanitize(row.errorMessage()));
         out.println(String.format(
                 Locale.ROOT,
-                "query=%d method=%s ord=%d step=%d variable=%s prefix_order=%s full_order=%s estimate=%.6f stderr=%.6f actual=%d prefix_estimate_ms=%.3f prefix_eval_ms=%.3f prefix_total_ms=%.3f prefix_cum_estimate_ms=%.3f prefix_cum_eval_ms=%.3f prefix_cum_total_ms=%.3f q_error=%.6f rel_error=%.6f cum_q_error=%.6f cum_rel_error=%.6f final_answers=%d final_estimate=%.6f final_stderr=%.6f parse_ms=%.3f planning_ms=%.3f planning_selection_ms=%.3f method_wall_ms=%.3f end_to_end_ms=%.3f execution_ms=%.3f index_lookup_ms=%.3f mapping_ms=%.3f join_order_ms=%.3f join_ms=%.3f status=%s%s",
+                "query=%d method=%s ord=%d step=%d variable=%s prefix_order=%s full_order=%s estimate=%.6f actual=%d prefix_estimate_ms=%.3f prefix_eval_ms=%.3f prefix_total_ms=%.3f prefix_cum_estimate_ms=%.3f prefix_cum_eval_ms=%.3f prefix_cum_total_ms=%.3f q_error=%.6f rel_error=%.6f cum_q_error=%.6f cum_rel_error=%.6f final_answers=%d final_estimate=%.6f parse_ms=%.3f planning_ms=%.3f planning_selection_ms=%.3f method_wall_ms=%.3f end_to_end_ms=%.3f execution_ms=%.3f index_lookup_ms=%.3f mapping_ms=%.3f join_order_ms=%.3f join_ms=%.3f eval_heap_before_bytes=%d eval_heap_after_bytes=%d eval_heap_peak_bytes=%d eval_non_heap_peak_bytes=%d eval_rss_before_bytes=%d eval_rss_after_bytes=%d process_rss_peak_bytes=%d status=%s%s",
                 row.queryNumber(),
                 row.method().name(),
                 row.ordinal(),
@@ -167,7 +177,6 @@ final class BenchLogEmitter {
                 formatVariableOrder(row.prefixOrder()),
                 formatVariableOrder(row.fullOrder()),
                 row.estimate(),
-                row.standardError(),
                 row.actual(),
                 nanosToMillis(row.prefixEstimateNanos()),
                 nanosToMillis(row.prefixEvalNanos()),
@@ -181,7 +190,6 @@ final class BenchLogEmitter {
                 row.cumulativeRelativeError(),
                 row.finalAnswers(),
                 row.finalEstimate(),
-                row.finalStdError(),
                 nanosToMillis(row.timings().parseNanos()),
                 nanosToMillis(row.timings().planningNanos()),
                 nanosToMillis(row.timings().planningSelectionNanos()),
@@ -192,8 +200,41 @@ final class BenchLogEmitter {
                 nanosToMillis(row.timings().mappingNanos()),
                 nanosToMillis(row.timings().joinOrderNanos()),
                 nanosToMillis(row.timings().joinNanos()),
+                row.timings().evalHeapBeforeBytes(),
+                row.timings().evalHeapAfterBytes(),
+                row.timings().evalHeapPeakBytes(),
+                row.timings().evalNonHeapPeakBytes(),
+                row.timings().evalRssBeforeBytes(),
+                row.timings().evalRssAfterBytes(),
+                row.timings().processRssPeakBytes(),
                 row.status(),
                 errorSegment));
+    }
+
+    private static void printIndexLoadDiagnostics(PrintWriter out, MemoryDiagnostics.IndexLoadStats stats) {
+        out.println("index_file_bytes=" + stats.indexFileBytes());
+        out.println("index_k_loaded=" + stats.indexK());
+        out.println("index_intersections_loaded=" + stats.indexIntersections());
+        out.println("index_load_ms=" + nanosToMillis(stats.loadNanos()));
+        printMemorySnapshot(out, "index_load_before", stats.beforeLoad());
+        printMemorySnapshot(out, "index_load_after", stats.afterLoad());
+        out.println("index_load_heap_delta_bytes=" + MemoryDiagnostics.deltaBytes(
+                stats.beforeLoad().heapUsedBytes(),
+                stats.afterLoad().heapUsedBytes()));
+        out.println("index_load_rss_delta_bytes=" + MemoryDiagnostics.deltaBytes(
+                stats.beforeLoad().rssBytes(),
+                stats.afterLoad().rssBytes()));
+    }
+
+    private static void printMemorySnapshot(PrintWriter out, String prefix, MemoryDiagnostics.ProcessSnapshot snapshot) {
+        out.println(prefix + "_heap_used_bytes=" + snapshot.heapUsedBytes());
+        out.println(prefix + "_heap_committed_bytes=" + snapshot.heapCommittedBytes());
+        out.println(prefix + "_heap_max_bytes=" + snapshot.heapMaxBytes());
+        out.println(prefix + "_non_heap_used_bytes=" + snapshot.nonHeapUsedBytes());
+        out.println(prefix + "_non_heap_committed_bytes=" + snapshot.nonHeapCommittedBytes());
+        out.println(prefix + "_non_heap_max_bytes=" + snapshot.nonHeapMaxBytes());
+        out.println(prefix + "_rss_bytes=" + snapshot.rssBytes());
+        out.println(prefix + "_process_rss_peak_bytes=" + snapshot.rssHighWaterMarkBytes());
     }
 
     static double nanosToMillis(long nanos) {
@@ -244,9 +285,32 @@ final class BenchLogEmitter {
             long indexLookupNanos,
             long mappingNanos,
             long joinOrderNanos,
-            long joinNanos) {
+            long joinNanos,
+            long evalHeapBeforeBytes,
+            long evalHeapAfterBytes,
+            long evalHeapPeakBytes,
+            long evalNonHeapPeakBytes,
+            long evalRssBeforeBytes,
+            long evalRssAfterBytes,
+            long processRssPeakBytes) {
         static MethodPhaseBreakdown parseFailure(long parseNanos, long methodWallNanos) {
-            return new MethodPhaseBreakdown(parseNanos, 0L, 0L, methodWallNanos, 0L, 0L, 0L, 0L, 0L);
+            return new MethodPhaseBreakdown(
+                    parseNanos,
+                    0L,
+                    0L,
+                    methodWallNanos,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L);
         }
 
         static MethodPhaseBreakdown planningOnly(
@@ -263,7 +327,14 @@ final class BenchLogEmitter {
                     0L,
                     0L,
                     0L,
-                    0L);
+                    0L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L,
+                    -1L);
         }
 
         static MethodPhaseBreakdown success(
@@ -271,7 +342,8 @@ final class BenchLogEmitter {
                 long planningNanos,
                 long planningSelectionNanos,
                 long methodWallNanos,
-                EvaluationWithStats evaluation) {
+                EvaluationWithStats evaluation,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             long indexLookupNanos = evaluation.stats().queryNanos();
             long mappingNanos = evaluation.stats().mappingNanos();
             long joinOrderNanos = evaluation.stats().estimateNanos();
@@ -285,7 +357,39 @@ final class BenchLogEmitter {
                     indexLookupNanos,
                     mappingNanos,
                     joinOrderNanos,
-                    joinNanos);
+                    joinNanos,
+                    memoryUsage.before().heapUsedBytes(),
+                    memoryUsage.after().heapUsedBytes(),
+                    memoryUsage.heapPeakBytes(),
+                    memoryUsage.nonHeapPeakBytes(),
+                    memoryUsage.before().rssBytes(),
+                    memoryUsage.after().rssBytes(),
+                    memoryUsage.after().rssHighWaterMarkBytes());
+        }
+
+        static MethodPhaseBreakdown timeout(
+                long parseNanos,
+                long planningNanos,
+                long planningSelectionNanos,
+                long methodWallNanos,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
+            return new MethodPhaseBreakdown(
+                    parseNanos,
+                    planningNanos,
+                    planningSelectionNanos,
+                    methodWallNanos,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    memoryUsage.before().heapUsedBytes(),
+                    memoryUsage.after().heapUsedBytes(),
+                    memoryUsage.heapPeakBytes(),
+                    memoryUsage.nonHeapPeakBytes(),
+                    memoryUsage.before().rssBytes(),
+                    memoryUsage.after().rssBytes(),
+                    memoryUsage.after().rssHighWaterMarkBytes());
         }
 
         long endToEndNanos() {
@@ -302,7 +406,6 @@ final class BenchLogEmitter {
             int edgesCollapsed,
             long answers,
             double estimatedCount,
-            double estimateStdError,
             MethodPhaseBreakdown timings,
             List<String> variableOrder,
             String status,
@@ -323,7 +426,6 @@ final class BenchLogEmitter {
                     0,
                     0,
                     UNKNOWN_ANSWER_COUNT,
-                    Double.NaN,
                     Double.NaN,
                     MethodPhaseBreakdown.parseFailure(parseNanos, wallNanos),
                     List.of(),
@@ -347,7 +449,6 @@ final class BenchLogEmitter {
                     0,
                     UNKNOWN_ANSWER_COUNT,
                     Double.NaN,
-                    Double.NaN,
                     MethodPhaseBreakdown.planningOnly(parseNanos, decomposeNanos, 0L, wallNanos),
                     List.of(),
                     status,
@@ -360,7 +461,8 @@ final class BenchLogEmitter {
                 DecompositionCandidate candidate,
                 long parseNanos,
                 long decomposeNanos,
-                long wallNanos) {
+                long wallNanos,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             return new CompareFileRow(
                     queryNumber,
                     method,
@@ -370,12 +472,12 @@ final class BenchLogEmitter {
                     candidate == null ? 0 : BenchLogEmitter.edgesCollapsed(candidate.decomposition()),
                     UNKNOWN_ANSWER_COUNT,
                     Double.NaN,
-                    Double.NaN,
-                    MethodPhaseBreakdown.planningOnly(
+                    MethodPhaseBreakdown.timeout(
                             parseNanos,
                             decomposeNanos,
                             candidate == null ? 0L : candidate.selectionEstimateNanos(),
-                            wallNanos),
+                            wallNanos,
+                            memoryUsage),
                     List.of(),
                     "EXEC_TIMEOUT",
                     null);
@@ -387,7 +489,8 @@ final class BenchLogEmitter {
                 DecompositionCandidate candidate,
                 long parseNanos,
                 long wallNanos,
-                EvaluationWithStats evaluation) {
+                EvaluationWithStats evaluation,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             return new CompareFileRow(
                     queryNumber,
                     method,
@@ -397,13 +500,13 @@ final class BenchLogEmitter {
                     BenchLogEmitter.edgesCollapsed(candidate.decomposition()),
                     answerCount(evaluation.result()),
                     evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
                     MethodPhaseBreakdown.success(
                             parseNanos,
                             candidate.decomposeNanos(),
                             candidate.selectionEstimateNanos(),
                             wallNanos,
-                            evaluation),
+                            evaluation,
+                            memoryUsage),
                     evaluation.variableOrder(),
                     "OK",
                     null);
@@ -419,7 +522,6 @@ final class BenchLogEmitter {
             List<String> prefixOrder,
             List<String> fullOrder,
             double estimate,
-            double standardError,
             long actual,
             long prefixEstimateNanos,
             long prefixEvalNanos,
@@ -433,7 +535,6 @@ final class BenchLogEmitter {
             double cumulativeRelativeError,
             long finalAnswers,
             double finalEstimate,
-            double finalStdError,
             MethodPhaseBreakdown timings,
             String status,
             String errorMessage) {
@@ -454,7 +555,6 @@ final class BenchLogEmitter {
                     List.of(),
                     List.of(),
                     Double.NaN,
-                    Double.NaN,
                     UNKNOWN_COUNT,
                     0L,
                     0L,
@@ -467,7 +567,6 @@ final class BenchLogEmitter {
                     Double.NaN,
                     Double.NaN,
                     UNKNOWN_COUNT,
-                    Double.NaN,
                     Double.NaN,
                     MethodPhaseBreakdown.parseFailure(parseNanos, wallNanos),
                     "ERROR",
@@ -490,7 +589,6 @@ final class BenchLogEmitter {
                     List.of(),
                     List.of(),
                     Double.NaN,
-                    Double.NaN,
                     UNKNOWN_COUNT,
                     0L,
                     0L,
@@ -503,7 +601,6 @@ final class BenchLogEmitter {
                     Double.NaN,
                     Double.NaN,
                     UNKNOWN_COUNT,
-                    Double.NaN,
                     Double.NaN,
                     MethodPhaseBreakdown.planningOnly(parseNanos, decomposeNanos, 0L, wallNanos),
                     status,
@@ -516,7 +613,8 @@ final class BenchLogEmitter {
                 DecompositionCandidate candidate,
                 long parseNanos,
                 long decomposeNanos,
-                long wallNanos) {
+                long wallNanos,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             return new EstimationBenchRow(
                     queryNumber,
                     method,
@@ -526,7 +624,6 @@ final class BenchLogEmitter {
                     List.of(),
                     List.of(),
                     Double.NaN,
-                    Double.NaN,
                     UNKNOWN_COUNT,
                     0L,
                     0L,
@@ -540,12 +637,12 @@ final class BenchLogEmitter {
                     Double.NaN,
                     UNKNOWN_COUNT,
                     Double.NaN,
-                    Double.NaN,
-                    MethodPhaseBreakdown.planningOnly(
+                    MethodPhaseBreakdown.timeout(
                             parseNanos,
                             decomposeNanos,
                             candidate == null ? 0L : candidate.selectionEstimateNanos(),
-                            wallNanos),
+                            wallNanos,
+                            memoryUsage),
                     "EXEC_TIMEOUT",
                     null);
         }
@@ -556,7 +653,8 @@ final class BenchLogEmitter {
                 DecompositionCandidate candidate,
                 EvaluationWithStats evaluation,
                 long parseNanos,
-                long wallNanos) {
+                long wallNanos,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             return new EstimationBenchRow(
                     queryNumber,
                     method,
@@ -565,7 +663,6 @@ final class BenchLogEmitter {
                     null,
                     List.of(),
                     evaluation.variableOrder(),
-                    Double.NaN,
                     Double.NaN,
                     UNKNOWN_COUNT,
                     0L,
@@ -580,13 +677,13 @@ final class BenchLogEmitter {
                     Double.NaN,
                     answerCount(evaluation.result()),
                     evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
                     MethodPhaseBreakdown.success(
                             parseNanos,
                             candidate.decomposeNanos(),
                             candidate.selectionEstimateNanos(),
                             wallNanos,
-                            evaluation),
+                            evaluation,
+                            memoryUsage),
                     "OK",
                     null);
         }
@@ -598,7 +695,8 @@ final class BenchLogEmitter {
                 EvaluationWithStats evaluation,
                 EstimatorDiagnostics.PrefixEstimationStep step,
                 long parseNanos,
-                long wallNanos) {
+                long wallNanos,
+                MemoryDiagnostics.SectionUsage memoryUsage) {
             return new EstimationBenchRow(
                     queryNumber,
                     method,
@@ -608,7 +706,6 @@ final class BenchLogEmitter {
                     step.prefixOrder(),
                     evaluation.variableOrder(),
                     step.estimate(),
-                    step.standardError(),
                     step.actual(),
                     step.estimateNanos(),
                     step.evalNanos(),
@@ -622,13 +719,13 @@ final class BenchLogEmitter {
                     step.cumulativeRelativeError(),
                     answerCount(evaluation.result()),
                     evaluation.estimatedCount(),
-                    evaluation.estimateStdError(),
                     MethodPhaseBreakdown.success(
                             parseNanos,
                             candidate.decomposeNanos(),
                             candidate.selectionEstimateNanos(),
                             wallNanos,
-                            evaluation),
+                            evaluation,
+                            memoryUsage),
                     "OK",
                     null);
         }

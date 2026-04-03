@@ -45,12 +45,17 @@ final class BenchEngine {
     private final Planner planner;
     private final EngineConfig config;
     private final EstimatorDiagnostics estimatorDiagnostics;
+    private final MemoryDiagnostics.IndexLoadStats indexLoadStats;
 
     BenchEngine(CpqIndex index) {
-        this(index, EngineConfig.defaults());
+        this(index, EngineConfig.defaults(), null);
     }
 
     BenchEngine(CpqIndex index, EngineConfig config) {
+        this(index, config, null);
+    }
+
+    BenchEngine(CpqIndex index, EngineConfig config, MemoryDiagnostics.IndexLoadStats indexLoadStats) {
         this.index = Objects.requireNonNull(index, "index");
         this.config = Objects.requireNonNull(config, "config");
         if (index.k() < 1) {
@@ -58,6 +63,9 @@ final class BenchEngine {
         }
         this.planner = new Planner(index, config.estimationSeed(), config.systemRMaxCandidateOrders());
         this.estimatorDiagnostics = new EstimatorDiagnostics(planner, config);
+        this.indexLoadStats = indexLoadStats == null
+                ? MemoryDiagnostics.unavailable("-", index)
+                : indexLoadStats;
     }
 
     ConjunctiveQuery parseCQ(String text) {
@@ -339,6 +347,7 @@ final class BenchEngine {
             BenchLogEmitter.printCompareFileHeader(
                     compareOut,
                     spec,
+                    indexLoadStats,
                     queries.size(),
                     warmupQueries.size(),
                     warmupSource.toString(),
@@ -436,7 +445,8 @@ final class BenchEngine {
                                     candidate,
                                     outcome.parseNanos(),
                                     outcome.decomposeNanos(),
-                                    outcome.wallNanos()));
+                                    outcome.wallNanos(),
+                                    outcome.memoryUsage()));
                             timeoutRows++;
                         }
                         case SUCCESS -> {
@@ -446,7 +456,8 @@ final class BenchEngine {
                                     candidate,
                                     outcome.parseNanos(),
                                     outcome.wallNanos(),
-                                    outcome.evaluation()));
+                                    outcome.evaluation(),
+                                    outcome.memoryUsage()));
                             okRows++;
                         }
                     }
@@ -534,6 +545,7 @@ final class BenchEngine {
             BenchLogEmitter.printEstimationBenchHeader(
                     out,
                     spec,
+                    indexLoadStats,
                     queries.size(),
                     warmupQueries.size(),
                     methodTimeoutMs,
@@ -617,7 +629,8 @@ final class BenchEngine {
                                     candidate,
                                     outcome.parseNanos(),
                                     outcome.decomposeNanos(),
-                                    outcome.wallNanos()));
+                                    outcome.wallNanos(),
+                                    outcome.memoryUsage()));
                             timeoutRows++;
                         }
                         case SUCCESS -> {
@@ -631,7 +644,8 @@ final class BenchEngine {
                                         candidate,
                                         evaluation,
                                         outcome.parseNanos(),
-                                        outcome.wallNanos()));
+                                        outcome.wallNanos(),
+                                        outcome.memoryUsage()));
                             } else {
                                 for (EstimatorDiagnostics.PrefixEstimationStep step : steps) {
                                     stepRows++;
@@ -642,7 +656,8 @@ final class BenchEngine {
                                             evaluation,
                                             step,
                                             outcome.parseNanos(),
-                                            outcome.wallNanos()));
+                                            outcome.wallNanos(),
+                                            outcome.memoryUsage()));
                                 }
                             }
                             okRows++;
@@ -758,7 +773,8 @@ final class BenchEngine {
             long wallNanos,
             String status,
             String errorMessage,
-            T evaluation) {
+            T evaluation,
+            MemoryDiagnostics.SectionUsage memoryUsage) {
     }
 
     private <T> List<MethodOutcome<T>> evaluateQueryAcrossMethods(
@@ -779,7 +795,8 @@ final class BenchEngine {
                         0L,
                         "ERROR",
                         parsed.errorMessage(),
-                        null));
+                        null,
+                        MemoryDiagnostics.SectionUsage.unavailable()));
             }
             return List.copyOf(outcomes);
         }
@@ -816,21 +833,39 @@ final class BenchEngine {
                         deadlines.elapsedNanos(),
                         selection.missingStatus(),
                         null,
-                        null);
+                        null,
+                        MemoryDiagnostics.SectionUsage.unavailable());
             }
 
-            PreparedCandidate prepared = prepareCandidate(selection.candidate(), deadlines.methodDeadlineNanos());
-            T evaluation = evaluator.evaluate(prepared, deadlines.methodDeadlineNanos());
+            MemoryDiagnostics.SectionToken memoryToken = MemoryDiagnostics.beginSection();
+            MemoryDiagnostics.SectionUsage memoryUsage;
+            MethodOutcomeType outcomeType;
+            String status;
+            T evaluation = null;
+            try {
+                try {
+                    PreparedCandidate prepared = prepareCandidate(selection.candidate(), deadlines.methodDeadlineNanos());
+                    evaluation = evaluator.evaluate(prepared, deadlines.methodDeadlineNanos());
+                    outcomeType = MethodOutcomeType.SUCCESS;
+                    status = "OK";
+                } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
+                    outcomeType = MethodOutcomeType.TIMEOUT;
+                    status = "EXEC_TIMEOUT";
+                }
+            } finally {
+                memoryUsage = MemoryDiagnostics.endSection(memoryToken);
+            }
             return new MethodOutcome<>(
-                    MethodOutcomeType.SUCCESS,
+                    outcomeType,
                     method,
                     selection.candidate(),
                     parsed.parseNanos(),
                     selection.planningNanos(),
                     deadlines.elapsedNanos(),
-                    "OK",
+                    status,
                     null,
-                    evaluation);
+                    evaluation,
+                    memoryUsage);
         } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
             return new MethodOutcome<>(
                     MethodOutcomeType.TIMEOUT,
@@ -841,7 +876,8 @@ final class BenchEngine {
                     deadlines.elapsedNanos(),
                     "EXEC_TIMEOUT",
                     null,
-                    null);
+                    null,
+                    MemoryDiagnostics.SectionUsage.unavailable());
         }
     }
 
@@ -1141,10 +1177,9 @@ final class BenchEngine {
                     deadlines.methodDeadlineNanos());
             return new BenchTypes.EstimateReport(
                     estimate.estimatedCount(),
-                    estimate.standardError(),
                     false);
         } catch (Deadline.Exceeded | java.util.concurrent.CancellationException ex) {
-            return new BenchTypes.EstimateReport(Double.NaN, Double.NaN, true);
+            return new BenchTypes.EstimateReport(Double.NaN, true);
         }
     }
 
@@ -1442,7 +1477,7 @@ final class BenchEngine {
     }
 
     private static EvaluationWithStats emptyWithStats(EvaluationMode mode, EvaluationStats stats) {
-        return new EvaluationWithStats(emptyResult(mode), stats, List.of(), Double.NaN, Double.NaN);
+        return new EvaluationWithStats(emptyResult(mode), stats, List.of(), Double.NaN);
     }
 
     private static EvaluationStats fromCompilationStats(ExecutablePlan.CompilationStats compilationStats) {
@@ -1479,12 +1514,11 @@ final class BenchEngine {
 
         Planner.JoinOrderPlan orderPlan = planner.selectJoinOrder(
                 executable,
-                false,
+                config.estimateHeuristicJoinOrders(),
                 deadlineNanos);
         stats.addEstimateNanos(orderPlan.estimateNanos());
         List<String> order = orderPlan.order();
         double estimatedCount = orderPlan.estimatedCount();
-        double estimateStdError = orderPlan.estimateStdError();
         Deadline.check(deadlineNanos);
         long joinStart = System.nanoTime();
         EvaluationResult result = switch (mode) {
@@ -1506,7 +1540,7 @@ final class BenchEngine {
             }
         };
         stats.addJoinNanos(System.nanoTime() - joinStart);
-        return new EvaluationWithStats(result, stats, List.copyOf(order), estimatedCount, estimateStdError);
+        return new EvaluationWithStats(result, stats, List.copyOf(order), estimatedCount);
     }
 
     private EstimationBenchEvaluation evaluateForEstimationBench(
@@ -1533,11 +1567,6 @@ final class BenchEngine {
         Objects.requireNonNull(decomposition, "decomposition");
         ExecutablePlan executable = ExecutablePlan.compile(decomposition, index, deadlineNanos);
         return estimatorDiagnostics.profileOrders(executable, randomOrders, seed, deadlineNanos);
-    }
-
-    private double conservativeEstimate(double estimatedCount) {
-        double clampedCount = Math.max(0.0, estimatedCount);
-        return Double.isFinite(clampedCount) ? clampedCount : Double.POSITIVE_INFINITY;
     }
 
 }

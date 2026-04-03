@@ -7,12 +7,29 @@ public enum DecompositionMethod {
     SINGLE_EDGE("single_edge"),
     COST("cost", "count_only"),
     MAX_COLLAPSE("max_collapse"),
+    PATH_DECOMPOSITION("path_decomposition"),
     SERIES_PARALLEL("series_parallel"),
     SINGLE_EDGE_SYSTEM_R("single_edge_system_r"),
+    COST_SYSTEM_R_ORDER_ONLY(
+            "cost_system_r_order_only",
+            "cost_order_estimate",
+            "cost_local_order"),
+    EXHAUSTIVE_SYSTEM_R("exhaustive_system_r"),
+    EXHAUSTIVE_SYSTEM_R_COVER_ONLY("exhaustive_system_r_cover_only", "exhaustive_cover_estimate"),
+    SERIES_PARALLEL_SYSTEM_R_ORDER_ONLY(
+            "series_parallel_system_r_order_only",
+            "series_parallel_order_estimate",
+            "series_parallel_local_order"),
+    SERIES_PARALLEL_SYSTEM_R("series_parallel_system_r"),
+    SERIES_PARALLEL_SYSTEM_R_COVER_ONLY(
+            "series_parallel_system_r_cover_only",
+            "series_parallel_rerank_cover_only",
+            "series_parallel_cover_estimate",
+            "series_parallel_system_r_guided_only",
+            "series_parallel_guided_estimate"),
     EXHAUSTIVE_LEAF_COST("exhaustive_leaf_cost", "terminal_leaf_cost", "leaf_cost", "series_parallel_leaf_cost"),
     EXHAUSTIVE_LEAF_SYSTEM_R(
             "exhaustive_leaf_system_r",
-            "exhaustive_system_r",
             "terminal_leaf_system_r",
             "leaf_system_r",
             "series_parallel_leaf_system_r");

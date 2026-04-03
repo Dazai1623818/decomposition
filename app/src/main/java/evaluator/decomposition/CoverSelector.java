@@ -22,18 +22,9 @@ import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
 final class CoverSelector {
-	private static final String STRATEGY_PROPERTY = "cpq.coverSelector.strategy";
-	private static final int MIN_BEAM_WIDTH = 128;
-
 	enum Order {
 		COST,
 		MAX_COLLAPSE
-	}
-
-	private enum Strategy {
-		BASELINE,
-		ORDERED,
-		BEAM
 	}
 
 	private final int limit;
@@ -41,7 +32,6 @@ final class CoverSelector {
 	private final ToLongFunction<CPQ> costFn;
 	private final Predicate<Plan> planFilter;
 	private final long deadlineNanos;
-	private final Strategy strategy;
 
 	CoverSelector(int limit) {
 		this(limit, Order.COST, cpq -> 0L, null, Long.MAX_VALUE);
@@ -69,90 +59,76 @@ final class CoverSelector {
 		this.costFn = costFn;
 		this.planFilter = planFilter;
 		this.deadlineNanos = deadlineNanos;
-		this.strategy = parseStrategy();
 	}
 
 	public Stream<Plan> select(ConjunctiveQuery query, List<Component> components) {
 		List<Plan> results = new ArrayList<>();
-		new Solver(query, components, order, costFn, planFilter, deadlineNanos, strategy).search(limit, results::add);
+		new Solver(query, components, order, costFn, planFilter, deadlineNanos)
+				.search(limit, results::add);
 		return results.stream();
 	}
 
-	private static Strategy parseStrategy() {
-		String raw = System.getProperty(STRATEGY_PROPERTY);
-		if (raw == null || raw.isBlank()) {
-			return Strategy.BASELINE;
-		}
-		return switch (raw.trim().toLowerCase()) {
-			case "baseline" -> Strategy.BASELINE;
-			case "ordered" -> Strategy.ORDERED;
-			case "beam" -> Strategy.BEAM;
-			default -> throw new IllegalArgumentException(
-					"Unknown cover selector strategy '" + raw + "' in system property " + STRATEGY_PROPERTY);
-		};
-	}
-
 	private static final class Option {
+		private static final long UNSET_COST = Long.MIN_VALUE;
+
 		final Component comp;
 		final int id;
 		final BitSet mask;
-		final BitSet vars;
-		final BitSet endpoints;
 		final int[] varIndexes;
+		final int[] interiorVarIndexes;
 		final int[] requiredFreeEndpointIndexes;
-		final long cost;
+		private long cachedCost = UNSET_COST;
 
 		Option(
 				Component comp,
 				int id,
 				Map<VarCQ, Integer> varIndex,
 				ConjunctiveQuery query,
-				BitSet requiredFreeMask,
-				long cost) {
+				BitSet requiredFreeMask) {
 			this.comp = comp;
 			this.id = id;
 			this.mask = comp.maskUnsafe();
-			this.vars = new BitSet(varIndex.size());
-			this.endpoints = new BitSet(varIndex.size());
-			this.cost = cost;
+			BitSet vars = new BitSet(varIndex.size());
+			BitSet endpoints = new BitSet(varIndex.size());
 
 			// Inline variable mapping
 			Integer sIdx = varIndex.get(comp.s());
-			if (sIdx != null)
+			if (sIdx != null) {
 				endpoints.set(sIdx);
+			}
 
 			Integer tIdx = varIndex.get(comp.t());
-			if (tIdx != null)
+			if (tIdx != null) {
 				endpoints.set(tIdx);
+			}
 
 			for (int e = mask.nextSetBit(0); e >= 0; e = mask.nextSetBit(e + 1)) {
 				AtomCQ edge = query.edges().get(e);
 				Integer u = varIndex.get(edge.getSource());
-				if (u != null)
+				if (u != null) {
 					vars.set(u);
+				}
 				Integer v = varIndex.get(edge.getTarget());
-				if (v != null)
+				if (v != null) {
 					vars.set(v);
+				}
 			}
+			BitSet interiorVars = (BitSet) vars.clone();
+			interiorVars.andNot(endpoints);
 			BitSet requiredFreeEndpoints = (BitSet) endpoints.clone();
 			requiredFreeEndpoints.and(requiredFreeMask);
 			this.varIndexes = toIndexes(vars);
+			this.interiorVarIndexes = toIndexes(interiorVars);
 			this.requiredFreeEndpointIndexes = toIndexes(requiredFreeEndpoints);
 		}
 
-		/**
-		 * Checks if this option respects the boundaries defined by the shared
-		 * variables.
-		 * Any shared variable used by this option MUST be one of its exposed endpoints.
-		 */
-		boolean isCompatible(BitSet shared) {
-			if (!vars.intersects(shared)) {
-				return true;
+		long cost(ToLongFunction<CPQ> costFn) {
+			if (cachedCost != UNSET_COST) {
+				return cachedCost;
 			}
-			BitSet bad = (BitSet) vars.clone();
-			bad.and(shared);
-			bad.andNot(endpoints);
-			return bad.isEmpty();
+			long rawCost = costFn == null ? 0L : costFn.applyAsLong(comp.cpq());
+			cachedCost = rawCost < 0L ? 0L : rawCost;
+			return cachedCost;
 		}
 
 		private static int[] toIndexes(BitSet bits) {
@@ -172,11 +148,12 @@ final class CoverSelector {
 		private final int requiredFreeCount;
 		private final List<List<Option>> cover;
 		private final Order order;
+		private final ToLongFunction<CPQ> costFn;
 		private final Predicate<Plan> planFilter;
 		private final Set<String> seenCoverKeys = new HashSet<>();
 		private final long deadlineNanos;
-		private final Strategy strategy;
 		private final int[] varUseCounts;
+		private final int[] interiorUseCounts;
 		private final int[] freeCoverCounts;
 
 		private int maxOutputs;
@@ -189,8 +166,7 @@ final class CoverSelector {
 				Order order,
 				ToLongFunction<CPQ> costFn,
 				Predicate<Plan> planFilter,
-				long deadlineNanos,
-				Strategy strategy) {
+				long deadlineNanos) {
 			this.query = query;
 			List<VarCQ> vertices = query.vertices();
 			List<AtomCQ> edges = query.edges();
@@ -209,17 +185,18 @@ final class CoverSelector {
 			}
 			this.requiredFreeCount = requiredFreeMask.cardinality();
 			this.order = Objects.requireNonNull(order, "order");
+			this.costFn = costFn;
 			this.planFilter = planFilter;
 			this.deadlineNanos = deadlineNanos;
-			this.strategy = Objects.requireNonNull(strategy, "strategy");
 			this.varUseCounts = new int[numVars];
+			this.interiorUseCounts = new int[numVars];
 			this.freeCoverCounts = new int[numVars];
 
 			List<Option> allOptions = new ArrayList<>(components.size());
 			for (int i = 0; i < components.size(); i++) {
 				Component comp = components.get(i);
-				long cost = costFn == null ? 0L : costFn.applyAsLong(comp.cpq());
-				allOptions.add(new Option(comp, i, varIndex, query, requiredFreeMask, cost));
+				Option option = new Option(comp, i, varIndex, query, requiredFreeMask);
+				allOptions.add(option);
 			}
 
 			this.cover = new ArrayList<>(numEdges);
@@ -231,11 +208,6 @@ final class CoverSelector {
 					cover.get(e).add(opt);
 				}
 			}
-			if (strategy != Strategy.BASELINE) {
-				for (int e = 0; e < numEdges; e++) {
-					cover.get(e).sort(optionOrder());
-				}
-			}
 		}
 
 		void search(int limit, Consumer<Plan> out) {
@@ -245,37 +217,16 @@ final class CoverSelector {
 			this.seenCoverKeys.clear();
 			this.scoredPlans = new ArrayList<>();
 			java.util.Arrays.fill(varUseCounts, 0);
+			java.util.Arrays.fill(interiorUseCounts, 0);
 			java.util.Arrays.fill(freeCoverCounts, 0);
-			if (strategy == Strategy.BEAM && maxOutputs != Integer.MAX_VALUE) {
-				searchBeam();
-				emitPlans(scoredPlans);
-				return;
-			}
-			visit(new BitSet(numEdges), new BitSet(numVars), new ArrayList<>(), 0L);
+			visit(new BitSet(numEdges), new BitSet(numVars), new ArrayList<>());
 			emitPlans(scoredPlans);
-		}
-
-		private Comparator<Option> optionOrder() {
-			return switch (order) {
-				case COST -> Comparator
-						.comparingLong((Option opt) -> normalizeCost(opt.cost))
-						.thenComparing(
-								Comparator.comparingInt((Option opt) -> opt.mask.cardinality()).reversed())
-						.thenComparingInt(opt -> opt.id);
-				case MAX_COLLAPSE -> Comparator
-						.comparingInt((Option opt) -> opt.comp.diameter()).reversed()
-						.thenComparing(
-								Comparator.comparingInt((Option opt) -> opt.mask.cardinality()).reversed())
-						.thenComparingLong(opt -> normalizeCost(opt.cost))
-						.thenComparingInt(opt -> opt.id);
-			};
 		}
 
 		private void visit(
 				BitSet covered,
 				BitSet freeCovered,
-				ArrayList<Option> chosen,
-				long totalCost) {
+				ArrayList<Option> chosen) {
 			checkDeadline();
 			if (scoredPlans.size() >= maxOutputs) {
 				return;
@@ -283,10 +234,9 @@ final class CoverSelector {
 			if (!hasFeasibleContinuation(covered)) {
 				return;
 			}
-
 			int nextEdge = covered.nextClearBit(0);
 			if (nextEdge >= numEdges) {
-				if (!isValid(chosen, freeCovered)) {
+				if (!isValid(freeCovered)) {
 					return;
 				}
 				Plan plan = buildPlan(chosen);
@@ -299,8 +249,9 @@ final class CoverSelector {
 				}
 				scoredPlans.add(new ScoredPlan(
 						plan,
-						score(chosen, totalCost),
-						coverKey));
+						structuralScore(chosen),
+						coverKey,
+						chosen.toArray(Option[]::new)));
 				return;
 			}
 
@@ -310,129 +261,24 @@ final class CoverSelector {
 					continue;
 				}
 				applyOption(opt, covered, freeCovered);
+				if (violatesSharedBoundary(opt)) {
+					undoOption(opt, covered, freeCovered);
+					continue;
+				}
 				chosen.add(opt);
-				visit(
-						covered,
-						freeCovered,
-						chosen,
-						safeAddCost(totalCost, opt.cost));
+				visit(covered, freeCovered, chosen);
 				chosen.remove(chosen.size() - 1);
 				undoOption(opt, covered, freeCovered);
 			}
-		}
-
-		/**
-		 * Heuristic beam search that keeps only the most promising partial covers
-		 * at each expansion depth. This is intentionally approximate.
-		 */
-		private void searchBeam() {
-			List<BeamState> frontier = List.of(new BeamState(
-					new BitSet(numEdges),
-					new BitSet(numVars),
-					List.of(),
-					new int[numVars],
-					0L,
-					0));
-			int beamWidth = Math.max(maxOutputs, MIN_BEAM_WIDTH);
-			while (!frontier.isEmpty() && scoredPlans.size() < maxOutputs) {
-				checkDeadline();
-				ArrayList<BeamState> nextFrontier = new ArrayList<>();
-				for (BeamState state : frontier) {
-					checkDeadline();
-					if (!hasFeasibleContinuation(state.covered())) {
-						continue;
-					}
-					int nextEdge = state.covered().nextClearBit(0);
-					if (nextEdge >= numEdges) {
-						maybeRecordComplete(state);
-						if (scoredPlans.size() >= maxOutputs) {
-							return;
-						}
-						continue;
-					}
-					for (Option opt : cover.get(nextEdge)) {
-						if (opt.mask.intersects(state.covered())) {
-							continue;
-						}
-						nextFrontier.add(extend(state, opt));
-					}
-				}
-				if (nextFrontier.isEmpty()) {
-					return;
-				}
-				nextFrontier.sort(this::compareBeamState);
-				if (nextFrontier.size() > beamWidth) {
-					nextFrontier.subList(beamWidth, nextFrontier.size()).clear();
-				}
-				frontier = nextFrontier;
-			}
-		}
-
-		private void maybeRecordComplete(BeamState state) {
-			if (!isValid(state.chosen(), state.freeCovered(), state.varUseCounts())) {
-				return;
-			}
-			Plan plan = buildPlan(state.chosen());
-			if (planFilter != null && !planFilter.test(plan)) {
-				return;
-			}
-			String coverKey = coverKey(state.chosen());
-			if (!seenCoverKeys.add(coverKey)) {
-				return;
-			}
-			scoredPlans.add(new ScoredPlan(plan, score(state.chosen(), state.totalCost()), coverKey));
-		}
-
-		private BeamState extend(BeamState state, Option opt) {
-			BitSet nextCovered = (BitSet) state.covered().clone();
-			nextCovered.or(opt.mask);
-			BitSet nextFreeCovered = (BitSet) state.freeCovered().clone();
-			for (int endpoint : opt.requiredFreeEndpointIndexes) {
-				nextFreeCovered.set(endpoint);
-			}
-			int[] nextVarUseCounts = java.util.Arrays.copyOf(state.varUseCounts(), numVars);
-			for (int var : opt.varIndexes) {
-				nextVarUseCounts[var]++;
-			}
-			ArrayList<Option> nextChosen = new ArrayList<>(state.chosen().size() + 1);
-			nextChosen.addAll(state.chosen());
-			nextChosen.add(opt);
-			return new BeamState(
-					nextCovered,
-					nextFreeCovered,
-					List.copyOf(nextChosen),
-					nextVarUseCounts,
-					safeAddCost(state.totalCost(), opt.cost),
-					Math.max(state.maxDiameter(), opt.comp.diameter()));
-		}
-
-		private int compareBeamState(BeamState left, BeamState right) {
-			int cmp = Integer.compare(right.covered().cardinality(), left.covered().cardinality());
-			if (cmp != 0) {
-				return cmp;
-			}
-			return switch (order) {
-				case COST -> {
-					cmp = Long.compare(left.totalCost(), right.totalCost());
-					if (cmp != 0) {
-						yield cmp;
-					}
-					yield Integer.compare(right.maxDiameter(), left.maxDiameter());
-				}
-				case MAX_COLLAPSE -> {
-					cmp = Integer.compare(right.maxDiameter(), left.maxDiameter());
-					if (cmp != 0) {
-						yield cmp;
-					}
-					yield Long.compare(left.totalCost(), right.totalCost());
-				}
-			};
 		}
 
 		private void applyOption(Option opt, BitSet covered, BitSet freeCovered) {
 			covered.or(opt.mask);
 			for (int var : opt.varIndexes) {
 				varUseCounts[var]++;
+			}
+			for (int interiorVar : opt.interiorVarIndexes) {
+				interiorUseCounts[interiorVar]++;
 			}
 			for (int endpoint : opt.requiredFreeEndpointIndexes) {
 				if (freeCoverCounts[endpoint]++ == 0) {
@@ -446,11 +292,23 @@ final class CoverSelector {
 			for (int var : opt.varIndexes) {
 				varUseCounts[var]--;
 			}
+			for (int interiorVar : opt.interiorVarIndexes) {
+				interiorUseCounts[interiorVar]--;
+			}
 			for (int endpoint : opt.requiredFreeEndpointIndexes) {
 				if (--freeCoverCounts[endpoint] == 0) {
 					freeCovered.clear(endpoint);
 				}
 			}
+		}
+
+		private boolean violatesSharedBoundary(Option opt) {
+			for (int var : opt.varIndexes) {
+				if (varUseCounts[var] >= 2 && interiorUseCounts[var] > 0) {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		private boolean hasFeasibleContinuation(BitSet covered) {
@@ -470,6 +328,7 @@ final class CoverSelector {
 			return true;
 		}
 
+		// TODO: is it posssible to get negative cost?
 		private static long normalizeCost(long rawCost) {
 			if (rawCost < 0L) {
 				return 0L;
@@ -488,14 +347,14 @@ final class CoverSelector {
 			return left + normalizedRight;
 		}
 
-		private Score score(List<Option> chosen, long totalCost) {
+		private Score structuralScore(List<Option> chosen) {
 			int[] diameters = new int[chosen.size()];
 			for (int i = 0; i < chosen.size(); i++) {
 				diameters[i] = chosen.get(i).comp.diameter();
 			}
 			java.util.Arrays.sort(diameters);
 			reverse(diameters);
-			return new Score(totalCost, chosen.size(), diameters);
+			return new Score(chosen.size(), diameters);
 		}
 
 		private Plan buildPlan(List<Option> chosen) {
@@ -514,7 +373,7 @@ final class CoverSelector {
 				ordered.add(plan);
 			}
 			ordered.sort((left, right) -> {
-				int cmp = compareScore(left.score(), right.score());
+				int cmp = compareScore(left, right);
 				if (cmp != 0) {
 					return cmp;
 				}
@@ -530,23 +389,23 @@ final class CoverSelector {
 			}
 		}
 
-		private int compareScore(Score left, Score right) {
+		private int compareScore(ScoredPlan left, ScoredPlan right) {
 			return switch (order) {
 				case COST -> compareCostScore(left, right);
 				case MAX_COLLAPSE -> compareMaxCollapseScore(left, right);
 			};
 		}
 
-		private static int compareCostScore(Score left, Score right) {
+		private int compareCostScore(ScoredPlan left, ScoredPlan right) {
 			return Long.compare(left.totalCost(), right.totalCost());
 		}
 
-		private static int compareMaxCollapseScore(Score left, Score right) {
-			int cmp = Integer.compare(left.components(), right.components());
+		private int compareMaxCollapseScore(ScoredPlan left, ScoredPlan right) {
+			int cmp = Integer.compare(left.score().components(), right.score().components());
 			if (cmp != 0) {
 				return cmp;
 			}
-			cmp = compareDiameters(left.diameters(), right.diameters());
+			cmp = compareDiameters(left.score().diameters(), right.score().diameters());
 			if (cmp != 0) {
 				return cmp;
 			}
@@ -581,31 +440,12 @@ final class CoverSelector {
 			}
 		}
 
-		private boolean isValid(List<Option> chosen, BitSet freeCovered) {
-			return isValid(chosen, freeCovered, varUseCounts);
-		}
-
-		private boolean isValid(List<Option> chosen, BitSet freeCovered, int[] variableUseCounts) {
+		private boolean isValid(BitSet freeCovered) {
 			if (freeCovered.cardinality() < requiredFreeCount) {
 				return false;
 			}
-			if (numVars == 0 || chosen.size() < 2) {
-				return true;
-			}
-
-			BitSet shared = new BitSet(numVars);
 			for (int v = 0; v < numVars; v++) {
-				if (variableUseCounts[v] >= 2) {
-					shared.set(v);
-				}
-			}
-
-			if (shared.isEmpty()) {
-				return true;
-			}
-
-			for (Option opt : chosen) {
-				if (!opt.isCompatible(shared)) {
+				if (varUseCounts[v] >= 2 && interiorUseCounts[v] > 0) {
 					return false;
 				}
 			}
@@ -621,25 +461,48 @@ final class CoverSelector {
 			return String.join("|", signatures);
 		}
 
-		private record BeamState(
-				BitSet covered,
-				BitSet freeCovered,
-				List<Option> chosen,
-				int[] varUseCounts,
-				long totalCost,
-				int maxDiameter) {
-		}
-
 		private record Score(
-				long totalCost,
 				int components,
 				int[] diameters) {
 		}
 
-		private record ScoredPlan(
-				Plan plan,
-				Score score,
-				String coverKey) {
+		private final class ScoredPlan {
+			private final Plan plan;
+			private final Score score;
+			private final String coverKey;
+			private final Option[] options;
+			private long totalCost = Option.UNSET_COST;
+
+			private ScoredPlan(Plan plan, Score score, String coverKey, Option[] options) {
+				this.plan = plan;
+				this.score = score;
+				this.coverKey = coverKey;
+				this.options = options;
+			}
+
+			private Plan plan() {
+				return plan;
+			}
+
+			private Score score() {
+				return score;
+			}
+
+			private String coverKey() {
+				return coverKey;
+			}
+
+			private long totalCost() {
+				if (totalCost != Option.UNSET_COST) {
+					return totalCost;
+				}
+				long computed = 0L;
+				for (Option option : options) {
+					computed = safeAddCost(computed, option.cost(costFn));
+				}
+				totalCost = computed;
+				return computed;
+			}
 		}
 	}
 }

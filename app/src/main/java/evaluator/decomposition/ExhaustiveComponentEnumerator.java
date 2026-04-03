@@ -18,37 +18,47 @@ import java.util.Objects;
 import java.util.Queue;
 
 /**
- * Enumerates CPQ components by expanding atomic edges through concatenation and intersection
- * up to a maximum core diameter.
+ * Enumerates CPQ components by expanding atomic edges through concatenation and
+ * optional intersection up to a maximum core diameter.
  */
 final class ExhaustiveComponentEnumerator {
     private final int maxCoreDiam;
     private final java.util.function.Predicate<CPQ> componentFilter;
     private final long deadlineNanos;
+    private final boolean allowIntersection;
 
     ExhaustiveComponentEnumerator(int maxCoreDiam) {
-        this(maxCoreDiam, null, Long.MAX_VALUE);
+        this(maxCoreDiam, null, Long.MAX_VALUE, true);
     }
 
     ExhaustiveComponentEnumerator(int maxCoreDiam, long deadlineNanos) {
-        this(maxCoreDiam, null, deadlineNanos);
+        this(maxCoreDiam, null, deadlineNanos, true);
     }
 
     ExhaustiveComponentEnumerator(
             int maxCoreDiam,
             java.util.function.Predicate<CPQ> componentFilter,
             long deadlineNanos) {
+        this(maxCoreDiam, componentFilter, deadlineNanos, true);
+    }
+
+    ExhaustiveComponentEnumerator(
+            int maxCoreDiam,
+            java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos,
+            boolean allowIntersection) {
         if (maxCoreDiam < 0) {
             throw new IllegalArgumentException("k must be >= 0");
         }
         this.maxCoreDiam = maxCoreDiam;
         this.componentFilter = componentFilter;
         this.deadlineNanos = deadlineNanos;
+        this.allowIntersection = allowIntersection;
     }
 
     public List<Component> enumerate(ConjunctiveQuery query) {
         Objects.requireNonNull(query, "query");
-        return new Enumerator(query, maxCoreDiam, componentFilter, deadlineNanos).enumerate();
+        return new Enumerator(query, maxCoreDiam, componentFilter, deadlineNanos, allowIntersection).enumerate();
     }
 
     /**
@@ -66,18 +76,21 @@ final class ExhaustiveComponentEnumerator {
         private final Map<VarCQ, List<Component>> byTarget = new HashMap<>();
         private final Map<EndpointPair, List<Component>> byEndpoints = new HashMap<>();
         private final long deadlineNanos;
+        private final boolean allowIntersection;
 
         private Enumerator(
                 ConjunctiveQuery query,
                 int maxCoreDiam,
                 java.util.function.Predicate<CPQ> componentFilter,
-                long deadlineNanos) {
+                long deadlineNanos,
+                boolean allowIntersection) {
             this.maxCoreDiam = maxCoreDiam;
             this.edges = query.edges();
             this.atomCount = edges.size();
             this.nextId = 0;
             this.componentFilter = componentFilter;
             this.deadlineNanos = deadlineNanos;
+            this.allowIntersection = allowIntersection;
         }
 
         private List<Component> enumerate() {
@@ -166,31 +179,33 @@ final class ExhaustiveComponentEnumerator {
                     }
                 }
 
-                // Intersection (left intersect other).
-                EndpointPair endpoints = new EndpointPair(left.s(), left.t());
-                List<Component> parallelCandidates = byEndpoints.getOrDefault(endpoints, List.of());
-                for (int i = 0, size = parallelCandidates.size(); i < size; i++) {
-                    checkDeadline();
-                    Component other = parallelCandidates.get(i);
-                    if (other.id() >= left.id() || !isCurrent(other)) {
-                        continue;
+                if (allowIntersection) {
+                    // Intersection (left intersect other).
+                    EndpointPair endpoints = new EndpointPair(left.s(), left.t());
+                    List<Component> parallelCandidates = byEndpoints.getOrDefault(endpoints, List.of());
+                    for (int i = 0, size = parallelCandidates.size(); i < size; i++) {
+                        checkDeadline();
+                        Component other = parallelCandidates.get(i);
+                        if (other.id() >= left.id() || !isCurrent(other)) {
+                            continue;
+                        }
+                        if (left.maskUnsafe().intersects(other.maskUnsafe())) {
+                            continue;
+                        }
+                        int newCore = Math.max(left.diameter(), other.diameter());
+                        if (newCore > maxCoreDiam) {
+                            continue;
+                        }
+                        CPQ cpq = CPQ.intersect(List.of(left.cpq(), other.cpq()));
+                        registerComponent(
+                                worklist,
+                                left.s(),
+                                left.t(),
+                                union(left.maskUnsafe(), other.maskUnsafe()),
+                                union(left.inverseAtoms(), other.inverseAtoms()),
+                                newCore,
+                                cpq);
                     }
-                    if (left.maskUnsafe().intersects(other.maskUnsafe())) {
-                        continue;
-                    }
-                    int newCore = Math.max(left.diameter(), other.diameter());
-                    if (newCore > maxCoreDiam) {
-                        continue;
-                    }
-                    CPQ cpq = CPQ.intersect(List.of(left.cpq(), other.cpq()));
-                    registerComponent(
-                            worklist,
-                            left.s(),
-                            left.t(),
-                            union(left.maskUnsafe(), other.maskUnsafe()),
-                            union(left.inverseAtoms(), other.inverseAtoms()),
-                            newCore,
-                            cpq);
                 }
             }
 

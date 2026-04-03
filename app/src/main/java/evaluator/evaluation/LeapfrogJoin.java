@@ -22,7 +22,8 @@ public final class LeapfrogJoin {
 
     public enum JoinMode {
         PROJECTED_ROWS(true),
-        PROJECTED_COUNT(false);
+        PROJECTED_COUNT(false),
+        PROJECTED_EXISTS(false);
 
         private final boolean rows;
 
@@ -36,6 +37,10 @@ public final class LeapfrogJoin {
 
         boolean countsOnly() {
             return !rows;
+        }
+
+        boolean stopsAfterFirstMatch() {
+            return this == PROJECTED_EXISTS;
         }
     }
 
@@ -136,6 +141,7 @@ public final class LeapfrogJoin {
         }
 
         boolean collectRows = mode.collectsRows();
+        boolean stopAfterFirstMatch = mode.stopsAfterFirstMatch();
         ProjectedPlan plan = buildProjectedPlan(variableOrder, projectedVars);
         Map<String, Integer> indexByVar = plan.indexByVar();
         int[] assignment = new int[variableOrder.size()];
@@ -145,7 +151,7 @@ public final class LeapfrogJoin {
         boolean needsExtensionCheck = plan.needsExtensionCheck();
         int stopDepth = plan.stopDepth();
         DomainAccessor[][] constraintsByDepth = compileConstraintsByDepth(variableOrder, bindingsByVar, indexByVar);
-        boolean requiresDistinct = requiresDistinctTracking(plan, safeDistinctFastPath);
+        boolean requiresDistinct = !stopAfterFirstMatch && requiresDistinctTracking(plan, safeDistinctFastPath);
         boolean materializeProjection = collectRows || requiresDistinct;
 
         List<Map<String, Integer>> rows = collectRows ? new ArrayList<>() : List.of();
@@ -168,6 +174,20 @@ public final class LeapfrogJoin {
                 workspaces,
                 deadlineNanos,
                 (prefixAssignment, prefixBound) -> {
+                    if (stopAfterFirstMatch) {
+                        if (needsExtensionCheck && !existsExtension(
+                                variableOrder,
+                                projectedDepth,
+                                constraintsByDepth,
+                                prefixAssignment,
+                                prefixBound,
+                                workspaces,
+                                deadlineNanos)) {
+                            return true;
+                        }
+                        count[0] = 1L;
+                        return false;
+                    }
                     if (materializeProjection) {
                         for (int i = 0; i < projectedIndices.length; i++) {
                             keyBuffer[i] = prefixAssignment[projectedIndices[i]];

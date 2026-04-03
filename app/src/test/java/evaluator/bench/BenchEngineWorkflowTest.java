@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BenchEngineWorkflowTest {
     private static final String VALID_QUERY = "(x,y) \u2190 0(x,y)";
+    private static final String COMPLEX_QUERY = "(x0,x1) \u2190 0(x0,gen0), 1(gen0,gen1), 2(gen1,x1)";
     private static final String INVALID_QUERY = "not_a_cq_query";
 
     @Test
@@ -181,8 +182,8 @@ class BenchEngineWorkflowTest {
         String previousMethods = System.getProperty("cpq.decompose.methods");
         System.setProperty("cpq.decompose.methods", "single_edge,cost");
         try {
-            BenchEngine engine = new BenchEngine(new SlowCostIndex(80L));
-            Path queriesFile = writeQueries(tempDir, "isolated-compare.txt", VALID_QUERY);
+            BenchEngine engine = new BenchEngine(new SlowSupportsIndex(80L));
+            Path queriesFile = writeQueries(tempDir, "isolated-compare.txt", COMPLEX_QUERY);
             Path compareLog = tempDir.resolve("isolated-compare.log");
 
             BenchTypes.CompareFileSpec spec = new BenchTypes.CompareFileSpec(
@@ -508,13 +509,13 @@ class BenchEngineWorkflowTest {
         String previousMethods = System.getProperty("cpq.decompose.methods");
         System.setProperty("cpq.decompose.methods", "cost");
         try {
-            BenchEngine engine = new BenchEngine(new SlowCostIndex(80L));
+            BenchEngine engine = new BenchEngine(new SlowSupportsIndex(80L));
             BenchTypes.CompareSpec spec = new BenchTypes.CompareSpec(
                     Path.of("fake.idx"),
-                    VALID_QUERY,
+                    COMPLEX_QUERY,
                     BenchTypes.EvaluationMode.COUNT,
                     1,
-                    0,
+                    2,
                     40,
                     40,
                     123L);
@@ -610,25 +611,6 @@ class BenchEngineWorkflowTest {
         }
     }
 
-    private static final class SlowCostIndex extends FakeCpqIndex {
-        private final long costDelayMs;
-
-        private SlowCostIndex(long costDelayMs) {
-            this.costDelayMs = costDelayMs;
-        }
-
-        @Override
-        public long cost(CPQ cpq) {
-            try {
-                Thread.sleep(costDelayMs);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while computing cost", ex);
-            }
-            return super.cost(cpq);
-        }
-    }
-
     private static final class SlowQueryIndex extends FakeCpqIndex {
         private final long queryDelayMs;
 
@@ -645,6 +627,33 @@ class BenchEngineWorkflowTest {
                 throw new RuntimeException("Interrupted while querying", ex);
             }
             return super.query(cpq);
+        }
+    }
+
+    private static final class SlowSupportsIndex extends FakeCpqIndex {
+        private final long supportsDelayMs;
+
+        private SlowSupportsIndex(long supportsDelayMs) {
+            this.supportsDelayMs = supportsDelayMs;
+        }
+
+        @Override
+        public boolean supports(CPQ cpq) {
+            if (isAtomic(cpq)) {
+                return true;
+            }
+            try {
+                Thread.sleep(supportsDelayMs);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while checking support", ex);
+            }
+            return true;
+        }
+
+        private static boolean isAtomic(CPQ cpq) {
+            String text = cpq.toString();
+            return !text.contains("◦") && !text.contains("∩");
         }
     }
 

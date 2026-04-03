@@ -11,13 +11,18 @@ public final class BenchRunner {
     private final BenchEngine delegate;
 
     public BenchRunner(CpqIndex index) {
-        this(index, EngineConfig.defaults());
+        this(index, EngineConfig.defaults(), null);
     }
 
     public BenchRunner(CpqIndex index, EngineConfig config) {
+        this(index, config, null);
+    }
+
+    public BenchRunner(CpqIndex index, EngineConfig config, MemoryDiagnostics.IndexLoadStats indexLoadStats) {
         this.delegate = new BenchEngine(
                 Objects.requireNonNull(index, "index"),
-                Objects.requireNonNull(config, "config"));
+                Objects.requireNonNull(config, "config"),
+                indexLoadStats);
     }
 
     public BenchTypes.EvalFileReport evalFile(BenchTypes.EvalFileSpec spec) {

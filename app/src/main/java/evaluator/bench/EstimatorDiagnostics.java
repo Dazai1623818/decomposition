@@ -30,7 +30,7 @@ final class EstimatorDiagnostics {
     CardinalityEstimate estimateCount(ExecutablePlan executable, long deadlineNanos) {
         EvaluationStats stats = fromCompilationStats(executable.compilationStats());
         if (executable.isEmpty()) {
-            return new CardinalityEstimate(0.0, 0.0, stats.queryNanos(), stats.mappingNanos(), 0L);
+            return new CardinalityEstimate(0.0, stats.queryNanos(), stats.mappingNanos(), 0L);
         }
         Deadline.check(deadlineNanos);
         long estimateStart = System.nanoTime();
@@ -43,7 +43,6 @@ final class EstimatorDiagnostics {
         long estimateNanos = System.nanoTime() - estimateStart;
         return new CardinalityEstimate(
                 estimate.estimatedCount(),
-                estimate.standardError(),
                 stats.queryNanos(),
                 stats.mappingNanos(),
                 estimateNanos);
@@ -118,7 +117,6 @@ final class EstimatorDiagnostics {
                     variableOrder.get(i),
                     prefix,
                     prefixEstimate.estimatedCount(),
-                    prefixEstimate.standardError(),
                     actual,
                     estimateNanos,
                     evalNanos,
@@ -151,7 +149,6 @@ final class EstimatorDiagnostics {
             long estimateNanos = System.nanoTime() - estimateStart;
             estimates.add(new ProjectedCountEstimate.PrefixEstimate(
                     estimate.estimatedCount(),
-                    estimate.standardError(),
                     estimateNanos));
         }
         return List.copyOf(estimates);
@@ -217,7 +214,6 @@ final class EstimatorDiagnostics {
             String variable,
             List<String> prefixOrder,
             double estimate,
-            double standardError,
             long actual,
             long estimateNanos,
             long evalNanos,

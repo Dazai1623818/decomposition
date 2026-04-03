@@ -98,6 +98,8 @@ class CliOutputSchemaTest {
 
         String compareContent = Files.readString(compareLog, StandardCharsets.UTF_8);
         String decompositionContent = Files.readString(decompositionLog, StandardCharsets.UTF_8);
+        assertTrue(compareContent.contains("index_load_ms="));
+        assertTrue(compareContent.contains("eval_heap_peak_bytes="));
         assertTrue(compareContent.contains("summary query_count="));
         assertTrue(decompositionContent.contains("decomposition="));
     }
@@ -137,7 +139,6 @@ class CliOutputSchemaTest {
         assertTrue(Files.exists(jsonl));
         String json = Files.readString(jsonl, StandardCharsets.UTF_8);
         assertTrue(json.contains("\"estimate\""));
-        assertTrue(json.contains("\"standard_error\""));
         assertTrue(json.contains("\"status\""));
     }
 

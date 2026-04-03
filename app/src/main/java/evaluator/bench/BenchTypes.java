@@ -216,13 +216,11 @@ public final class BenchTypes {
             EvaluationResult result,
             EvaluationStats stats,
             List<String> variableOrder,
-            double estimatedCount,
-            double estimateStdError) {
+            double estimatedCount) {
     }
 
     public record CardinalityEstimate(
             double estimatedCount,
-            double standardError,
             long queryNanos,
             long mappingNanos,
             long estimateNanos) {
@@ -421,7 +419,6 @@ public final class BenchTypes {
 
     public record EstimateReport(
             double estimate,
-            double standardError,
             boolean timedOut) {
     }
 

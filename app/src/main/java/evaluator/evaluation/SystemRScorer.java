@@ -47,18 +47,21 @@ public final class SystemRScorer {
         PlanSelection best = null;
         for (Plan candidate : candidates) {
             Deadline.check(deadlineNanos);
-            StatsPlan compiled = compilePlan(candidate, componentCache, deadlineNanos);
-            OrderSelection order = selectBestOrder(compiled, deadlineNanos);
-            PlanSelection current = new PlanSelection(
-                    candidate.withOrderPolicy(Plan.OrderPolicy.SYSTEM_R),
-                    order.order(),
-                    order.score(),
-                    order.estimatedCount());
+            PlanSelection current = scorePlanWithHeuristicOrder(candidate, componentCache, deadlineNanos);
             if (best == null || comparePlans(current, best) < 0) {
                 best = current;
             }
         }
         return best;
+    }
+
+    /**
+     * Scores one plan under the default heuristic order used by the baseline
+     * execution policy.
+     */
+    public PlanSelection scorePlanWithHeuristicOrder(Plan plan, long deadlineNanos) {
+        Objects.requireNonNull(plan, "plan");
+        return scorePlanWithHeuristicOrder(plan, new HashMap<>(), deadlineNanos);
     }
 
     /**
@@ -72,12 +75,37 @@ public final class SystemRScorer {
 
     /**
      * Selects the best variable order for an already compiled executable plan.
-     * Planning still uses compact planner-side synopses instead of materialized
-     * evaluator relations.
+     * Order refinement starts from the baseline heuristic order and evaluates a
+     * small local neighborhood using the materialized evaluator relations.
      */
     public OrderSelection selectBestOrder(ExecutablePlan executable, long deadlineNanos) {
         Objects.requireNonNull(executable, "executable");
-        return selectBestOrder(executable.plan(), deadlineNanos);
+        StatsPlan compiled = compileExecutable(executable);
+        List<String> baseOrder = defaultOrder(compiled.plan(), compiled.componentCounts());
+        return selectBestLocalOrder(executable, baseOrder, deadlineNanos);
+    }
+
+    /**
+     * Selects the best order from a small neighborhood around a supplied base
+     * order using the already materialized execution-time relations.
+     */
+    public OrderSelection selectBestLocalOrder(
+            ExecutablePlan executable,
+            List<String> baseOrder,
+            long deadlineNanos) {
+        Objects.requireNonNull(executable, "executable");
+        Objects.requireNonNull(baseOrder, "baseOrder");
+        StatsPlan compiled = compileExecutable(executable);
+        if (compiled.empty()) {
+            return new OrderSelection(defaultOrder(compiled.plan(), compiled.componentCounts()), 0.0D, 0.0D);
+        }
+
+        List<String> normalizedBase = normalizeOrder(baseOrder, compiled.relations());
+        List<List<String>> candidateOrders = OrderCandidates.buildLocal(
+                normalizedBase,
+                compiled.plan().projectedVariableNames(),
+                maxCandidateOrders);
+        return selectBestLocalOrder(compiled, candidateOrders, normalizedBase, deadlineNanos);
     }
 
     /**
@@ -94,10 +122,10 @@ public final class SystemRScorer {
         Objects.requireNonNull(projected, "projected");
         StatsPlan compiled = compilePlan(plan, new HashMap<>(), deadlineNanos);
         if (compiled.empty()) {
-            return new ProjectedCountEstimate(0.0D, 0.0D);
+            return new ProjectedCountEstimate(0.0D);
         }
         double estimate = estimateProjectedCardinality(compiled.relations(), variableOrder, projected, deadlineNanos);
-        return new ProjectedCountEstimate(estimate, 0.0D);
+        return new ProjectedCountEstimate(estimate);
     }
 
     /**
@@ -113,30 +141,69 @@ public final class SystemRScorer {
         Objects.requireNonNull(variableOrder, "variableOrder");
         Objects.requireNonNull(projected, "projected");
         if (relations.isEmpty()) {
-            return new ProjectedCountEstimate(0.0D, 0.0D);
+            return new ProjectedCountEstimate(0.0D);
         }
         List<RelationSummary> summaries = relationSummaries(relations);
         double estimate = estimateProjectedCardinality(summaries, variableOrder, projected, deadlineNanos);
-        return new ProjectedCountEstimate(estimate, 0.0D);
+        return new ProjectedCountEstimate(estimate);
     }
 
     private OrderSelection selectBestOrder(StatsPlan compiled, long deadlineNanos) {
         if (compiled.empty()) {
             return new OrderSelection(defaultOrder(compiled.plan(), compiled.componentCounts()), 0.0D, 0.0D);
         }
+        List<String> baseOrder = defaultOrder(compiled.plan(), compiled.componentCounts());
+        List<String> normalizedBase = normalizeOrder(baseOrder, compiled.relations());
+        List<List<String>> candidateOrders = OrderCandidates.buildLocal(
+                normalizedBase,
+                compiled.plan().projectedVariableNames(),
+                maxCandidateOrders);
+        return selectBestLocalOrder(compiled, candidateOrders, normalizedBase, deadlineNanos);
+    }
 
-        List<List<String>> candidateOrders = candidateOrders(compiled);
+    private OrderSelection selectBestLocalOrder(
+            StatsPlan compiled,
+            List<List<String>> candidateOrders,
+            List<String> baseOrder,
+            long deadlineNanos) {
         RelationLayout layout = relationLayout(compiled.relations(), candidateOrders.get(0), deadlineNanos);
         int[] projectedIndexes = projectedIndexes(compiled.plan().projectedVariableNames(), layout);
-        OrderSelection best = null;
+        OrderSelection baseSelection = evaluateOrder(compiled, layout, projectedIndexes, baseOrder, deadlineNanos);
+        OrderSelection best = baseSelection;
         for (List<String> order : candidateOrders) {
             Deadline.check(deadlineNanos);
             OrderSelection current = evaluateOrder(compiled, layout, projectedIndexes, order, deadlineNanos);
-            if (best == null || compareOrders(current, best, compiled.plan().projectedVariableNames()) < 0) {
+            if (compareOrders(current, best, compiled.plan().projectedVariableNames()) < 0) {
                 best = current;
             }
         }
-        return best;
+        return compareOrders(best, baseSelection, compiled.plan().projectedVariableNames()) < 0
+                ? best
+                : baseSelection;
+    }
+
+    private PlanSelection scorePlanWithHeuristicOrder(
+            Plan plan,
+            Map<String, RelationSummary> componentCache,
+            long deadlineNanos) {
+        StatsPlan compiled = compilePlan(plan, componentCache, deadlineNanos);
+        if (compiled.empty()) {
+            List<String> order = defaultOrder(plan, List.of());
+            return new PlanSelection(plan, order, 0.0D, 0.0D);
+        }
+        List<String> heuristicOrder = defaultOrder(compiled.plan(), compiled.componentCounts());
+        OrderSelection selection = evaluateOrderWithNormalizedBase(compiled, heuristicOrder, deadlineNanos);
+        return new PlanSelection(plan, selection.order(), selection.score(), selection.estimatedCount());
+    }
+
+    private OrderSelection evaluateOrderWithNormalizedBase(
+            StatsPlan compiled,
+            List<String> order,
+            long deadlineNanos) {
+        List<String> normalizedOrder = normalizeOrder(order, compiled.relations());
+        RelationLayout layout = relationLayout(compiled.relations(), normalizedOrder, deadlineNanos);
+        int[] projectedIndexes = projectedIndexes(compiled.plan().projectedVariableNames(), layout);
+        return evaluateOrder(compiled, layout, projectedIndexes, normalizedOrder, deadlineNanos);
     }
 
     private StatsPlan compilePlan(
@@ -160,6 +227,25 @@ public final class SystemRScorer {
             counts.add((long) compiled.cardinality());
         }
         return new StatsPlan(plan, List.copyOf(relations), List.copyOf(counts), false);
+    }
+
+    private static StatsPlan compileExecutable(ExecutablePlan executable) {
+        if (executable.isEmpty()) {
+            return new StatsPlan(executable.plan(), List.of(), List.of(), true);
+        }
+        List<RelationSummary> relations = relationSummaries(executable.relations());
+        boolean empty = false;
+        for (RelationSummary relation : relations) {
+            if (relation.empty()) {
+                empty = true;
+                break;
+            }
+        }
+        return new StatsPlan(
+                executable.plan(),
+                List.copyOf(relations),
+                executable.componentCounts(),
+                empty);
     }
 
     private RelationSummary compileComponent(Component component) {
@@ -236,13 +322,11 @@ public final class SystemRScorer {
             SummaryState current,
             RelationBinding relation) {
         double outputCardinality = safeMultiply(current.cardinality(), relation.cardinality());
-        boolean joined = false;
         for (int i = 0; i < relation.variableCount(); i++) {
             int variable = relation.variableIndex(i);
             if (!current.contains(variable)) {
                 continue;
             }
-            joined = true;
             double leftDistinct = current.distinctCount(variable);
             double rightDistinct = relation.distinctCount(i);
             double overlap = overlapDistinct(leftDistinct, rightDistinct);
@@ -541,12 +625,6 @@ public final class SystemRScorer {
             return indexes;
         }
         return java.util.Arrays.copyOf(indexes, size);
-    }
-
-    private List<List<String>> candidateOrders(StatsPlan compiled) {
-        List<String> base = defaultOrder(compiled.plan(), compiled.componentCounts());
-        List<String> projected = compiled.plan().projectedVariableNames();
-        return OrderCandidates.build(base, projected, maxCandidateOrders);
     }
 
     private static List<String> defaultOrder(Plan plan, List<Long> componentCounts) {
@@ -890,4 +968,5 @@ public final class SystemRScorer {
             this.summary = summary == null ? SummaryState.empty(variableCount) : summary;
         }
     }
+
 }

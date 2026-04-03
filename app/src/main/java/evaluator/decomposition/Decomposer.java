@@ -7,6 +7,7 @@ import evaluator.cpq.ConjunctiveQuery;
 import evaluator.cpq.Plan;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToDoubleFunction;
 import java.util.function.ToLongFunction;
 import java.util.stream.Stream;
 
@@ -97,16 +98,16 @@ public interface Decomposer {
         java.util.function.Predicate<CPQ> mergedFilter = cpq -> cpq.getDiameter() <= k
                 && (componentFilter == null || componentFilter.test(cpq));
         ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, mergedFilter, deadlineNanos);
-        CoverSelector selector = new CoverSelector(
-                limit,
-                CoverSelector.Order.COST,
-                costFn,
-                plan -> TerminalLeafFilter.isTerminalLeaf(plan, mergedFilter),
-                deadlineNanos);
         return cq -> {
             Objects.requireNonNull(cq, "cq");
             ConjunctiveQuery query = ConjunctiveQuery.from(cq);
             List<Component> components = enumerator.enumerate(query);
+            CoverSelector selector = new CoverSelector(
+                    limit,
+                    CoverSelector.Order.COST,
+                    costFn,
+                    TerminalLeafFilter.precomputed(components, query.freeVariables(), mergedFilter),
+                    deadlineNanos);
             return selector.select(query, components).sequential();
         };
     }
@@ -142,6 +143,38 @@ public interface Decomposer {
         }
         Objects.requireNonNull(costFn, "costFn");
         ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(k, componentFilter, deadlineNanos);
+        CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.MAX_COLLAPSE, costFn, deadlineNanos);
+        return cq -> {
+            Objects.requireNonNull(cq, "cq");
+            ConjunctiveQuery query = ConjunctiveQuery.from(cq);
+            List<Component> components = enumerator.enumerate(query);
+            return selector.select(query, components).sequential();
+        };
+    }
+
+    /**
+     * Exhaustive bounded-component cover search ranked by collapse-first structure
+     * with parallel intersection expansion disabled. Concatenation and unary
+     * {@code ∩ id} normalization remain enabled.
+     */
+    static Decomposer cpqkCoverPathDecomposition(
+            int k,
+            int limit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter,
+            long deadlineNanos) {
+        if (k < 0) {
+            throw new IllegalArgumentException("k must be >= 0");
+        }
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be >= 0");
+        }
+        Objects.requireNonNull(costFn, "costFn");
+        ExhaustiveComponentEnumerator enumerator = new ExhaustiveComponentEnumerator(
+                k,
+                componentFilter,
+                deadlineNanos,
+                false);
         CoverSelector selector = new CoverSelector(limit, CoverSelector.Order.MAX_COLLAPSE, costFn, deadlineNanos);
         return cq -> {
             Objects.requireNonNull(cq, "cq");
@@ -226,6 +259,40 @@ public interface Decomposer {
                 costFn,
                 restarts,
                 seed,
+                deadlineNanos);
+    }
+
+    /**
+     * Deterministic greedy series/parallel reduction guided by a whole-plan
+     * estimator. The candidate limit bounds how many legal reductions are scored
+     * by the expensive join estimator at each step; {@code 0} means score every
+     * legal reduction for that step.
+     */
+    static Decomposer seriesParallelGuided(
+            int candidateLimit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter,
+            ToDoubleFunction<Plan> joinScoreFn) {
+        return seriesParallelGuided(candidateLimit, costFn, componentFilter, joinScoreFn, Long.MAX_VALUE);
+    }
+
+    static Decomposer seriesParallelGuided(
+            int candidateLimit,
+            ToLongFunction<CPQ> costFn,
+            java.util.function.Predicate<CPQ> componentFilter,
+            ToDoubleFunction<Plan> joinScoreFn,
+            long deadlineNanos) {
+        if (candidateLimit < 0) {
+            throw new IllegalArgumentException("candidateLimit must be >= 0");
+        }
+        Objects.requireNonNull(costFn, "costFn");
+        Objects.requireNonNull(joinScoreFn, "joinScoreFn");
+        return cq -> SeriesParallelDecomposer.decomposeGuided(
+                cq,
+                componentFilter,
+                costFn,
+                joinScoreFn,
+                candidateLimit,
                 deadlineNanos);
     }
 

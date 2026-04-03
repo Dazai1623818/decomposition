@@ -108,9 +108,22 @@ final class SeriesParallelDecomposer {
             ToLongFunction<CPQ> costFn,
             ToDoubleFunction<Plan> joinScoreFn,
             long deadlineNanos) {
+        return decomposeGuided(cq, componentFilter, costFn, joinScoreFn, 0, deadlineNanos);
+    }
+
+    static Stream<Plan> decomposeGuided(
+            CQ cq,
+            java.util.function.Predicate<CPQ> componentFilter,
+            ToLongFunction<CPQ> costFn,
+            ToDoubleFunction<Plan> joinScoreFn,
+            int candidateLimit,
+            long deadlineNanos) {
         Objects.requireNonNull(cq, "cq");
         Objects.requireNonNull(costFn, "costFn");
         Objects.requireNonNull(joinScoreFn, "joinScoreFn");
+        if (candidateLimit < 0) {
+            throw new IllegalArgumentException("candidateLimit must be >= 0");
+        }
 
         checkDeadline(deadlineNanos);
         ConjunctiveQuery query = ConjunctiveQuery.from(cq);
@@ -121,7 +134,7 @@ final class SeriesParallelDecomposer {
         List<Integer> edgeIds = allEdgeIds(query);
         Set<VarCQ> terminals = new HashSet<>(query.freeVariables());
         SeriesParallelReducer reducer = new SeriesParallelReducer(query, componentFilter, deadlineNanos);
-        List<Component> components = reducer.reduceGuided(edgeIds, terminals, costFn, joinScoreFn);
+        List<Component> components = reducer.reduceGuided(edgeIds, terminals, costFn, joinScoreFn, candidateLimit);
         return Stream.of(new Plan(query, components));
     }
 
@@ -247,7 +260,8 @@ final class SeriesParallelDecomposer {
                 List<Integer> edgeIds,
                 Set<VarCQ> terminals,
                 ToLongFunction<CPQ> costFn,
-                ToDoubleFunction<Plan> joinScoreFn) {
+                ToDoubleFunction<Plan> joinScoreFn,
+                int candidateLimit) {
             Objects.requireNonNull(costFn, "costFn");
             Objects.requireNonNull(joinScoreFn, "joinScoreFn");
             checkDeadline(deadlineNanos);
@@ -259,6 +273,7 @@ final class SeriesParallelDecomposer {
                 if (candidates.isEmpty()) {
                     break;
                 }
+                candidates = limitGuidedCandidates(candidates, candidateLimit);
 
                 MergeChoice best = null;
                 for (MergeCandidate candidate : candidates) {
@@ -279,6 +294,15 @@ final class SeriesParallelDecomposer {
             }
 
             return collectActiveComponents(edges);
+        }
+
+        private List<MergeCandidate> limitGuidedCandidates(List<MergeCandidate> candidates, int candidateLimit) {
+            if (candidateLimit == 0 || candidates.size() <= candidateLimit) {
+                return candidates;
+            }
+            List<MergeCandidate> ranked = new ArrayList<>(candidates);
+            ranked.sort(SeriesParallelReducer::compareGuidedCandidate);
+            return new ArrayList<>(ranked.subList(0, candidateLimit));
         }
 
         private List<Component> reduceInternal(List<Integer> edgeIds, Set<VarCQ> terminals, Random random) {
@@ -693,6 +717,22 @@ final class SeriesParallelDecomposer {
                 return cmp;
             }
             cmp = Integer.compare(left.kindOrder(), right.kindOrder());
+            if (cmp != 0) {
+                return cmp;
+            }
+            return left.signature().compareTo(right.signature());
+        }
+
+        /**
+         * Cheap deterministic pre-order used to cap how many legal reductions are
+         * scored by the more expensive whole-plan estimator at one greedy step.
+         */
+        private static int compareGuidedCandidate(MergeCandidate left, MergeCandidate right) {
+            int cmp = Long.compare(left.merged().cardinality, right.merged().cardinality);
+            if (cmp != 0) {
+                return cmp;
+            }
+            cmp = Integer.compare(left.merged().diameter, right.merged().diameter);
             if (cmp != 0) {
                 return cmp;
             }

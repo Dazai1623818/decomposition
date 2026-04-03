@@ -110,6 +110,30 @@ class SeriesParallelBehaviorTest {
         assertHasMergedMask(plans.get(0), 1, 2);
     }
 
+    @Test
+    void seriesParallelGuidedCandidateLimitCapsEstimatorWorkPerStep() {
+        CQ cq = ConjunctiveQuery.parse(THREE_PARALLEL_EDGES).syntax();
+        Plan unlimited = Decomposer.seriesParallelGuided(
+                        0,
+                        SeriesParallelBehaviorTest::componentCost,
+                        SeriesParallelBehaviorTest::allowsBinaryIntersectionsOnly,
+                        SeriesParallelBehaviorTest::preferMergedZeroOne)
+                .decompose(cq)
+                .findFirst()
+                .orElseThrow();
+        Plan limited = Decomposer.seriesParallelGuided(
+                        1,
+                        SeriesParallelBehaviorTest::componentCost,
+                        SeriesParallelBehaviorTest::allowsBinaryIntersectionsOnly,
+                        SeriesParallelBehaviorTest::preferMergedZeroOne)
+                .decompose(cq)
+                .findFirst()
+                .orElseThrow();
+
+        assertHasMergedMask(unlimited, 0, 1);
+        assertHasMergedMask(limited, 1, 2);
+    }
+
     private static boolean allowsBinaryIntersectionsOnly(CPQ cpq) {
         return maxIntersectionWidth(cpq.toAbstractSyntaxTree()) <= 2;
     }
@@ -140,6 +164,12 @@ class SeriesParallelBehaviorTest {
             }
         }
         return 100L;
+    }
+
+    private static double preferMergedZeroOne(Plan plan) {
+        return plan.components().stream().anyMatch(component -> hasMergedMask(component.maskUnsafe(), 0, 1))
+                ? 0.0D
+                : 100.0D;
     }
 
     private static void collectLabels(QueryTree node, BitSet labels) {

@@ -7,6 +7,7 @@ import java.util.Locale;
  */
 public record EngineConfig(
         boolean joinSafeDistinctFastPath,
+        boolean estimateHeuristicJoinOrders,
         long estimationSeed,
         int systemRMaxCandidateOrders) {
     private static final long DEFAULT_ESTIMATION_SEED = 0xC0FFEE;
@@ -18,6 +19,7 @@ public record EngineConfig(
     public static EngineConfig defaults() {
         return new EngineConfig(
                 true,
+                false,
                 DEFAULT_ESTIMATION_SEED,
                 DEFAULT_SYSTEM_R_MAX_CANDIDATE_ORDERS);
     }
@@ -29,6 +31,7 @@ public record EngineConfig(
     public static EngineConfig fromSystemProperties() {
         return new EngineConfig(
                 booleanProperty("cpq.join.safeDistinctFastPath", true),
+                booleanProperty("cpq.join.estimateHeuristicPlans", false),
                 longProperty("cpq.estimate.seed", DEFAULT_ESTIMATION_SEED),
                 intProperty(
                         "cpq.systemr.maxCandidateOrders",
@@ -75,6 +78,7 @@ public record EngineConfig(
     public EngineConfig withEstimationSeed(long seed) {
         return new EngineConfig(
                 joinSafeDistinctFastPath,
+                estimateHeuristicJoinOrders,
                 seed,
                 systemRMaxCandidateOrders);
     }
@@ -82,6 +86,7 @@ public record EngineConfig(
     public EngineConfig withSystemRMaxCandidateOrders(int maxCandidateOrders) {
         return new EngineConfig(
                 joinSafeDistinctFastPath,
+                estimateHeuristicJoinOrders,
                 estimationSeed,
                 Math.max(0, maxCandidateOrders));
     }

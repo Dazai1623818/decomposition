@@ -51,6 +51,27 @@ class ExhaustiveComponentEnumeratorTest {
     }
 
     @Test
+    void disablingIntersectionSkipsTwoEdgeSelfLoopConjunctionButKeepsUnaryIdentity() {
+        ConjunctiveQuery query = sameVariableSelfLoopsQuery();
+
+        List<Component> components = new ExhaustiveComponentEnumerator(1, null, Long.MAX_VALUE, false).enumerate(query);
+
+        long unaryTwoEdgeComponents = components.stream()
+                .filter(Component::isUnary)
+                .filter(component -> component.maskUnsafe().cardinality() == 2)
+                .filter(component -> component.diameter() == 1)
+                .count();
+        long unarySingleEdgeComponents = components.stream()
+                .filter(Component::isUnary)
+                .filter(component -> component.maskUnsafe().cardinality() == 1)
+                .filter(component -> component.diameter() == 1)
+                .count();
+
+        assertEquals(0L, unaryTwoEdgeComponents);
+        assertEquals(2L, unarySingleEdgeComponents);
+    }
+
+    @Test
     void concatenationCanCreateUnaryComponentForCycle() {
         ConjunctiveQuery query = twoEdgeCycleQuery();
 

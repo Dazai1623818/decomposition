@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.roanh.gmark.ast.OperationType;
+import dev.roanh.gmark.ast.QueryTree;
 import dev.roanh.gmark.lang.cpq.CPQ;
+import dev.roanh.gmark.lang.cpq.EdgeCPQ;
 import evaluator.bench.BenchTypes;
 import evaluator.evaluation.DecompositionMethod;
 import evaluator.index.CpqIndex;
@@ -50,6 +53,94 @@ class TopologyDiverseWorkloadBuilderTest {
     }
 
     @Test
+    void customDatasetIndexesDefaultToSelectedCustomDatasets() {
+        assertEquals(
+                "ca-CondMat,wiki-RfA",
+                TopologyDiverseWorkloadBuilder.selectedDatasetsForTesting(
+                        "--dataset-index",
+                        "ca-CondMat=/tmp/ca.idx",
+                        "--dataset-index",
+                        "wiki-RfA=/tmp/rfa.idx"));
+        assertEquals(
+                "",
+                TopologyDiverseWorkloadBuilder.ignoredDatasetsForTesting(
+                        "--dataset-index",
+                        "ca-CondMat=/tmp/ca.idx",
+                        "--dataset-index",
+                        "wiki-RfA=/tmp/rfa.idx"));
+        assertEquals(
+                "/tmp/rfa.idx",
+                TopologyDiverseWorkloadBuilder.datasetIndexPathForTesting(
+                        "wiki-RfA",
+                        "--dataset-index",
+                        "ca-CondMat=/tmp/ca.idx",
+                        "--dataset-index",
+                        "wiki-RfA=/tmp/rfa.idx"));
+    }
+
+    @Test
+    void workersPerDatasetDefaultsToInProcessAndParsesOverrides() {
+        assertEquals(0, TopologyDiverseWorkloadBuilder.workersPerDatasetForTesting());
+        assertEquals(
+                8,
+                TopologyDiverseWorkloadBuilder.workersPerDatasetForTesting(
+                        "--workers-per-dataset",
+                        "8"));
+    }
+
+    @Test
+    void queryConcurrencyDefaultsToOneAndParsesOverrides() {
+        assertEquals(1, TopologyDiverseWorkloadBuilder.queryConcurrencyForTesting());
+        assertEquals(
+                64,
+                TopologyDiverseWorkloadBuilder.queryConcurrencyForTesting(
+                        "--query-concurrency",
+                        "64"));
+    }
+
+    @Test
+    void validationModeDefaultsToFirstAnswerAndParsesQuickScan() {
+        assertEquals("first_answer", TopologyDiverseWorkloadBuilder.validationModeForTesting());
+        assertEquals(
+                "quick_scan",
+                TopologyDiverseWorkloadBuilder.validationModeForTesting(
+                        "--validation-mode",
+                        "quick_scan"));
+    }
+
+    @Test
+    void independentEdgeDirectionsFlagParses() {
+        assertFalse(TopologyDiverseWorkloadBuilder.independentEdgeDirectionsForTesting());
+        assertTrue(TopologyDiverseWorkloadBuilder.independentEdgeDirectionsForTesting(
+                "--independent-edge-directions"));
+    }
+
+    @Test
+    void labelCountDefaultsToFourAndParsesOverrides() {
+        assertEquals(4, TopologyDiverseWorkloadBuilder.labelCountForTesting());
+        assertEquals(8, TopologyDiverseWorkloadBuilder.labelCountForTesting("--label-count", "8"));
+    }
+
+    @Test
+    void independentEdgeDirectionsDoubleChoicePerEdge() {
+        assertEquals(16L, TopologyDiverseWorkloadBuilder.candidateSpaceForTesting(PATH_QUERY, 4, false));
+        assertEquals(64L, TopologyDiverseWorkloadBuilder.candidateSpaceForTesting(PATH_QUERY, 4, true));
+        assertEquals(64L, TopologyDiverseWorkloadBuilder.candidateSpaceForTesting(PATH_QUERY, 8, false));
+        assertEquals(256L, TopologyDiverseWorkloadBuilder.candidateSpaceForTesting(PATH_QUERY, 8, true));
+    }
+
+    @Test
+    void renderWithDirectionsCanReverseEdgesWithoutChangingShapeFamily() {
+        assertEquals(
+                "(x0) \u2190 0(x0,x1), 1(x2,x1)",
+                TopologyDiverseWorkloadBuilder.renderWithDirectionsForTesting(
+                        PATH_QUERY,
+                        new int[] { 0, 1 },
+                        new boolean[] { false, true },
+                        "x0"));
+    }
+
+    @Test
     void maxCollapseZeroScreenCanCatchZerosThatSingleEdgeMisses() {
         CpqIndex index = new LengthSensitiveIndex();
 
@@ -63,6 +154,36 @@ class TopologyDiverseWorkloadBuilderTest {
                 index,
                 DecompositionMethod.MAX_COLLAPSE,
                 1_000));
+    }
+
+    @Test
+    void firstAnswerEvaluationCanRejectJoinEmptyBodiesThatCompileNonEmpty() {
+        CpqIndex index = new JoinEmptySingleEdgeIndex();
+
+        TopologyDiverseWorkloadBuilder.QueryEvaluation evaluation =
+                TopologyDiverseWorkloadBuilder.firstAnswerQueryForTesting(
+                        PATH_QUERY,
+                        index,
+                        DecompositionMethod.MAX_COLLAPSE,
+                        1_000);
+
+        assertEquals(BenchTypes.EvalFileStatus.OK, evaluation.status());
+        assertEquals(0L, evaluation.answers());
+    }
+
+    @Test
+    void quickScanCanAcceptJoinEmptyBodiesThatExactEvaluationRejects() {
+        CpqIndex index = new JoinEmptySingleEdgeIndex();
+
+        TopologyDiverseWorkloadBuilder.QueryEvaluation evaluation =
+                TopologyDiverseWorkloadBuilder.quickScanQueryForTesting(
+                        PATH_QUERY,
+                        index,
+                        DecompositionMethod.MAX_COLLAPSE,
+                        1_000);
+
+        assertEquals(BenchTypes.EvalFileStatus.OK, evaluation.status());
+        assertTrue(evaluation.answers() > 0L);
     }
 
     @Test
@@ -85,6 +206,35 @@ class TopologyDiverseWorkloadBuilderTest {
                 0L,
                 BenchTypes.EvalFileStatus.OK,
                 0L));
+    }
+
+    @Test
+    void rejectionReasonIncludesDatasetAndArityForEarlyStopFailures() {
+        assertEquals(
+                "ca-CondMat_a2_zero_answers",
+                TopologyDiverseWorkloadBuilder.rejectionReasonForTesting(
+                        "ca-CondMat",
+                        BenchTypes.EvalFileStatus.OK,
+                        3L,
+                        BenchTypes.EvalFileStatus.OK,
+                        0L,
+                        BenchTypes.EvalFileStatus.TIMEOUT,
+                        0L));
+    }
+
+    @Test
+    void quickScanRejectionReasonUsesComponentLanguage() {
+        assertEquals(
+                "ca-CondMat_a2_empty_component",
+                TopologyDiverseWorkloadBuilder.rejectionReasonForTesting(
+                        "ca-CondMat",
+                        "quick_scan",
+                        BenchTypes.EvalFileStatus.OK,
+                        3L,
+                        BenchTypes.EvalFileStatus.OK,
+                        0L,
+                        BenchTypes.EvalFileStatus.TIMEOUT,
+                        0L));
     }
 
     private static List<String> split(String key) {
@@ -122,6 +272,52 @@ class TopologyDiverseWorkloadBuilderTest {
                 return List.of(new Edge(1, 2));
             }
             return List.of();
+        }
+    }
+
+    /**
+     * Exposes the join-empty case that compile-only validation misses when k=1
+     * forces a multi-edge query to stay decomposed into single-edge parts.
+     */
+    private static final class JoinEmptySingleEdgeIndex implements CpqIndex {
+        @Override
+        public int k() {
+            return 1;
+        }
+
+        @Override
+        public int intersections() {
+            return Integer.MAX_VALUE;
+        }
+
+        @Override
+        public boolean isIndexable(CPQ cpq) {
+            return cpq.toQueryGraph().getEdges().size() <= 1;
+        }
+
+        @Override
+        public long cost(CPQ cpq) {
+            return 1L;
+        }
+
+        @Override
+        public List<Edge> query(CPQ cpq) {
+            return switch (extractSingleLabelId(cpq)) {
+                case 0 -> List.of(new Edge(1, 2));
+                case 1 -> List.of(new Edge(3, 4));
+                default -> List.of();
+            };
+        }
+
+        private static int extractSingleLabelId(CPQ cpq) {
+            if (cpq instanceof EdgeCPQ edge) {
+                return edge.getLabel().getID();
+            }
+            QueryTree tree = cpq.toAbstractSyntaxTree();
+            if (tree.getOperation() != OperationType.EDGE) {
+                throw new IllegalStateException("Expected single-edge CPQ but found " + tree.getOperation());
+            }
+            return tree.getEdgeAtom().getLabel().getID();
         }
     }
 }
