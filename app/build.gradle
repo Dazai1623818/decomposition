@@ -68,3 +68,10 @@ tasks.register('runTopologyMerge', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'evaluator.tools.TopologyDiverseWorkloadMerger'
 }
+
+tasks.register('runMechanismProbe', JavaExec) {
+    group = 'application'
+    description = 'Runs the thesis mechanism probe over selected archived cases.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'evaluator.bench.MechanismProbeMain'
+}

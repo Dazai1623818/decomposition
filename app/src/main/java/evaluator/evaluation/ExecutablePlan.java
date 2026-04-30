@@ -6,7 +6,9 @@ import evaluator.index.CpqIndex;
 import evaluator.util.Deadline;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -82,8 +84,14 @@ public final class ExecutablePlan {
 
         List<Relation> relations = new ArrayList<>(components.size());
         List<Long> componentCounts = new ArrayList<>(components.size());
+        Map<String, CachedComponent> componentCache = new HashMap<>();
         for (Component component : components) {
-            ComponentCompilation compiled = compileComponent(component, index, deadlineNanos);
+            Deadline.check(deadlineNanos);
+            String cacheKey = componentCacheKey(component);
+            CachedComponent cached = componentCache.get(cacheKey);
+            ComponentCompilation compiled = cached == null
+                    ? compileComponent(component, index, deadlineNanos)
+                    : ComponentCompilation.fromCached(component, cached);
             queryNanos += compiled.queryNanos();
             mappingNanos += compiled.mappingNanos();
             if (compiled.isEmpty()) {
@@ -93,6 +101,9 @@ public final class ExecutablePlan {
                         List.of(),
                         new CompilationStats(queryNanos, mappingNanos),
                         true);
+            }
+            if (cached == null) {
+                componentCache.put(cacheKey, compiled.cached());
             }
             relations.add(compiled.binding());
             componentCounts.add(compiled.count());
@@ -124,16 +135,16 @@ public final class ExecutablePlan {
         Objects.requireNonNull(index, "index");
         Deadline.check(deadlineNanos);
         long queryStart = System.nanoTime();
-        List<CpqIndex.Edge> matches = index.query(component.cpq());
+        CpqIndex.QueryMatches matches = index.queryMatches(component.cpq());
         long queryNanos = System.nanoTime() - queryStart;
 
         long mappingStart = System.nanoTime();
-        CompiledComponent compiled = evaluateComponent(component, matches, deadlineNanos);
+        CachedComponent compiled = evaluateComponent(component, matches, deadlineNanos);
         long mappingNanos = System.nanoTime() - mappingStart;
         if (compiled == null) {
             return ComponentCompilation.empty(queryNanos, mappingNanos);
         }
-        return new ComponentCompilation(compiled.binding(), compiled.count(), queryNanos, mappingNanos);
+        return new ComponentCompilation(compiled.bind(component), compiled.count(), queryNanos, mappingNanos, compiled);
     }
 
     public LeapfrogJoin.JoinResult join(
@@ -159,56 +170,48 @@ public final class ExecutablePlan {
                 deadlineNanos);
     }
 
-    private static CompiledComponent evaluateComponent(
+    private static CachedComponent evaluateComponent(
             Component component,
-            List<CpqIndex.Edge> matches,
+            CpqIndex.QueryMatches matches,
             long deadlineNanos) {
-        String left = component.sourceVarName();
-        String right = component.targetVarName();
-        String description = component.normalized();
         long resultCount = matches.size();
-        if (left.equals(right)) {
-            return buildUnaryBinding(left, description, matches, resultCount, deadlineNanos);
+        if (component.isUnary()) {
+            return buildUnaryBinding(matches, resultCount, deadlineNanos);
         }
-        return buildBinaryBinding(left, right, description, matches, resultCount, deadlineNanos);
+        return buildBinaryBinding(matches, resultCount, deadlineNanos);
     }
 
-    private static CompiledComponent buildUnaryBinding(
-            String variable,
-            String description,
-            List<CpqIndex.Edge> matches,
+    private static CachedComponent buildUnaryBinding(
+            CpqIndex.QueryMatches matches,
             long resultCount,
             long deadlineNanos) {
         Deadline.check(deadlineNanos);
         IntAccumulator values = new IntAccumulator(matches.size());
-        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
-        for (CpqIndex.Edge pair : matches) {
-            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
-            values.add(pair.source());
-        }
+        int[] iterationsUntilDeadlineCheck = new int[] { DEADLINE_CHECK_STRIDE };
+        matches.forEach((source, target) -> {
+            iterationsUntilDeadlineCheck[0] = pollDeadline(iterationsUntilDeadlineCheck[0], deadlineNanos);
+            values.add(source);
+        });
         int[] domain = values.toSortedDistinctArray();
         if (domain.length == 0) {
             return null;
         }
-        return new CompiledComponent(Relation.unary(variable, description, domain), resultCount);
+        return CachedComponent.unary(domain, resultCount);
     }
 
-    private static CompiledComponent buildBinaryBinding(
-            String left,
-            String right,
-            String description,
-            List<CpqIndex.Edge> matches,
+    private static CachedComponent buildBinaryBinding(
+            CpqIndex.QueryMatches matches,
             long resultCount,
             long deadlineNanos) {
         Deadline.check(deadlineNanos);
         IntAccumulatorMap forward = new IntAccumulatorMap();
         IntAccumulatorMap reverse = new IntAccumulatorMap();
-        int iterationsUntilDeadlineCheck = DEADLINE_CHECK_STRIDE;
-        for (CpqIndex.Edge pair : matches) {
-            iterationsUntilDeadlineCheck = pollDeadline(iterationsUntilDeadlineCheck, deadlineNanos);
-            forward.add(pair.source(), pair.target());
-            reverse.add(pair.target(), pair.source());
-        }
+        int[] iterationsUntilDeadlineCheck = new int[] { DEADLINE_CHECK_STRIDE };
+        matches.forEach((source, target) -> {
+            iterationsUntilDeadlineCheck[0] = pollDeadline(iterationsUntilDeadlineCheck[0], deadlineNanos);
+            forward.add(source, target);
+            reverse.add(target, source);
+        });
 
         if (forward.isEmpty() || reverse.isEmpty()) {
             return null;
@@ -226,7 +229,7 @@ public final class ExecutablePlan {
         if (projection.isEmpty()) {
             return null;
         }
-        return new CompiledComponent(Relation.binary(left, right, description, projection), resultCount);
+        return CachedComponent.binary(projection, resultCount);
     }
 
     /**
@@ -251,9 +254,16 @@ public final class ExecutablePlan {
             Relation binding,
             long count,
             long queryNanos,
-            long mappingNanos) {
+            long mappingNanos,
+            CachedComponent cached) {
+        static ComponentCompilation fromCached(Component component, CachedComponent cached) {
+            Objects.requireNonNull(component, "component");
+            Objects.requireNonNull(cached, "cached");
+            return new ComponentCompilation(cached.bind(component), cached.count(), 0L, 0L, cached);
+        }
+
         static ComponentCompilation empty(long queryNanos, long mappingNanos) {
-            return new ComponentCompilation(null, 0L, queryNanos, mappingNanos);
+            return new ComponentCompilation(null, 0L, queryNanos, mappingNanos, null);
         }
 
         boolean isEmpty() {
@@ -261,7 +271,53 @@ public final class ExecutablePlan {
         }
     }
 
-    private record CompiledComponent(Relation binding, long count) {
+    /**
+     * Variable-agnostic compiled relation payload reused only while compiling
+     * one plan. The cached arrays/projections are treated as read-only.
+     */
+    private record CachedComponent(
+            int[] unaryDomain,
+            Relation.RelationProjection projection,
+            long count) {
+        private CachedComponent {
+            if (count < 0L) {
+                throw new IllegalArgumentException("count must be >= 0");
+            }
+            if ((unaryDomain == null) == (projection == null)) {
+                throw new IllegalArgumentException("exactly one cached relation shape must be present");
+            }
+        }
+
+        private static CachedComponent unary(int[] unaryDomain, long count) {
+            return new CachedComponent(Objects.requireNonNull(unaryDomain, "unaryDomain"), null, count);
+        }
+
+        private static CachedComponent binary(Relation.RelationProjection projection, long count) {
+            return new CachedComponent(null, Objects.requireNonNull(projection, "projection"), count);
+        }
+
+        private Relation bind(Component component) {
+            Objects.requireNonNull(component, "component");
+            String description = component.normalized();
+            if (unaryDomain != null) {
+                if (!component.isUnary()) {
+                    throw new IllegalArgumentException("cached unary component bound to non-unary component");
+                }
+                return Relation.unary(component.sourceVarName(), description, unaryDomain);
+            }
+            if (component.isUnary()) {
+                throw new IllegalArgumentException("cached binary component bound to unary component");
+            }
+            return Relation.binary(
+                    component.sourceVarName(),
+                    component.targetVarName(),
+                    description,
+                    projection);
+        }
+    }
+
+    private static String componentCacheKey(Component component) {
+        return component.cpq().toString();
     }
 
     private static final class IntAccumulator {

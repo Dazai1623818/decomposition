@@ -40,6 +40,16 @@ public interface CpqIndex {
     List<Edge> query(CPQ cpq);
 
     /**
+     * Returns primitive source/target matches for one indexed CPQ relation.
+     * Implementations may override this to avoid building intermediate edge
+     * objects when the backend already exposes native pairs.
+     */
+    default QueryMatches queryMatches(CPQ cpq) {
+        Objects.requireNonNull(cpq, "cpq");
+        return new EdgeQueryMatches(query(cpq));
+    }
+
+    /**
      * Planner-side component statistics for one indexed CPQ result relation.
      * Endpoint arrays are sorted, distinct, and must be treated as read-only.
      */
@@ -60,6 +70,20 @@ public interface CpqIndex {
      * Directed edge match between source and target graph nodes.
      */
     record Edge(int source, int target) {
+    }
+
+    @FunctionalInterface
+    interface IntPairConsumer {
+        void accept(int source, int target);
+    }
+
+    /**
+     * Primitive match view used by execution-time relation compilation.
+     */
+    interface QueryMatches {
+        int size();
+
+        void forEach(IntPairConsumer consumer);
     }
 
     enum Endpoint {
@@ -202,6 +226,30 @@ public interface CpqIndex {
                 }
             }
             return Arrays.copyOf(copy, unique);
+        }
+    }
+
+    /**
+     * Default primitive match view backed by boxed edge records.
+     */
+    final class EdgeQueryMatches implements QueryMatches {
+        private final List<Edge> edges;
+
+        private EdgeQueryMatches(List<Edge> edges) {
+            this.edges = Objects.requireNonNull(edges, "edges");
+        }
+
+        @Override
+        public int size() {
+            return edges.size();
+        }
+
+        @Override
+        public void forEach(IntPairConsumer consumer) {
+            Objects.requireNonNull(consumer, "consumer");
+            for (Edge edge : edges) {
+                consumer.accept(edge.source(), edge.target());
+            }
         }
     }
 

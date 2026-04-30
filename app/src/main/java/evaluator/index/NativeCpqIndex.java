@@ -72,12 +72,16 @@ public final class NativeCpqIndex implements CpqIndex {
     @Override
     public List<Edge> query(CPQ cpq) {
         Objects.requireNonNull(cpq, "cpq");
-        List<Pair> pairs = index.query(cpq);
-        List<Edge> edges = new ArrayList<>(pairs.size());
-        for (Pair pair : pairs) {
-            edges.add(new Edge(pair.getSource(), pair.getTarget()));
-        }
+        QueryMatches matches = queryMatches(cpq);
+        List<Edge> edges = new ArrayList<>(matches.size());
+        matches.forEach((source, target) -> edges.add(new Edge(source, target)));
         return edges;
+    }
+
+    @Override
+    public QueryMatches queryMatches(CPQ cpq) {
+        Objects.requireNonNull(cpq, "cpq");
+        return new NativeQueryMatches(index.query(cpq));
     }
 
     @Override
@@ -101,6 +105,29 @@ public final class NativeCpqIndex implements CpqIndex {
     public boolean isIndexable(CPQ cpq) {
         Objects.requireNonNull(cpq, "cpq");
         return cpq.getDiameter() <= k;
+    }
+
+    /**
+     * Match view backed directly by native CPQ-index pairs so evaluator
+     * compilation can avoid building intermediate edge objects.
+     */
+    private record NativeQueryMatches(List<Pair> pairs) implements QueryMatches {
+        private NativeQueryMatches {
+            pairs = Objects.requireNonNull(pairs, "pairs");
+        }
+
+        @Override
+        public int size() {
+            return pairs.size();
+        }
+
+        @Override
+        public void forEach(IntPairConsumer consumer) {
+            Objects.requireNonNull(consumer, "consumer");
+            for (Pair pair : pairs) {
+                consumer.accept(pair.getSource(), pair.getTarget());
+            }
+        }
     }
 
     private static final class EntryStats {
